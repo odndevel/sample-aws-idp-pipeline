@@ -1,0 +1,13 @@
+# Changelog
+## v0.3.0
+Added smart search functionality using hybrid search
+Added document verification feature for comparing documents
+
+## v0.2.0
+---
+Added WebSocket functionality
+Fixed ECS deployment issues
+
+## v0.1.0
+---
+- initial project setup and configuration

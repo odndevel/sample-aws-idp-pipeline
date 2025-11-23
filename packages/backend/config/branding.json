@@ -1,0 +1,13 @@
+{
+  "default": {
+    "companyName": "AWS IDP",
+    "logoUrl": "/default_logo.png",
+    "description": "Transform Documents into\nActionable Insights"
+  },
+  "user": {
+    "companyName": "AWS IDP",
+    "logoUrl": "/user_logo.png",
+    "description": "Transform Documents into\r\nActionable Insights"
+  },
+  "version": "0.1.1"
+}

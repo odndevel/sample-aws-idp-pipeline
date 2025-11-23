@@ -1,0 +1,232 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CodeBuild project for cleaning up AWS IDP AI Pipeline resources
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - prod
+    Description: Deployment stage to clean up
+  RepoUrl:
+    Type: String
+    Default: 'https://github.com/aws-samples/sample-aws-idp-pipeline'
+    Description: Repository URL
+  Version:
+    Type: String
+    Default: 'main'
+    Description: Branch or tag to use
+Resources:
+  CleanupCodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'aws-idp-ai-cleanup-codebuild-role-${Stage}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/PowerUserAccess
+      Policies:
+        - PolicyName: CleanupCodeBuildServiceRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:GetRole
+                  - iam:GetRolePolicy
+                  - iam:PassRole
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                  - iam:CreatePolicy
+                  - iam:DeletePolicy
+                  - iam:GetPolicy
+                  - iam:GetPolicyVersion
+                  - iam:ListPolicyVersions
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - cognito-idp:ListUserPools
+                  - cognito-idp:DeleteUserPool
+                  - cognito-idp:DescribeUserPool
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - iam:UpdateAssumeRolePolicy
+                  - iam:UpdateRole
+                  - sts:AssumeRole
+                Resource:
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/cdk-*'
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/temp-cleanup-*'
+              - Effect: Allow
+                Action:
+                  - sts:AssumeRole
+                Resource: '*'
+                Condition:
+                  StringLike:
+                    'aws:RequestedRegion': !Ref AWS::Region
+  CleanupCodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub 'aws-idp-ai-cleanup-${Stage}'
+      ServiceRole: !GetAtt CleanupCodeBuildServiceRole.Arn
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_LARGE
+        Image: aws/codebuild/standard:7.0
+        PrivilegedMode: false
+        EnvironmentVariables:
+          - Name: STAGE
+            Value: !Ref Stage
+          - Name: REPO_URL
+            Value: !Ref RepoUrl
+          - Name: VERSION
+            Value: !Ref Version
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: AWS_ACCOUNT_ID
+            Value: !Ref AWS::AccountId
+      Source:
+        Type: NO_SOURCE
+        BuildSpec: |-
+          {
+            "version": "0.2",
+            "phases": {
+              "pre_build": {
+                "commands": [
+                  "echo 'Installing dependencies'",
+                  "npm install -g aws-cdk@latest",
+                  "npm install -g pnpm",
+                  "echo 'Cloning repository'",
+                  "git clone $REPO_URL /tmp/aws-idp-pipeline",
+                  "cd /tmp/aws-idp-pipeline",
+                  "git checkout $VERSION"
+                ]
+              },
+              "build": {
+                "commands": [
+                  "echo 'Starting cleanup'",
+                  "cd /tmp/aws-idp-pipeline",
+                  "echo 'Step 1 Cleaning up resources before CDK destroy'",
+                  "ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)",
+                  "echo 'Pre-cleaning Cognito resources'",
+                  "aws cognito-idp list-user-pools --max-results 60 --output text --query 'UserPools[].Id' | xargs -I {} aws cognito-idp describe-user-pool --user-pool-id {} --query 'UserPool.Name' --output text | grep -B1 'aws-idp-ai' | grep -E '^us-' > /tmp/user-pools.txt 2>/dev/null || aws cognito-idp list-user-pools --max-results 60 --output text --query 'UserPools[].Id' > /tmp/user-pools.txt 2>/dev/null || echo '' > /tmp/user-pools.txt",
+                  "while read pool_id; do if [ -n \\\"$pool_id\\\" ]; then echo \\\"Deleting Cognito User Pool: $pool_id\\\"; aws cognito-idp delete-user-pool --user-pool-id \\\"$pool_id\\\" 2>/dev/null || true; fi; done < /tmp/user-pools.txt",
+                  "echo 'Emptying S3 buckets (excluding CDK assets)'",
+                  "aws s3api list-buckets --output text --query 'Buckets[].Name' | grep 'aws-idp' | grep -v 'cdk-hnb659fds-assets' > /tmp/buckets.txt || echo '' > /tmp/buckets.txt",
+                  "for bucket in $(cat /tmp/buckets.txt); do if [ -n \\\"$bucket\\\" ] && [ \\\"$bucket\\\" != \\\"None\\\" ]; then echo \\\"Emptying S3 bucket: $bucket\\\"; aws s3 rm s3://\\\"$bucket\\\" --recursive 2>/dev/null || true; fi; done",
+                  "echo 'Also emptying ALB logs bucket explicitly'",
+                  "aws s3 rm s3://aws-idp-alb-logs-dev-${ACCOUNT_ID} --recursive 2>/dev/null || echo 'ALB logs bucket not found or already empty'",
+                  "aws s3 rm s3://aws-idp-ai-access-logs-${ACCOUNT_ID}-${AWS_DEFAULT_REGION}-dev --recursive 2>/dev/null || echo 'Access logs bucket not found or already empty'",
+                  "echo 'Deleting all images from ECR repositories'",
+                  "aws ecr delete-repository --repository-name aws-idp-backend-dev --force 2>/dev/null && echo 'Backend ECR repository deleted' || echo 'Backend ECR repository not found or already deleted'",
+                  "aws ecr delete-repository --repository-name aws-idp-frontend-dev --force 2>/dev/null && echo 'Frontend ECR repository deleted' || echo 'Frontend ECR repository not found or already deleted'",
+                  "echo 'Deleting LogRetention Custom Resource Lambdas first (speeds up stack deletion)'",
+                  "aws lambda list-functions --query 'Functions[?contains(FunctionName, `LogRetention`)].FunctionName' --output text | grep 'aws-idp-ai' > /tmp/logretention-lambdas.txt 2>/dev/null || echo '' > /tmp/logretention-lambdas.txt",
+                  "for lambda in $(cat /tmp/logretention-lambdas.txt); do if [ -n \\\"$lambda\\\" ]; then echo \\\"Deleting LogRetention Lambda: $lambda\\\"; aws lambda delete-function --function-name \\\"$lambda\\\" 2>/dev/null || true; fi; done",
+                  "echo 'Deleting CloudWatch Log Groups'",
+                  "aws logs describe-log-groups --output text --query 'logGroups[].logGroupName' | grep 'aws-idp-ai' > /tmp/loggroups.txt || echo '' > /tmp/loggroups.txt",
+                  "for loggroup in $(cat /tmp/loggroups.txt); do if [ -n \\\"$loggroup\\\" ] && [ \\\"$loggroup\\\" != \\\"None\\\" ]; then echo \\\"Deleting log group: $loggroup\\\"; aws logs delete-log-group --log-group-name \\\"$loggroup\\\" 2>/dev/null || true; fi; done",
+                  "echo 'Step 2 Emptying ALB logs bucket before CDK destroy'",
+                  "echo 'ALB logs bucket must be empty for CDK destroy to succeed'",
+                  "aws s3 rm s3://aws-idp-alb-logs-${STAGE}-${ACCOUNT_ID} --recursive 2>/dev/null || echo 'ALB logs bucket not found or already empty'",
+                  "echo 'Step 3 Checking CDK Bootstrap before destroy'",
+                  "cd packages/infra",
+                  "pnpm install",
+                  "echo 'Downloading Lambda Layer zip files if missing...'",
+                  "mkdir -p src/lambda_layer",
+                  "curl -L -f -o src/lambda_layer/custom_layer_common.zip https://raw.githubusercontent.com/yunwoong7/lambda-layers-assets/main/aws-idp-assets/custom_layer_common.zip 2>/dev/null || echo 'custom_layer_common.zip download failed or already exists'",
+                  "curl -L -f -o src/lambda_layer/custom_layer_opensearch.zip https://raw.githubusercontent.com/yunwoong7/lambda-layers-assets/main/aws-idp-assets/custom_layer_opensearch.zip 2>/dev/null || echo 'custom_layer_opensearch.zip download failed or already exists'",
+                  "curl -L -f -o src/lambda_layer/custom_layer_image_processing.zip https://raw.githubusercontent.com/yunwoong7/lambda-layers-assets/main/aws-idp-assets/custom_layer_image_processing.zip 2>/dev/null || echo 'custom_layer_image_processing.zip download failed or already exists'",
+                  "curl -L -f -o src/lambda_layer/custom_layer_analysis_package.zip https://raw.githubusercontent.com/yunwoong7/lambda-layers-assets/main/aws-idp-assets/custom_layer_analysis_package.zip 2>/dev/null || echo 'custom_layer_analysis_package.zip download failed or already exists'",
+                  "echo 'Lambda layer download completed'",
+                  "ls -lh src/lambda_layer/",
+                  "echo 'Checking if CDK Bootstrap exists...'",
+                  "if ! aws iam get-role --role-name cdk-hnb659fds-deploy-role-${ACCOUNT_ID}-${AWS_DEFAULT_REGION} >/dev/null 2>&1; then echo 'CDK Bootstrap not found, re-bootstrapping...'; npx cdk bootstrap aws://${ACCOUNT_ID}/${AWS_DEFAULT_REGION} --require-approval never; else echo 'CDK Bootstrap found, proceeding with destroy'; fi",
+                  "echo 'Step 4 Destroying CDK stacks'",
+                  "echo '[app]' > .toml",
+                  "echo 'ns = \"aws-idp-ai\"' >> .toml",
+                  "echo 'stage = \"dev\"' >> .toml",
+                  "echo 'Pre-emptively emptying ALB logs bucket to prevent deletion failures'",
+                  "aws s3 rm s3://aws-idp-alb-logs-${STAGE}-${ACCOUNT_ID} --recursive 2>/dev/null || echo 'ALB logs bucket not found or already empty'",
+                  "echo 'Waiting for S3 to process deletion...'",
+                  "sleep 5",
+                  "echo 'Double-checking ALB logs bucket is empty'",
+                  "aws s3 ls s3://aws-idp-alb-logs-${STAGE}-${ACCOUNT_ID} --recursive 2>/dev/null | head -5 || echo 'Bucket empty or not found'",
+                  "npx cdk destroy --all --force || echo 'CDK destroy completed with some issues'",
+                  "echo 'Checking if ALB logs bucket still exists and cleaning up'",
+                  "aws s3 rm s3://aws-idp-alb-logs-${STAGE}-${ACCOUNT_ID} --recursive 2>/dev/null || echo 'ALB logs bucket cleaned or does not exist'",
+                  "aws s3api delete-bucket --bucket aws-idp-alb-logs-${STAGE}-${ACCOUNT_ID} 2>/dev/null || echo 'ALB logs bucket deleted or does not exist'",
+                  "echo 'If ECS stack failed, attempting manual deletion'",
+                  "ECS_STACK_STATUS=$(aws cloudformation describe-stacks --stack-name aws-idp-ai-ecs --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo 'NOT_FOUND')",
+                  "if [ \"$ECS_STACK_STATUS\" = \"DELETE_FAILED\" ]; then echo 'ECS stack in DELETE_FAILED state, retrying...'; aws s3 rm s3://aws-idp-alb-logs-${STAGE}-${ACCOUNT_ID} --recursive 2>/dev/null || true; aws s3api delete-bucket --bucket aws-idp-alb-logs-${STAGE}-${ACCOUNT_ID} 2>/dev/null || true; aws cloudformation delete-stack --stack-name aws-idp-ai-ecs 2>/dev/null || echo 'Could not delete ECS stack'; fi",
+                  "echo 'Explicitly destroying Cognito stack if it exists'",
+                  "npx cdk destroy aws-idp-ai-cognito --force 2>/dev/null || echo 'Cognito stack not found or already deleted'",
+                  "echo 'Step 5 Deleting remaining ECR repositories and ACM certificates'",
+                  "cd /tmp/aws-idp-pipeline",
+                  "aws ecr describe-repositories --output text --query 'repositories[].repositoryName' | grep 'aws-idp' > /tmp/repos.txt || echo '' > /tmp/repos.txt",
+                  "while read repo; do if [ -n \\\"$repo\\\" ]; then echo \\\"Deleting ECR repository $repo\\\"; aws ecr delete-repository --repository-name $repo --force 2>/dev/null || true; fi; done < /tmp/repos.txt",
+                  "aws acm list-certificates --output text --query 'CertificateSummaryList[].CertificateArn' > /tmp/all-certs.txt; aws acm list-certificates --output text --query 'CertificateSummaryList[].[CertificateArn,DomainName]' | grep -E 'aws-idp-ai|aws-idp-ai.internal' | cut -f1 > /tmp/certs.txt || echo '' > /tmp/certs.txt",
+                  "while read cert_arn; do if [ -n \\\"$cert_arn\\\" ]; then echo \\\"Deleting ACM certificate $cert_arn\\\"; aws acm delete-certificate --certificate-arn \\\"$cert_arn\\\" 2>/dev/null || true; fi; done < /tmp/certs.txt",
+                  "echo 'Step 6 Cleaning remaining resources'",
+                  "cd /tmp/aws-idp-pipeline",
+                  "echo 'Force deleting Cognito stack explicitly'",
+                  "COGNITO_STACK_STATUS=$(aws cloudformation describe-stacks --stack-name aws-idp-ai-cognito-${STAGE} --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo 'NOT_FOUND')",
+                  "if [ \"$COGNITO_STACK_STATUS\" != \"NOT_FOUND\" ]; then echo \"Cognito stack found with status: $COGNITO_STACK_STATUS\"; echo \"Attempting to delete Cognito stack...\"; aws cloudformation delete-stack --stack-name aws-idp-ai-cognito-${STAGE}; echo \"Waiting for Cognito stack deletion (up to 5 minutes)...\"; aws cloudformation wait stack-delete-complete --stack-name aws-idp-ai-cognito-${STAGE} --no-paginate 2>/dev/null || echo \"Cognito stack deletion may have failed or timed out\"; else echo \"Cognito stack not found or already deleted\"; fi",
+                  "aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE DELETE_FAILED ROLLBACK_COMPLETE UPDATE_ROLLBACK_COMPLETE --output text --query 'StackSummaries[].StackName' | grep 'aws-idp-ai' | grep -v 'cleanup-codebuild' > /tmp/stacks.txt || echo '' > /tmp/stacks.txt",
+                  "for stack in $(cat /tmp/stacks.txt); do if [ -n \\\"$stack\\\" ] && [ \\\"$stack\\\" != \\\"None\\\" ]; then echo \\\"Deleting remaining stack: $stack\\\"; aws cloudformation delete-stack --stack-name \\\"$stack\\\" 2>/dev/null || true; fi; done",
+                  "echo 'Skipping CDK Bootstrap resources - they should be kept for future deployments'",
+                  "echo 'Keeping deploy CodeBuild stack for now - will be deleted at the end'",
+                  "echo 'Note: DynamoDB tables will be cleaned up in Step 2 of cleanup process'",
+                  "echo 'Step 7 Final attempt to delete Cognito stack'",
+                  "echo 'Checking if Cognito stack still exists...'",
+                  "COGNITO_EXISTS=$(aws cloudformation describe-stacks --stack-name aws-idp-ai-cognito --query 'Stacks[0].StackName' --output text 2>/dev/null || echo 'NOT_FOUND')",
+                  "if [ \"$COGNITO_EXISTS\" != \"NOT_FOUND\" ]; then echo 'Cognito stack still exists, attempting final deletion...'; aws cloudformation delete-stack --stack-name aws-idp-ai-cognito --retain-resources 2>/dev/null || aws cloudformation delete-stack --stack-name aws-idp-ai-cognito 2>/dev/null || echo 'Could not delete Cognito stack'; sleep 10; fi",
+                  "echo 'Step 8 Checking if all stacks are deleted'",
+                  "REMAINING_STACKS=$(aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE DELETE_FAILED ROLLBACK_COMPLETE --output text --query 'StackSummaries[].StackName' | grep 'aws-idp-ai' | grep -v 'cleanup-codebuild' || true)",
+                  "if [ -z \"$REMAINING_STACKS\" ]; then echo 'All aws-idp-ai stacks successfully deleted. CDKToolkit stack will be kept for future deployments.'; else echo 'Warning: Some stacks still exist:'; echo \"$REMAINING_STACKS\"; echo 'Please manually delete these stacks'; fi"
+                ]
+              },
+              "post_build": {
+                "commands": [
+                  "echo 'Cleanup completed'",
+                  "echo 'All AWS IDP AI resources have been removed'",
+                  "echo 'Final cleanup: Ensuring Cognito stack is deleted'",
+                  "aws cloudformation delete-stack --stack-name aws-idp-ai-cognito 2>/dev/null || echo 'Cognito stack already deleted or not found'",
+                  "aws cloudformation delete-stack --stack-name aws-idp-ai-cognito-${STAGE} 2>/dev/null || echo 'Cognito stack with stage already deleted or not found'",
+                  "echo 'Finally deleting deploy CodeBuild stack'",
+                  "aws cloudformation delete-stack --stack-name aws-idp-ai-codebuild-deploy-${STAGE} 2>/dev/null || echo 'Deploy CodeBuild stack not found or already deleted'",
+                  "echo 'Cleanup completed successfully'",
+                  "echo 'Note: Please manually delete the cleanup CodeBuild stack: aws-idp-ai-cleanup-codebuild-${STAGE}'"
+                ]
+              }
+            }
+          }
+      TimeoutInMinutes: 180
+Outputs:
+  CleanupProjectName:
+    Value: !Ref CleanupCodeBuildProject
+    Description: Cleanup CodeBuild project name
+  CleanupCommand:
+    Value: !Sub 'aws codebuild start-build --project-name ${CleanupCodeBuildProject}'
+    Description: Command to start cleanup process
