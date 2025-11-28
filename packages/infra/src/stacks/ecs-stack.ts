@@ -33,10 +33,11 @@ export interface EcsStackProps extends cdk.StackProps {
   certificate?: acm.ICertificate;
   existingCertificateArn?: string;
   // Domain configuration
-  useCustomDomain?: boolean;
+  useCustomDomain?: boolean | string;  // true, false, or "external"
   domainName?: string;
   hostedZoneId?: string;
   hostedZoneName?: string;
+  customDomainFull?: string;  // Full domain name for external DNS (e.g., idp.demo.com)
 }
 
 export class EcsStack extends cdk.Stack {
@@ -67,7 +68,8 @@ export class EcsStack extends cdk.Stack {
       useCustomDomain,
       domainName,
       hostedZoneId,
-      hostedZoneName
+      hostedZoneName,
+      customDomainFull
     } = props;
 
     // Import Cognito resources from IDs to avoid cross-stack exports
@@ -199,17 +201,24 @@ export class EcsStack extends cdk.Stack {
     let domainZone: r53.IHostedZone | undefined;
     let fullDomainName: string | undefined;
 
-    if (useCustomDomain && domainName && hostedZoneId && hostedZoneName) {
+    // Handle custom domain setup
+    if (useCustomDomain === 'external' && customDomainFull) {
+      // External DNS management (no Route 53)
+      fullDomainName = customDomainFull;
+      console.log(`Using external DNS with custom domain: ${fullDomainName}`);
+    } else if (useCustomDomain === true && domainName && hostedZoneId && hostedZoneName) {
+      // Route 53 managed DNS
       domainZone = r53.HostedZone.fromHostedZoneAttributes(this, 'HostedZone', {
         hostedZoneId,
         zoneName: hostedZoneName,
       });
       fullDomainName = `${domainName}.${hostedZoneName}`;
+      console.log(`Using Route 53 managed domain: ${fullDomainName}`);
     }
 
     // Frontend Fargate Service (ApplicationLoadBalancedFargateService 사용)
     // Note: We'll modify the listener actions after creation for Cognito
-    this.frontendService = new ecsPatterns.ApplicationLoadBalancedFargateService(this, 'FrontendService', {
+    const frontendServiceProps: any = {
       cluster: this.cluster,
       serviceName: `aws-idp-frontend-${stage}`,
       cpu: 512,
@@ -234,12 +243,19 @@ export class EcsStack extends cdk.Stack {
         },
       },
       certificate: finalCertificate,
-      domainName: fullDomainName,
-      domainZone: domainZone,
       listenerPort: finalCertificate ? 443 : 80,
       protocol: finalCertificate ? elbv2.ApplicationProtocol.HTTPS : elbv2.ApplicationProtocol.HTTP,
       redirectHTTP: finalCertificate ? true : false,
-    });
+    };
+
+    // Only add domainName and domainZone for Route 53 managed domains
+    // For external DNS, we only attach the certificate to ALB without DNS configuration
+    if (domainZone && fullDomainName) {
+      frontendServiceProps.domainName = fullDomainName;
+      frontendServiceProps.domainZone = domainZone;
+    }
+
+    this.frontendService = new ecsPatterns.ApplicationLoadBalancedFargateService(this, 'FrontendService', frontendServiceProps);
 
     // ALB DNS 또는 커스텀 도메인을 기반으로 백엔드 URL 생성 및 API Gateway URL과 함께 프론트엔드 환경변수에 추가
     const albDnsName = this.frontendService.loadBalancer.loadBalancerDnsName;
