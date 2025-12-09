@@ -278,8 +278,7 @@ Resources:
                 - npx cdk deploy aws-idp-ai-vpc --require-approval never
                 - npx cdk deploy aws-idp-ai-dynamodb --require-approval never
                 - npx cdk deploy aws-idp-ai-s3 --require-approval never
-                - |
-                  aws iam get-role --role-name AWSServiceRoleForAmazonOpenSearchService >/dev/null 2>&1 || aws iam create-service-linked-role --aws-service-name opensearch.amazonaws.com >/dev/null 2>&1 && sleep 10
+                # OpenSearch Service-Linked Role is pre-created by deploy.sh
                 - |
                   for i in 1 2 3; do
                     npx cdk deploy aws-idp-ai-opensearch --require-approval never && break || sleep 30
