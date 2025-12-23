@@ -29,7 +29,7 @@ DOMAIN_NAME=""
 HOSTED_ZONE_NAME=""
 CUSTOM_DOMAIN_FULL=""
 EXISTING_CERT_ARN=""
-REPO_URL="https://github.com/yunwoong7/aws-idp-pipeline.git"
+REPO_URL="https://github.com/aws-samples/sample-aws-idp-pipeline.git"
 VERSION="main"
 
 # Function to prompt for email with validation
