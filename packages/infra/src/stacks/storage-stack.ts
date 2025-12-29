@@ -39,5 +39,17 @@ export class StorageStack extends Stack {
       parameterName: SSM_KEYS.DOCUMENT_STORAGE_BUCKET_NAME,
       stringValue: documentStorage.bucket.bucketName,
     });
+
+    // Backend Table (One Table Design)
+    const backendTable = new TableV2(this, 'BackendTable', {
+      partitionKey: { name: 'PK', type: AttributeType.STRING },
+      sortKey: { name: 'SK', type: AttributeType.STRING },
+      billing: Billing.onDemand(),
+    });
+
+    new StringParameter(this, 'BackendTableNameParam', {
+      parameterName: SSM_KEYS.BACKEND_TABLE_NAME,
+      stringValue: backendTable.tableName,
+    });
   }
 }
