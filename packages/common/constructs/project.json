@@ -1,0 +1,30 @@
+{
+  "name": "@idp-v2/common-constructs",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/common/constructs/src",
+  "projectType": "library",
+  "tags": [],
+  "targets": {
+    "build": {
+      "dependsOn": ["lint", "compile", "test"]
+    },
+    "compile": {
+      "executor": "nx:run-commands",
+      "outputs": ["{workspaceRoot}/dist/packages/common/constructs/tsc"],
+      "options": {
+        "command": "tsc --build tsconfig.lib.json",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "test": {
+      "executor": "@nx/vitest:test",
+      "outputs": ["{options.reportsDirectory}"],
+      "options": {
+        "reportsDirectory": "../../../coverage/packages/common/constructs"
+      }
+    }
+  },
+  "metadata": {
+    "generator": "ts#project"
+  }
+}
