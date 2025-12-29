@@ -16,6 +16,12 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "es2022",
-    "customConditions": ["@idp-v2/source"]
+    "customConditions": ["@idp-v2/source"],
+    "baseUrl": ".",
+    "rootDir": ".",
+    "paths": {
+      ":idp-v2/infra": ["packages/infra/src/index.ts"],
+      ":idp-v2/common-constructs": ["packages/common/constructs/src/index.ts"]
+    }
   }
 }
