@@ -1,0 +1,46 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  NODE_VERSION: "22"
+
+.node_setup: &node_setup
+  image: node:${NODE_VERSION}
+  cache:
+    key:
+      files:
+        - pnpm-lock.yaml
+    paths:
+      - .pnpm-store
+  before_script:
+    - corepack enable pnpm
+    - pnpm config set store-dir .pnpm-store
+
+build:
+  stage: build
+  <<: *node_setup
+  script:
+    - pnpm install --frozen-lockfile
+    - pnpm nx run @idp-v2/infra:build
+  artifacts:
+    paths:
+      - dist/
+      - node_modules/
+      - packages/*/node_modules/
+    expire_in: 1 hour
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+deploy:
+  stage: deploy
+  <<: *node_setup
+  script:
+    - npm install -g aws-cdk
+    - pnpm nx run @idp-v2/infra:deploy-ci
+  dependencies:
+    - build
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  environment:
+    name: production
