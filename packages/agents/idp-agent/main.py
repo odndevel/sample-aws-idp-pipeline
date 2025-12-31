@@ -3,8 +3,8 @@ from bedrock_agentcore.runtime.models import PingStatus
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
-from .agent import get_agent
-from .init import app
+from agent import get_agent
+from app import app
 
 
 class InvokeInput(BaseModel):
@@ -38,4 +38,4 @@ def ping() -> str:
 
 
 if __name__ == "__main__":
-    uvicorn.run("idp_v2_idp_agent.idp_agent.main:app", port=8080)
+    uvicorn.run("main:app", port=8080)

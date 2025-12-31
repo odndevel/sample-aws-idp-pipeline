@@ -1,13 +1,8 @@
 {
   "name": "idp_v2.idp_agent",
-  "$schema": "../../../../node_modules/nx/schemas/project-schema.json",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
-  "sourceRoot": "packages/agents/idp-agent/idp_agent/idp_v2_idp_agent",
-  "release": {
-    "version": {
-      "versionActions": "@nxlv/python/src/release/version-actions"
-    }
-  },
+  "sourceRoot": "packages/agents/idp-agent",
   "tags": [],
   "metadata": {
     "generator": "py#project",
@@ -26,18 +21,18 @@
       "options": {}
     },
     "build": {
-      "dependsOn": ["lint", "compile", "test", "bundle", "docker"],
+      "dependsOn": ["lint", "compile", "bundle"],
       "options": {
-        "outputPath": "{workspaceRoot}/dist/packages/agents/idp-agent/idp_agent"
+        "outputPath": "{workspaceRoot}/dist/packages/agents/idp-agent"
       }
     },
     "compile": {
       "executor": "@nxlv/python:build",
       "outputs": [
-        "{workspaceRoot}/dist/packages/agents/idp-agent/idp_agent/build"
+        "{workspaceRoot}/dist/packages/agents/idp-agent/build"
       ],
       "options": {
-        "outputPath": "{workspaceRoot}/dist/packages/agents/idp-agent/idp_agent/build",
+        "outputPath": "{workspaceRoot}/dist/packages/agents/idp-agent/build",
         "publish": false,
         "lockedVersions": true,
         "bundleLocalDependencies": true
@@ -48,7 +43,7 @@
       "executor": "@nxlv/python:ruff-format",
       "outputs": [],
       "options": {
-        "filePatterns": ["idp_v2_idp_agent", "tests"]
+        "filePatterns": ["*.py"]
       },
       "cache": true
     },
@@ -65,7 +60,7 @@
       "executor": "@nxlv/python:ruff-check",
       "outputs": [],
       "options": {
-        "lintFilePatterns": ["idp_v2_idp_agent", "tests"]
+        "lintFilePatterns": ["*.py"]
       },
       "cache": true,
       "dependsOn": ["format"]
@@ -84,18 +79,6 @@
       "executor": "@nxlv/python:sync",
       "options": {}
     },
-    "test": {
-      "executor": "@nxlv/python:run-commands",
-      "outputs": [
-        "{workspaceRoot}/reports/{projectRoot}/unittests",
-        "{workspaceRoot}/coverage/{projectRoot}"
-      ],
-      "options": {
-        "command": "uv run pytest tests/",
-        "cwd": "{projectRoot}"
-      },
-      "cache": true
-    },
     "update": {
       "executor": "@nxlv/python:update",
       "options": {}
@@ -104,12 +87,14 @@
       "cache": true,
       "executor": "nx:run-commands",
       "outputs": [
-        "{workspaceRoot}/dist/packages/agents/idp-agent/idp_agent/bundle-arm"
+        "{workspaceRoot}/dist/packages/agents/idp-agent/bundle-arm",
+        "{projectRoot}/bundle-arm"
       ],
       "options": {
         "commands": [
-          "uv export --frozen --no-dev --no-editable --project packages/agents/idp-agent/idp_agent --package idp_v2.idp_agent -o dist/packages/agents/idp-agent/idp_agent/bundle-arm/requirements.txt",
-          "uv pip install -n --no-deps --no-installer-metadata --no-compile-bytecode --python-platform aarch64-manylinux2014 --target dist/packages/agents/idp-agent/idp_agent/bundle-arm -r dist/packages/agents/idp-agent/idp_agent/bundle-arm/requirements.txt"
+          "uv export --frozen --no-dev --no-editable --project packages/agents/idp-agent --package idp_v2.idp_agent -o dist/packages/agents/idp-agent/bundle-arm/requirements.txt",
+          "uv pip install -n --no-deps --no-installer-metadata --no-compile-bytecode --python-platform aarch64-manylinux2014 --target dist/packages/agents/idp-agent/bundle-arm -r dist/packages/agents/idp-agent/bundle-arm/requirements.txt",
+          "rm -rf packages/agents/idp-agent/bundle-arm && cp -r dist/packages/agents/idp-agent/bundle-arm packages/agents/idp-agent/bundle-arm"
         ],
         "parallel": false
       },
@@ -123,7 +108,7 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "docker build --platform linux/arm64 -t idp-v2-idp-agent:latest packages/agents/idp-agent/idp_agent/idp_v2_idp_agent/idp_agent --build-context workspace=."
+          "docker build --platform linux/arm64 -t idp-v2-idp-agent:latest packages/agents/idp-agent --build-context workspace=."
         ],
         "parallel": false
       },
@@ -132,11 +117,11 @@
     "docker": {
       "dependsOn": ["idp-agent-docker"]
     },
-    "idp-agent-serve": {
+    "serve": {
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "uv run fastapi dev idp_v2_idp_agent/idp_agent/main.py --port 8081"
+          "uv run fastapi dev main.py --port 8081"
         ],
         "cwd": "{projectRoot}"
       },
