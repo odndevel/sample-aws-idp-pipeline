@@ -1,9 +1,10 @@
 import { Names, RemovalPolicy } from 'aws-cdk-lib';
-import { Bucket, IBucket } from 'aws-cdk-lib/aws-s3';
+import { Bucket, CorsRule, IBucket } from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
 
 export interface S3BucketProps {
   readonly bucketPrefix: string;
+  readonly cors?: CorsRule[];
 }
 
 export class S3Bucket extends Construct {
@@ -29,6 +30,7 @@ export class S3Bucket extends Construct {
       enforceSSL: true,
       serverAccessLogsBucket: this.logBucket,
       serverAccessLogsPrefix: 'access-logs/',
+      cors: props.cors,
     });
   }
 }

@@ -1,11 +1,13 @@
 import {
   Backend,
   Frontend,
+  RuntimeConfig,
   UserIdentity,
   SSM_KEYS,
 } from ':idp-v2/common-constructs';
 import { Stack, StackProps } from 'aws-cdk-lib';
 import { Vpc } from 'aws-cdk-lib/aws-ec2';
+import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 
@@ -16,6 +18,19 @@ export class ApplicationStack extends Stack {
     const vpcId = StringParameter.valueFromLookup(this, SSM_KEYS.VPC_ID);
     const vpc = Vpc.fromLookup(this, 'Vpc', { vpcId });
 
+    const documentStorageBucketName = StringParameter.valueForStringParameter(
+      this,
+      SSM_KEYS.DOCUMENT_STORAGE_BUCKET_NAME,
+    );
+    const documentStorageBucket = Bucket.fromBucketName(
+      this,
+      'DocumentStorageBucket',
+      documentStorageBucketName,
+    );
+
+    RuntimeConfig.ensure(this).config.documentStorageBucketName =
+      documentStorageBucketName;
+
     const userIdentity = new UserIdentity(this, 'UserIdentity');
 
     const backend = new Backend(this, 'Backend', { vpc });
@@ -24,5 +39,8 @@ export class ApplicationStack extends Stack {
 
     backend.restrictCorsTo(frontend);
     backend.grantInvokeAccess(userIdentity.identityPool.authenticatedRole);
+    documentStorageBucket.grantReadWrite(
+      userIdentity.identityPool.authenticatedRole,
+    );
   }
 }

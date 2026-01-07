@@ -1,4 +1,5 @@
 {
+  "documentStorageBucketName": "document-storage-idpv2storagedocumentstorage865f0aa5",
   "cognitoProps": {
     "region": "us-east-1",
     "identityPoolId": "us-east-1:623ff7c4-cd54-4920-b680-572071037d49",

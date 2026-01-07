@@ -8,3 +8,7 @@ run = """
 stack=$(echo "IDP-V2-Vpc\nIDP-V2-Storage\nIDP-V2-Workflow\nIDP-V2-Application\nIDP-V2-Agent" | fzf --prompt="Select stack: ")
 pnpm nx run @idp-v2/infra:deploy $stack --output-style=stream
 """
+
+[tasks.frontend]
+description = "Run frontend dev server"
+run = "pnpm nx run frontend:serve"
