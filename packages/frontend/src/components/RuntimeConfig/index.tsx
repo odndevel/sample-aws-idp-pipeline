@@ -16,6 +16,7 @@ export interface CognitoProps {
 export interface IRuntimeConfig {
   cognitoProps?: CognitoProps;
   apis?: Record<string, unknown>;
+  documentStorageBucketName?: string;
 }
 
 /**

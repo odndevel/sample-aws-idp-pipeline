@@ -27,10 +27,13 @@ const disabledButtonStyle: CSSProperties = {
 };
 
 function RouteComponent() {
-  const { fetchApi } = useAwsClient();
+  const { fetchApi, uploadToS3 } = useAwsClient();
   const [tables, setTables] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [newTableName, setNewTableName] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<string>('');
 
   const handleGetTables = async () => {
     setLoading(true);
@@ -53,6 +56,23 @@ function RouteComponent() {
   const handleDeleteTable = async (name: string) => {
     await fetchApi<string>(`tables/${name}`, { method: 'DELETE' });
     await handleGetTables();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    setSelectedFile(file ?? null);
+    setUploadResult('');
+  };
+
+  const handleUpload = async () => {
+    if (!selectedFile) return;
+    setUploading(true);
+    setUploadResult('');
+    const key = `uploads/${Date.now()}_${selectedFile.name}`;
+    await uploadToS3(selectedFile, key);
+    setUploadResult(`Uploaded: ${key}`);
+    setSelectedFile(null);
+    setUploading(false);
   };
 
   return (
@@ -150,6 +170,27 @@ function RouteComponent() {
             )}
           </tbody>
         </table>
+      </section>
+
+      <section style={{ marginBottom: '20px' }}>
+        <h2>S3 Upload</h2>
+        <div style={{ marginBottom: '10px' }}>
+          <input
+            type="file"
+            onChange={handleFileChange}
+            style={{ marginRight: '8px' }}
+          />
+          <button
+            onClick={handleUpload}
+            disabled={!selectedFile || uploading}
+            style={
+              !selectedFile || uploading ? disabledButtonStyle : buttonStyle
+            }
+          >
+            {uploading ? 'Uploading...' : 'Upload'}
+          </button>
+        </div>
+        {uploadResult && <div style={{ color: 'green' }}>{uploadResult}</div>}
       </section>
     </div>
   );

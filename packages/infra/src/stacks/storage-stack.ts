@@ -7,6 +7,7 @@ import {
   SSM_KEYS,
 } from ':idp-v2/common-constructs';
 import { AttributeType, Billing, TableV2 } from 'aws-cdk-lib/aws-dynamodb';
+import { HttpMethods } from 'aws-cdk-lib/aws-s3';
 
 export class StorageStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -37,6 +38,13 @@ export class StorageStack extends Stack {
     // Document Storage Bucket
     const documentStorage = new S3Bucket(this, 'DocumentStorage', {
       bucketPrefix: 'document-storage',
+      cors: [
+        {
+          allowedOrigins: ['*'],
+          allowedMethods: [HttpMethods.GET, HttpMethods.PUT, HttpMethods.POST],
+          allowedHeaders: ['*'],
+        },
+      ],
     });
 
     new StringParameter(this, 'DocumentStorageBucketNameParam', {
