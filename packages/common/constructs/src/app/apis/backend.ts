@@ -94,6 +94,10 @@ export class Backend extends Construct {
       this,
       SSM_KEYS.LANCEDB_EXPRESS_BUCKET_NAME,
     );
+    const websocketEndpoint = StringParameter.valueForStringParameter(
+      this,
+      SSM_KEYS.WEBSOCKET_ENDPOINT,
+    );
 
     this.service = new ApplicationLoadBalancedFargateService(this, 'Service', {
       cluster,
@@ -112,6 +116,7 @@ export class Backend extends Construct {
           DOCUMENT_STORAGE_BUCKET_NAME: documentStorage.bucketName,
           BACKEND_TABLE_NAME: backendTable.tableName,
           LANCEDB_EXPRESS_BUCKET_NAME: lancedbExpressBucketName,
+          WEBSOCKET_ENDPOINT: websocketEndpoint,
         },
       },
       runtimePlatform: {

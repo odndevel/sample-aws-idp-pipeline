@@ -70,7 +70,7 @@ def notify_step_start(
     message: Optional[str] = None
 ) -> int:
     data = {
-        'type': EventType.STEP_START,
+        'event': EventType.STEP_START,
         'workflow_id': workflow_id,
         'step': step_name,
         'message': message or f'{step_name} started',
@@ -86,7 +86,7 @@ def notify_step_complete(
     **kwargs
 ) -> int:
     data = {
-        'type': EventType.STEP_COMPLETE,
+        'event': EventType.STEP_COMPLETE,
         'workflow_id': workflow_id,
         'step': step_name,
         'message': message or f'{step_name} completed',
@@ -102,7 +102,7 @@ def notify_step_error(
     error: str
 ) -> int:
     data = {
-        'type': EventType.STEP_ERROR,
+        'event': EventType.STEP_ERROR,
         'workflow_id': workflow_id,
         'step': step_name,
         'error': error,
@@ -117,7 +117,7 @@ def notify_segment_progress(
     total: int
 ) -> int:
     data = {
-        'type': EventType.SEGMENT_PROGRESS,
+        'event': EventType.SEGMENT_PROGRESS,
         'workflow_id': workflow_id,
         'completed': completed,
         'total': total,
@@ -133,7 +133,7 @@ def notify_workflow_started(
     file_name: str
 ) -> int:
     data = {
-        'type': EventType.WORKFLOW_STARTED,
+        'event': EventType.WORKFLOW_STARTED,
         'workflow_id': workflow_id,
         'project_id': project_id,
         'file_name': file_name,
@@ -148,7 +148,7 @@ def notify_workflow_complete(
     segment_count: int = 0
 ) -> int:
     data = {
-        'type': EventType.WORKFLOW_COMPLETE,
+        'event': EventType.WORKFLOW_COMPLETE,
         'workflow_id': workflow_id,
         'segment_count': segment_count,
         'summary': summary,
@@ -163,7 +163,7 @@ def notify_workflow_error(
     step: Optional[str] = None
 ) -> int:
     data = {
-        'type': EventType.WORKFLOW_ERROR,
+        'event': EventType.WORKFLOW_ERROR,
         'workflow_id': workflow_id,
         'error': error,
         'step': step,

@@ -7,4 +7,5 @@ export const SSM_KEYS = {
   LANCEDB_EXPRESS_AZ_ID: '/idp-v2/lancedb/express/az-id',
   VPC_ID: '/idp-v2/vpc/id',
   AGENT_RUNTIME_ARN: '/idp-v2/agent/runtime-arn',
+  WEBSOCKET_ENDPOINT: '/idp-v2/websocket/endpoint',
 } as const;

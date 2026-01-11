@@ -61,12 +61,30 @@ class WorkflowStatus:
 
 
 class StepName:
-    BDA_PROCESSOR = '01#BdaProcessor'
-    BDA_STATUS_CHECKER = '02#BdaStatusChecker'
-    DOCUMENT_INDEXER = '03#DocumentIndexer'
-    FORMAT_PARSER = '04#FormatParser'
-    SEGMENT_ANALYZER = '05#SegmentAnalyzer'
-    DOCUMENT_SUMMARIZER = '06#DocumentSummarizer'
+    BDA_PROCESSOR = 'bda_processor'
+    BDA_STATUS_CHECKER = 'bda_status_checker'
+    DOCUMENT_INDEXER = 'document_indexer'
+    FORMAT_PARSER = 'format_parser'
+    SEGMENT_ANALYZER = 'segment_analyzer'
+    DOCUMENT_SUMMARIZER = 'document_summarizer'
+
+    ORDER = [
+        'bda_processor',
+        'bda_status_checker',
+        'document_indexer',
+        'format_parser',
+        'segment_analyzer',
+        'document_summarizer'
+    ]
+
+    LABELS = {
+        'bda_processor': 'BDA Processing',
+        'bda_status_checker': 'BDA Status Check',
+        'document_indexer': 'Document Indexing',
+        'format_parser': 'Format Parsing',
+        'segment_analyzer': 'Segment Analysis',
+        'document_summarizer': 'Document Summary'
+    }
 
 
 def create_workflow(
@@ -106,9 +124,27 @@ def create_workflow(
         'started_at': now
     }
 
+    # Initialize STEP row with all steps as pending
+    steps_data = {
+        'current_step': ''
+    }
+    for step_name in StepName.ORDER:
+        steps_data[step_name] = {
+            'status': WorkflowStatus.PENDING,
+            'label': StepName.LABELS.get(step_name, step_name)
+        }
+
+    steps_item = {
+        'PK': f'WF#{workflow_id}',
+        'SK': 'STEP',
+        'data': steps_data,
+        'started_at': now
+    }
+
     with table.batch_writer() as batch:
         batch.put_item(Item=workflow_item)
         batch.put_item(Item=project_item)
+        batch.put_item(Item=steps_item)
 
     return workflow_item
 
@@ -183,63 +219,113 @@ def get_workflow(workflow_id: str) -> Optional[dict]:
     return decimal_to_python(item) if item else None
 
 
+def get_steps(workflow_id: str) -> Optional[dict]:
+    """Get workflow steps progress (SK: STEP)"""
+    table = get_table()
+    response = table.get_item(
+        Key={'PK': f'WF#{workflow_id}', 'SK': 'STEP'}
+    )
+    item = response.get('Item')
+    return decimal_to_python(item) if item else None
+
+
 def record_step_start(workflow_id: str, step_name: str, **kwargs) -> dict:
+    """Update step status to in_progress in STEP row"""
     table = get_table()
     now = now_iso()
 
-    data = {
-        'status': WorkflowStatus.IN_PROGRESS,
-        **kwargs
-    }
+    steps = get_steps(workflow_id)
+    if not steps:
+        return {}
 
-    item = {
-        'PK': f'WF#{workflow_id}',
-        'SK': f'STEP#{step_name}',
-        'data': data,
-        'started_at': now
-    }
-
-    table.put_item(Item=item)
-    return item
-
-
-def record_step_complete(workflow_id: str, step_name: str, **kwargs) -> dict:
-    table = get_table()
-    now = now_iso()
-
-    existing = table.get_item(
-        Key={'PK': f'WF#{workflow_id}', 'SK': f'STEP#{step_name}'}
-    ).get('Item', {})
-
-    data = existing.get('data', {})
-    data['status'] = WorkflowStatus.COMPLETED
+    data = steps.get('data', {})
+    step_data = data.get(step_name, {})
+    step_data['status'] = WorkflowStatus.IN_PROGRESS
+    step_data['started_at'] = now
     for key, value in kwargs.items():
-        data[key] = value
+        step_data[key] = value
+    data[step_name] = step_data
+    data['current_step'] = step_name
 
     response = table.update_item(
-        Key={'PK': f'WF#{workflow_id}', 'SK': f'STEP#{step_name}'},
-        UpdateExpression='SET #data = :data, ended_at = :ended_at',
+        Key={'PK': f'WF#{workflow_id}', 'SK': 'STEP'},
+        UpdateExpression='SET #data = :data',
         ExpressionAttributeNames={'#data': 'data'},
-        ExpressionAttributeValues={':data': data, ':ended_at': now},
+        ExpressionAttributeValues={':data': data},
         ReturnValues='ALL_NEW'
     )
     return decimal_to_python(response.get('Attributes', {}))
 
 
-def record_step_error(workflow_id: str, step_name: str, error: str) -> dict:
+def record_step_complete(workflow_id: str, step_name: str, **kwargs) -> dict:
+    """Update step status to completed in STEP row"""
     table = get_table()
     now = now_iso()
 
-    existing = table.get_item(
-        Key={'PK': f'WF#{workflow_id}', 'SK': f'STEP#{step_name}'}
-    ).get('Item', {})
+    steps = get_steps(workflow_id)
+    if not steps:
+        return {}
 
-    data = existing.get('data', {})
-    data['status'] = WorkflowStatus.FAILED
-    data['error'] = error
+    data = steps.get('data', {})
+    step_data = data.get(step_name, {})
+    step_data['status'] = WorkflowStatus.COMPLETED
+    step_data['ended_at'] = now
+    for key, value in kwargs.items():
+        step_data[key] = value
+    data[step_name] = step_data
+
+    # Find current in_progress step
+    current_step = ''
+    for sn in StepName.ORDER:
+        if data.get(sn, {}).get('status') == WorkflowStatus.IN_PROGRESS:
+            current_step = sn
+            break
+    data['current_step'] = current_step
+
+    # Check if all steps are completed (last step done)
+    all_completed = all(
+        data.get(sn, {}).get('status') == WorkflowStatus.COMPLETED
+        for sn in StepName.ORDER
+    )
+
+    if all_completed:
+        response = table.update_item(
+            Key={'PK': f'WF#{workflow_id}', 'SK': 'STEP'},
+            UpdateExpression='SET #data = :data, ended_at = :ended_at',
+            ExpressionAttributeNames={'#data': 'data'},
+            ExpressionAttributeValues={':data': data, ':ended_at': now},
+            ReturnValues='ALL_NEW'
+        )
+    else:
+        response = table.update_item(
+            Key={'PK': f'WF#{workflow_id}', 'SK': 'STEP'},
+            UpdateExpression='SET #data = :data',
+            ExpressionAttributeNames={'#data': 'data'},
+            ExpressionAttributeValues={':data': data},
+            ReturnValues='ALL_NEW'
+        )
+    return decimal_to_python(response.get('Attributes', {}))
+
+
+def record_step_error(workflow_id: str, step_name: str, error: str) -> dict:
+    """Update step status to failed in STEP row"""
+    table = get_table()
+    now = now_iso()
+
+    steps = get_steps(workflow_id)
+    if not steps:
+        return {}
+
+    data = steps.get('data', {})
+    step_data = data.get(step_name, {})
+    step_data['status'] = WorkflowStatus.FAILED
+    step_data['ended_at'] = now
+    step_data['error'] = error
+    data[step_name] = step_data
+    data['current_step'] = ''
 
     response = table.update_item(
-        Key={'PK': f'WF#{workflow_id}', 'SK': f'STEP#{step_name}'},
+        Key={'PK': f'WF#{workflow_id}', 'SK': 'STEP'},
         UpdateExpression='SET #data = :data, ended_at = :ended_at',
         ExpressionAttributeNames={'#data': 'data'},
         ExpressionAttributeValues={':data': data, ':ended_at': now},
