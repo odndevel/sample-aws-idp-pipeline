@@ -86,6 +86,15 @@
     "update": {
       "executor": "@nxlv/python:update",
       "options": {}
+    },
+    "openapi": {
+      "executor": "@nxlv/python:run-commands",
+      "outputs": ["{workspaceRoot}/dist/packages/backend/openapi"],
+      "options": {
+        "command": "uv run python scripts/export_openapi.py",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true
     }
   },
   "metadata": {

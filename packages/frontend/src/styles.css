@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@plugin '@tailwindcss/typography';
 
 :root {
   color-scheme: light;
@@ -26,9 +27,10 @@ a {
 }
 
 .app-shell {
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .app-header {
@@ -47,9 +49,8 @@ a {
   display: flex;
   align-items: center;
   gap: 1.25rem;
-  width: min(1100px, 100%);
-  margin: 0 auto;
-  padding: 0 1rem;
+  width: 100%;
+  padding: 0 1.5rem;
 }
 
 .brand {
@@ -98,17 +99,26 @@ a {
 }
 
 .app-main {
-  width: min(1100px, 100%);
-  margin: 2rem auto;
-  padding: 0 1rem 3rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 1rem 1.5rem 1.5rem;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   background: #ffffff;
   border-radius: 0.75rem;
   padding: 1.5rem;
   box-shadow: 0 10px 40px rgba(15, 23, 42, 0.08);
   border: 1px solid #e2e8f0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .card h1 {
@@ -180,7 +190,8 @@ a {
   gap: 0.35rem;
   font-size: 0.95rem;
   color: #475569;
-  margin: 0 0 1rem;
+  margin: 0 0 0.75rem;
+  flex-shrink: 0;
 }
 
 .breadcrumb-segment a {

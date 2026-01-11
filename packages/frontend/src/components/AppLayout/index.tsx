@@ -1,71 +1,24 @@
 import { useAuth } from 'react-oidc-context';
 import * as React from 'react';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 import Config from '../../config';
-import { Link, useLocation, useMatchRoute } from '@tanstack/react-router';
-
-const getBreadcrumbs = (
-  matchRoute: ReturnType<typeof useMatchRoute>,
-  pathName: string,
-  search: string,
-  defaultBreadcrumb: string,
-  availableRoutes?: string[],
-) => {
-  const segments = [
-    defaultBreadcrumb,
-    ...pathName.split('/').filter((segment) => segment !== ''),
-  ];
-
-  return segments.map((segment, i) => {
-    const href =
-      i === 0
-        ? '/'
-        : `/${segments
-            .slice(1, i + 1)
-            .join('/')
-            .replace('//', '/')}`;
-
-    const matched =
-      !availableRoutes || availableRoutes.find((r) => matchRoute({ to: href }));
-
-    return {
-      href: matched ? `${href}${search}` : '#',
-      text: segment,
-    };
-  });
-};
+import { Link, useLocation } from '@tanstack/react-router';
 
 /**
  * Defines the App layout and contains logic for routing.
  */
 const AppLayout: React.FC<React.PropsWithChildren> = ({ children }) => {
   const { user, removeUser, signoutRedirect, clearStaleState } = useAuth();
-  const [activeBreadcrumbs, setActiveBreadcrumbs] = useState<
-    {
-      href: string;
-      text: string;
-    }[]
-  >([{ text: '/', href: '/' }]);
-  const matchRoute = useMatchRoute();
-  const { pathname, search } = useLocation();
+  const { pathname } = useLocation();
   const navItems = useMemo(
     () => [
-      { to: '/', label: 'Home' },
+      { to: '/', label: 'Projects' },
       { to: '/test', label: 'Test' },
     ],
     [],
   );
-  useEffect(() => {
-    const breadcrumbs = getBreadcrumbs(
-      matchRoute,
-      pathname,
-      Object.entries(search).reduce((p, [k, v]) => p + `${k}=${v}`, ''),
-      'Home',
-    );
-    setActiveBreadcrumbs(breadcrumbs);
-  }, [matchRoute, pathname, search]);
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -115,19 +68,6 @@ const AppLayout: React.FC<React.PropsWithChildren> = ({ children }) => {
         </div>
       </header>
       <main className="app-main">
-        <nav className="breadcrumbs" aria-label="Breadcrumb">
-          {activeBreadcrumbs.map((crumb, index) => (
-            <span className="breadcrumb-segment" key={crumb.href || index}>
-              {index > 0 && <span className="breadcrumb-separator">/</span>}
-              {index === activeBreadcrumbs.length - 1 ? (
-                <span className="breadcrumb-current">{crumb.text}</span>
-              ) : (
-                <Link to={crumb.href}>{crumb.text}</Link>
-              )}
-            </span>
-          ))}
-        </nav>
-
         <section className="card">{children}</section>
       </main>
     </div>
