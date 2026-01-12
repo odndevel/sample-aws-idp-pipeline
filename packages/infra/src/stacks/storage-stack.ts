@@ -57,6 +57,13 @@ export class StorageStack extends Stack {
       partitionKey: { name: 'PK', type: AttributeType.STRING },
       sortKey: { name: 'SK', type: AttributeType.STRING },
       billing: Billing.onDemand(),
+      globalSecondaryIndexes: [
+        {
+          indexName: 'GSI1',
+          partitionKey: { name: 'GSI1PK', type: AttributeType.STRING },
+          sortKey: { name: 'GSI1SK', type: AttributeType.STRING },
+        },
+      ],
     });
 
     new StringParameter(this, 'BackendTableNameParam', {

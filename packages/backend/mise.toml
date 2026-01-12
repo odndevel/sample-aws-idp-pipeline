@@ -17,3 +17,11 @@ echo ".env.local created"
 [tasks.dev]
 description = "Run FastAPI development server"
 run = "uv run fastapi dev app/main.py"
+
+[tasks.test]
+description = "Run pytest"
+run = "uv run pytest --no-cov"
+
+[tasks."test:cov"]
+description = "Run pytest with coverage"
+run = "uv run pytest"

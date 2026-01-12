@@ -1,28 +1,23 @@
 import contextlib
-from datetime import UTC, datetime
 
 import boto3
-from boto3.dynamodb.conditions import Key
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.config import get_config
+from app.ddb import (
+    Project,
+    batch_delete_items,
+    get_project_item,
+    now_iso,
+    put_project_item,
+    query_all_project_items,
+    query_projects,
+    query_workflow_items,
+    update_project_data,
+)
 
 router = APIRouter(prefix="/projects", tags=["projects"])
-
-_ddb_resource = None
-
-
-def get_ddb_resource():
-    global _ddb_resource
-    if _ddb_resource is None:
-        _ddb_resource = boto3.resource("dynamodb")
-    return _ddb_resource
-
-
-def get_table():
-    config = get_config()
-    return get_ddb_resource().Table(config.backend_table_name)
 
 
 class ProjectCreate(BaseModel):
@@ -41,100 +36,69 @@ class ProjectResponse(BaseModel):
     name: str
     description: str
     status: str
-    started_at: str
-    ended_at: str | None = None
+    created_at: str
+    updated_at: str | None = None
+
+    @staticmethod
+    def from_project(project: Project) -> "ProjectResponse":
+        return ProjectResponse(
+            project_id=project.data.project_id,
+            name=project.data.name,
+            description=project.data.description,
+            status=project.data.status,
+            created_at=project.created_at,
+            updated_at=project.updated_at,
+        )
 
 
 @router.get("")
 def list_projects() -> list[ProjectResponse]:
-    table = get_table()
-    response = table.scan(
-        FilterExpression="begins_with(PK, :pk) AND begins_with(SK, :sk)",
-        ExpressionAttributeValues={":pk": "PROJ#", ":sk": "PROJ#"},
-    )
-
-    projects = []
-    for item in response.get("Items", []):
-        data = item.get("data", {})
-        projects.append(
-            ProjectResponse(
-                project_id=data.get("project_id", ""),
-                name=data.get("name", ""),
-                description=data.get("description", ""),
-                status=data.get("status", "active"),
-                started_at=item.get("started_at", ""),
-                ended_at=item.get("ended_at"),
-            )
-        )
-
-    return projects
+    projects = query_projects()
+    return [ProjectResponse.from_project(p) for p in projects]
 
 
 @router.get("/{project_id}")
 def get_project(project_id: str) -> ProjectResponse:
-    table = get_table()
-    response = table.get_item(Key={"PK": f"PROJ#{project_id}", "SK": f"PROJ#{project_id}"})
-
-    item = response.get("Item")
-    if not item:
+    project = get_project_item(project_id)
+    if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    data = item.get("data", {})
-    return ProjectResponse(
-        project_id=data.get("project_id", ""),
-        name=data.get("name", ""),
-        description=data.get("description", ""),
-        status=data.get("status", "active"),
-        started_at=item.get("started_at", ""),
-        ended_at=item.get("ended_at"),
-    )
+    return ProjectResponse.from_project(project)
 
 
 @router.post("")
 def create_project(request: ProjectCreate) -> ProjectResponse:
-    table = get_table()
-    now = datetime.now(UTC).isoformat()
-
-    existing = table.get_item(Key={"PK": f"PROJ#{request.project_id}", "SK": f"PROJ#{request.project_id}"})
-    if existing.get("Item"):
+    existing = get_project_item(request.project_id)
+    if existing:
         raise HTTPException(status_code=409, detail="Project already exists")
 
-    item = {
-        "PK": f"PROJ#{request.project_id}",
-        "SK": f"PROJ#{request.project_id}",
-        "data": {
-            "project_id": request.project_id,
-            "name": request.name,
-            "description": request.description or "",
-            "status": "active",
-        },
-        "started_at": now,
-        "ended_at": now,
+    now = now_iso()
+    data = {
+        "project_id": request.project_id,
+        "name": request.name,
+        "description": request.description or "",
+        "status": "active",
     }
 
-    table.put_item(Item=item)
+    put_project_item(request.project_id, data)
 
     return ProjectResponse(
         project_id=request.project_id,
         name=request.name,
         description=request.description or "",
         status="active",
-        started_at=now,
-        ended_at=now,
+        created_at=now,
+        updated_at=now,
     )
 
 
 @router.put("/{project_id}")
 def update_project(project_id: str, request: ProjectUpdate) -> ProjectResponse:
-    table = get_table()
-
-    existing = table.get_item(Key={"PK": f"PROJ#{project_id}", "SK": f"PROJ#{project_id}"})
-    if not existing.get("Item"):
+    existing = get_project_item(project_id)
+    if not existing:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    now = datetime.now(UTC).isoformat()
-    item = existing.get("Item")
-    data = item.get("data", {})
+    data = existing.data.model_dump()
 
     if request.name is not None:
         data["name"] = request.name
@@ -142,12 +106,7 @@ def update_project(project_id: str, request: ProjectUpdate) -> ProjectResponse:
     if request.description is not None:
         data["description"] = request.description
 
-    table.update_item(
-        Key={"PK": f"PROJ#{project_id}", "SK": f"PROJ#{project_id}"},
-        UpdateExpression="SET #data = :data, ended_at = :ended_at",
-        ExpressionAttributeNames={"#data": "data"},
-        ExpressionAttributeValues={":data": data, ":ended_at": now},
-    )
+    update_project_data(project_id, data)
 
     return get_project(project_id)
 
@@ -156,26 +115,16 @@ def update_project(project_id: str, request: ProjectUpdate) -> ProjectResponse:
 def delete_project(project_id: str) -> dict:
     """Delete a project and all related data (documents, workflows, S3, LanceDB)."""
     config = get_config()
-    table = get_table()
     s3 = _get_s3_client()
 
-    existing = table.get_item(Key={"PK": f"PROJ#{project_id}", "SK": f"PROJ#{project_id}"})
-    if not existing.get("Item"):
+    existing = get_project_item(project_id)
+    if not existing:
         raise HTTPException(status_code=404, detail="Project not found")
 
     deleted_info = {"project_id": project_id}
 
     # 1. Get all items under this project
-    project_items_response = table.query(KeyConditionExpression=Key("PK").eq(f"PROJ#{project_id}"))
-    project_items = project_items_response.get("Items", [])
-
-    # Handle pagination
-    while project_items_response.get("LastEvaluatedKey"):
-        project_items_response = table.query(
-            KeyConditionExpression=Key("PK").eq(f"PROJ#{project_id}"),
-            ExclusiveStartKey=project_items_response["LastEvaluatedKey"],
-        )
-        project_items.extend(project_items_response.get("Items", []))
+    project_items = query_all_project_items(project_id)
 
     # Extract workflow IDs
     workflow_ids = [item["SK"].replace("WF#", "") for item in project_items if item["SK"].startswith("WF#")]
@@ -201,22 +150,9 @@ def delete_project(project_id: str) -> dict:
     # 3. Delete workflow data from DynamoDB (all WF#{id} items)
     total_wf_items_deleted = 0
     for workflow_id in workflow_ids:
-        wf_items_response = table.query(KeyConditionExpression=Key("PK").eq(f"WF#{workflow_id}"))
-        wf_items = wf_items_response.get("Items", [])
-
-        # Handle pagination
-        while wf_items_response.get("LastEvaluatedKey"):
-            wf_items_response = table.query(
-                KeyConditionExpression=Key("PK").eq(f"WF#{workflow_id}"),
-                ExclusiveStartKey=wf_items_response["LastEvaluatedKey"],
-            )
-            wf_items.extend(wf_items_response.get("Items", []))
-
-        # Batch delete
-        with table.batch_writer() as batch:
-            for wf_item in wf_items:
-                batch.delete_item(Key={"PK": wf_item["PK"], "SK": wf_item["SK"]})
-                total_wf_items_deleted += 1
+        wf_items = query_workflow_items(workflow_id)
+        batch_delete_items(wf_items)
+        total_wf_items_deleted += len(wf_items)
 
     deleted_info["workflow_items_deleted"] = total_wf_items_deleted
 
@@ -227,9 +163,7 @@ def delete_project(project_id: str) -> dict:
         deleted_info["s3_objects_deleted"] = s3_deleted
 
     # 5. Delete all project items from DynamoDB (PROJ#, DOC#*, WF#* links)
-    with table.batch_writer() as batch:
-        for item in project_items:
-            batch.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
+    batch_delete_items(project_items)
 
     deleted_info["project_items_deleted"] = len(project_items)
 
