@@ -1,6 +1,4 @@
 from datetime import UTC, datetime
-from decimal import Decimal
-from typing import Any
 
 import boto3
 
@@ -24,16 +22,6 @@ def get_table():
 def now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
-
-def decimal_to_python(obj: Any) -> Any:
-    """Convert DynamoDB Decimal types to Python native types."""
-    if isinstance(obj, Decimal):
-        return int(obj) if obj % 1 == 0 else float(obj)
-    if isinstance(obj, dict):
-        return {k: decimal_to_python(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [decimal_to_python(i) for i in obj]
-    return obj
 
 
 def batch_delete_items(items: list[dict]) -> None:

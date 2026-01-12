@@ -6,40 +6,6 @@ import pytest
 from app.ddb import client, documents, projects, workflows
 
 
-class TestDecimalToPython:
-    def test_integer_decimal(self):
-        result = client.decimal_to_python(Decimal("10"))
-        assert result == 10
-        assert isinstance(result, int)
-
-    def test_float_decimal(self):
-        result = client.decimal_to_python(Decimal("10.5"))
-        assert result == 10.5
-        assert isinstance(result, float)
-
-    def test_dict_with_decimals(self):
-        result = client.decimal_to_python({"count": Decimal("5"), "price": Decimal("9.99")})
-        assert result == {"count": 5, "price": 9.99}
-
-    def test_list_with_decimals(self):
-        result = client.decimal_to_python([Decimal("1"), Decimal("2.5")])
-        assert result == [1, 2.5]
-
-    def test_nested_structure(self):
-        result = client.decimal_to_python(
-            {
-                "items": [{"qty": Decimal("3")}],
-                "total": Decimal("100"),
-            }
-        )
-        assert result == {"items": [{"qty": 3}], "total": 100}
-
-    def test_non_decimal_passthrough(self):
-        assert client.decimal_to_python("hello") == "hello"
-        assert client.decimal_to_python(42) == 42
-        assert client.decimal_to_python(None) is None
-
-
 class TestMakeKeys:
     def test_make_project_key(self):
         result = projects.make_project_key("proj-123")
@@ -49,13 +15,11 @@ class TestMakeKeys:
         result = documents.make_document_key("proj-123", "doc-456")
         assert result == {"PK": "PROJ#proj-123", "SK": "DOC#doc-456"}
 
-    def test_make_workflow_link_key(self):
-        result = workflows.make_workflow_link_key("proj-123", "wf-789")
-        assert result == {"PK": "PROJ#proj-123", "SK": "WF#wf-789"}
+    def test_make_workflow_key(self):
+        result = workflows.make_workflow_key("doc-456", "wf-789")
+        assert result == {"PK": "DOC#doc-456", "SK": "WF#wf-789"}
 
-    def test_make_workflow_meta_key(self):
-        result = workflows.make_workflow_meta_key("wf-789")
-        assert result == {"PK": "WF#wf-789", "SK": "META"}
+
 
 
 class TestProjectHelpers:
@@ -120,7 +84,11 @@ class TestProjectHelpers:
             Key={"PK": "PROJ#test-id", "SK": "META"},
             UpdateExpression="SET #data = :data, updated_at = :updated_at, GSI1SK = :gsi1sk",
             ExpressionAttributeNames={"#data": "data"},
-            ExpressionAttributeValues={":data": data, ":updated_at": "2024-01-01T00:00:00+00:00", ":gsi1sk": "2024-01-01T00:00:00+00:00"},
+            ExpressionAttributeValues={
+                ":data": data,
+                ":updated_at": "2024-01-01T00:00:00+00:00",
+                ":gsi1sk": "2024-01-01T00:00:00+00:00",
+            },
         )
 
     def test_query_all_project_items_single_page(self, mock_table):
@@ -272,56 +240,82 @@ class TestWorkflowHelpers:
             mock.return_value = table
             yield table
 
-    def test_get_workflow_meta_found(self, mock_table):
+    def test_get_workflow_item_found(self, mock_table):
         mock_table.get_item.return_value = {
             "Item": {
-                "PK": "WF#wf-1",
-                "SK": "META",
-                "data": {"status": "completed", "total_segments": Decimal("5")},
+                "PK": "DOC#doc-1",
+                "SK": "WF#wf-1",
+                "data": {
+                    "execution_arn": "arn:aws:states:us-east-1:123456789012:execution:test:wf-1",
+                    "file_name": "test.pdf",
+                    "file_type": "application/pdf",
+                    "file_uri": "s3://bucket/test.pdf",
+                    "project_id": "proj-1",
+                    "status": "completed",
+                    "total_segments": Decimal("5"),
+                },
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "updated_at": "2024-01-01T01:00:00+00:00",
             }
         }
 
-        result = workflows.get_workflow_meta("wf-1")
+        result = workflows.get_workflow_item("doc-1", "wf-1")
 
         assert result is not None
-        assert result["data"]["total_segments"] == 5  # Decimal converted
+        assert result.data.total_segments == 5
+        assert result.data.status == "completed"
 
-    def test_get_workflow_meta_not_found(self, mock_table):
+    def test_get_workflow_item_not_found(self, mock_table):
         mock_table.get_item.return_value = {}
 
-        result = workflows.get_workflow_meta("nonexistent")
+        result = workflows.get_workflow_item("doc-1", "nonexistent")
 
         assert result is None
 
     def test_query_workflows(self, mock_table):
         mock_table.query.return_value = {
             "Items": [
-                {"PK": "PROJ#proj-1", "SK": "WF#wf-1", "data": {"status": "completed"}},
-                {"PK": "PROJ#proj-1", "SK": "WF#wf-2", "data": {"status": "pending"}},
+                {
+                    "PK": "DOC#doc-1",
+                    "SK": "WF#wf-1",
+                    "data": {
+                        "execution_arn": "arn:aws:states:us-east-1:123456789012:execution:test:wf-1",
+                        "file_name": "test.pdf",
+                        "file_type": "application/pdf",
+                        "file_uri": "s3://bucket/test.pdf",
+                        "project_id": "proj-1",
+                        "status": "completed",
+                    },
+                    "created_at": "2024-01-01T00:00:00+00:00",
+                    "updated_at": "2024-01-01T01:00:00+00:00",
+                },
+                {
+                    "PK": "DOC#doc-1",
+                    "SK": "WF#wf-2",
+                    "data": {
+                        "execution_arn": "arn:aws:states:us-east-1:123456789012:execution:test:wf-2",
+                        "file_name": "test2.pdf",
+                        "file_type": "application/pdf",
+                        "file_uri": "s3://bucket/test2.pdf",
+                        "project_id": "proj-1",
+                        "status": "pending",
+                    },
+                    "created_at": "2024-01-02T00:00:00+00:00",
+                    "updated_at": "2024-01-02T01:00:00+00:00",
+                },
             ]
         }
 
-        result = workflows.query_workflows("proj-1")
+        result = workflows.query_workflows("doc-1")
 
         assert len(result) == 2
+        assert result[0].data.status == "completed"
+        assert result[1].data.status == "pending"
 
-    def test_query_workflow_segments(self, mock_table):
-        mock_table.query.return_value = {
-            "Items": [
-                {"PK": "WF#wf-1", "SK": "SEG#0", "data": {"segment_index": Decimal("0")}},
-                {"PK": "WF#wf-1", "SK": "SEG#1", "data": {"segment_index": Decimal("1")}},
-            ]
-        }
+    def test_delete_workflow_item(self, mock_table):
+        workflows.delete_workflow_item("doc-1", "wf-1")
 
-        result = workflows.query_workflow_segments("wf-1")
-
-        assert len(result) == 2
-        assert result[0]["data"]["segment_index"] == 0  # Decimal converted
-
-    def test_delete_workflow_link(self, mock_table):
-        workflows.delete_workflow_link("proj-1", "wf-1")
-
-        mock_table.delete_item.assert_called_once_with(Key={"PK": "PROJ#proj-1", "SK": "WF#wf-1"})
+        mock_table.delete_item.assert_called_once_with(Key={"PK": "DOC#doc-1", "SK": "WF#wf-1"})
 
 
 class TestBatchDelete:

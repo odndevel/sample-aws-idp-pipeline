@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import documents, etc, health, projects, tables
+from app.routers import documents, etc, health, projects, tables, workflows
 
 app = FastAPI(
     openapi_tags=[
@@ -23,8 +23,8 @@ app.add_middleware(
 )
 
 app.include_router(documents.router)
-app.include_router(documents.workflows_router)
 app.include_router(etc.router)
 app.include_router(health.router)
 app.include_router(projects.router)
 app.include_router(tables.router)
+app.include_router(workflows.router)

@@ -1,5 +1,4 @@
 import contextlib
-import re
 import uuid
 
 import boto3
@@ -11,20 +10,15 @@ from app.ddb import (
     Document,
     batch_delete_items,
     delete_document_item,
-    delete_workflow_link,
     get_document_item,
     get_project_item,
-    get_workflow_meta,
     put_document_item,
     query_documents,
-    query_workflow_items,
-    query_workflow_segments,
-    query_workflows,
     update_document_data,
 )
+from app.ddb.workflows import delete_workflow_item, query_workflows
 
 router = APIRouter(prefix="/projects/{project_id}/documents", tags=["documents"])
-workflows_router = APIRouter(prefix="/projects/{project_id}/workflows", tags=["workflows"])
 
 _s3_client = None
 
@@ -34,61 +28,6 @@ def get_s3_client():
     if _s3_client is None:
         _s3_client = boto3.client("s3")
     return _s3_client
-
-
-def generate_presigned_url_from_s3_uri(s3_uri: str, expires_in: int = 3600) -> str | None:
-    """Generate presigned URL from S3 URI (s3://bucket/key)."""
-    if not s3_uri or not s3_uri.startswith("s3://"):
-        return None
-
-    s3 = get_s3_client()
-    # Parse s3://bucket/key format
-    uri_parts = s3_uri[5:].split("/", 1)
-    if len(uri_parts) != 2:
-        return None
-
-    bucket = uri_parts[0]
-    key = uri_parts[1]
-
-    return s3.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": bucket, "Key": key},
-        ExpiresIn=expires_in,
-    )
-
-
-def transform_markdown_images(content: str, image_uri: str) -> str:
-    """Transform relative image paths in markdown to presigned URLs.
-
-    Converts ![alt](./uuid.png) to ![alt](presigned_url)
-    based on the assets folder path from image_uri.
-    """
-    if not content or not image_uri:
-        return content
-
-    # Extract base path up to 'assets/' from image_uri
-    # e.g., s3://bucket/bda-output/.../assets/rectified_image_0.png
-    # -> s3://bucket/bda-output/.../assets/
-    assets_match = re.search(r"(s3://[^/]+/.+/assets/)", image_uri)
-    if not assets_match:
-        return content
-
-    assets_base = assets_match.group(1)
-
-    # Find all relative image paths: ](./filename.ext)
-    # This handles cases where alt text contains special characters like [ or ]
-    def replace_image_path(match: re.Match) -> str:
-        filename = match.group(1)
-        # Build full S3 URI
-        s3_uri = f"{assets_base}{filename}"
-        presigned_url = generate_presigned_url_from_s3_uri(s3_uri)
-        if presigned_url:
-            return f"]({presigned_url})"
-        return match.group(0)  # Return original if failed
-
-    # Match ](./filename.ext) - just the path part, not the alt text
-    pattern = r"\]\(\./([^)]+)\)"
-    return re.sub(pattern, replace_image_path, content)
 
 
 class DocumentUploadRequest(BaseModel):
@@ -229,17 +168,14 @@ def delete_document(project_id: str, document_id: str) -> dict:
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    document_name = doc.data.name
     s3_key = doc.data.s3_key
 
-    # Find related workflow by document name
+    # Find related workflow for this document
     workflow_id = None
-    workflows = query_workflows(project_id)
-    for wf_item in workflows:
-        wf_data = wf_item.get("data", {})
-        if wf_data.get("file_name") == document_name:
-            workflow_id = wf_item["SK"].replace("WF#", "")
-            break
+    workflows = query_workflows(document_id)
+    if workflows:
+        wf_item = workflows[0]
+        workflow_id = wf_item["SK"].replace("WF#", "")
 
     deleted_info = {"document_id": document_id, "workflow_id": workflow_id}
 
@@ -270,13 +206,9 @@ def delete_document(project_id: str, document_id: str) -> dict:
 
     # 4. Delete workflow data from DynamoDB
     if workflow_id:
-        wf_items = query_workflow_items(workflow_id)
-        batch_delete_items(wf_items)
-        deleted_info["workflow_items_deleted"] = len(wf_items)
-
-        # Delete project-workflow link
         with contextlib.suppress(Exception):
-            delete_workflow_link(project_id, workflow_id)
+            delete_workflow_item(document_id, workflow_id)
+            deleted_info["workflow_deleted"] = True
 
     # 5. Delete document item from DynamoDB
     delete_document_item(project_id, document_id)
@@ -306,135 +238,3 @@ def _delete_s3_prefix(s3_client, bucket: str, prefix: str) -> int:
         deleted_count += len(delete_keys)
 
     return deleted_count
-
-
-# ============================================
-# Workflow endpoints
-# ============================================
-
-
-class WorkflowSummary(BaseModel):
-    workflow_id: str
-    status: str
-    file_name: str
-    file_uri: str
-    started_at: str
-    ended_at: str | None = None
-
-
-class SegmentData(BaseModel):
-    segment_index: int
-    image_uri: str
-    image_url: str | None = None
-    bda_indexer: str
-    format_parser: str
-    image_analysis: list[dict]
-
-
-class PresignedUrlResponse(BaseModel):
-    url: str
-
-
-class WorkflowDetail(BaseModel):
-    workflow_id: str
-    project_id: str
-    status: str
-    file_name: str
-    file_uri: str
-    file_type: str
-    total_segments: int
-    started_at: str
-    ended_at: str | None = None
-    segments: list[SegmentData]
-
-
-@workflows_router.get("")
-def list_workflows(project_id: str) -> list[WorkflowSummary]:
-    """List all workflows for a project."""
-    items = query_workflows(project_id)
-
-    workflows = []
-    for item in items:
-        data = item.get("data", {})
-        sk = item.get("SK", "")
-        workflow_id = sk.replace("WF#", "") if sk.startswith("WF#") else ""
-
-        workflows.append(
-            WorkflowSummary(
-                workflow_id=workflow_id,
-                status=data.get("status", ""),
-                file_name=data.get("file_name", ""),
-                file_uri=data.get("file_uri", ""),
-                started_at=item.get("started_at", ""),
-                ended_at=item.get("ended_at"),
-            )
-        )
-
-    return workflows
-
-
-@workflows_router.get("/{workflow_id}")
-def get_workflow(project_id: str, workflow_id: str) -> WorkflowDetail:
-    """Get workflow details including all segments."""
-    # Get workflow metadata
-    meta_item = get_workflow_meta(workflow_id)
-
-    if not meta_item:
-        raise HTTPException(status_code=404, detail="Workflow not found")
-
-    meta_data = meta_item.get("data", {})
-
-    # Verify workflow belongs to project
-    if meta_data.get("project_id") != project_id:
-        raise HTTPException(status_code=404, detail="Workflow not found in this project")
-
-    # Get all segments
-    segment_items = query_workflow_segments(workflow_id)
-
-    segments = []
-    for seg_item in segment_items:
-        seg_data = seg_item.get("data", {})
-        image_uri = seg_data.get("image_uri", "")
-        bda_indexer = seg_data.get("bda_indexer", "")
-        format_parser = seg_data.get("format_parser", "")
-        image_analysis = seg_data.get("image_analysis", [])
-
-        # Transform markdown images to presigned URLs
-        if image_uri:
-            bda_indexer = transform_markdown_images(bda_indexer, image_uri)
-            format_parser = transform_markdown_images(format_parser, image_uri)
-            # Transform image_analysis content as well
-            image_analysis = [
-                {
-                    **item,
-                    "content": transform_markdown_images(item.get("content", ""), image_uri),
-                }
-                for item in image_analysis
-            ]
-
-        segments.append(
-            SegmentData(
-                segment_index=seg_data.get("segment_index", 0),
-                image_uri=image_uri,
-                image_url=generate_presigned_url_from_s3_uri(image_uri),
-                bda_indexer=bda_indexer,
-                format_parser=format_parser,
-                image_analysis=image_analysis,
-            )
-        )
-
-    # Sort segments by index
-    segments.sort(key=lambda s: s.segment_index)
-
-    return WorkflowDetail(
-        workflow_id=workflow_id,
-        project_id=project_id,
-        status=meta_data.get("status", ""),
-        file_name=meta_data.get("file_name", ""),
-        file_uri=meta_data.get("file_uri", ""),
-        file_type=meta_data.get("file_type", ""),
-        total_segments=meta_data.get("total_segments", len(segments)),
-        started_at=meta_item.get("started_at", ""),
-        ended_at=meta_item.get("ended_at"),
-        segments=segments,
-    )

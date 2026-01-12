@@ -15,10 +15,8 @@ from app.ddb.projects import (
     update_project_data,
 )
 from app.ddb.workflows import (
-    delete_workflow_link,
-    get_workflow_meta,
-    query_workflow_items,
-    query_workflow_segments,
+    delete_workflow_item,
+    get_workflow_item,
     query_workflows,
 )
 
@@ -45,9 +43,7 @@ __all__ = [
     "query_documents",
     "delete_document_item",
     # workflows
-    "get_workflow_meta",
+    "get_workflow_item",
     "query_workflows",
-    "query_workflow_items",
-    "query_workflow_segments",
-    "delete_workflow_link",
+    "delete_workflow_item",
 ]

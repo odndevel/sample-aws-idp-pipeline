@@ -13,9 +13,9 @@ from app.ddb import (
     put_project_item,
     query_all_project_items,
     query_projects,
-    query_workflow_items,
     update_project_data,
 )
+from app.ddb.workflows import query_workflows
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -126,8 +126,16 @@ def delete_project(project_id: str) -> dict:
     # 1. Get all items under this project
     project_items = query_all_project_items(project_id)
 
-    # Extract workflow IDs
-    workflow_ids = [item["SK"].replace("WF#", "") for item in project_items if item["SK"].startswith("WF#")]
+    # Extract document IDs and collect workflow IDs
+    document_ids = [item["SK"].replace("DOC#", "") for item in project_items if item["SK"].startswith("DOC#")]
+    workflow_ids = []
+    workflow_items = []
+    for doc_id in document_ids:
+        wf_items = query_workflows(doc_id)
+        for wf_item in wf_items:
+            workflow_ids.append(wf_item["SK"].replace("WF#", ""))
+            workflow_items.append(wf_item)
+
     deleted_info["workflow_count"] = len(workflow_ids)
 
     # 2. Delete from LanceDB (all workflows)
@@ -147,14 +155,10 @@ def delete_project(project_id: str) -> dict:
         except Exception as e:
             deleted_info["lancedb_error"] = str(e)
 
-    # 3. Delete workflow data from DynamoDB (all WF#{id} items)
-    total_wf_items_deleted = 0
-    for workflow_id in workflow_ids:
-        wf_items = query_workflow_items(workflow_id)
-        batch_delete_items(wf_items)
-        total_wf_items_deleted += len(wf_items)
-
-    deleted_info["workflow_items_deleted"] = total_wf_items_deleted
+    # 3. Delete workflow items from DynamoDB
+    if workflow_items:
+        batch_delete_items(workflow_items)
+        deleted_info["workflow_items_deleted"] = len(workflow_items)
 
     # 4. Delete from S3 - entire project folder
     project_prefix = f"projects/{project_id}/"
