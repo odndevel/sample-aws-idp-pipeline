@@ -23,7 +23,6 @@ def now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
-
 def batch_delete_items(items: list[dict]) -> None:
     """Batch delete items from DynamoDB."""
     table = get_table()

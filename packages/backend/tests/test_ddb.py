@@ -20,8 +20,6 @@ class TestMakeKeys:
         assert result == {"PK": "DOC#doc-456", "SK": "WF#wf-789"}
 
 
-
-
 class TestProjectHelpers:
     @pytest.fixture
     def mock_table(self):

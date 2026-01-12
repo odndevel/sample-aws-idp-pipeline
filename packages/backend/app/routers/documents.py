@@ -8,7 +8,6 @@ from pydantic import BaseModel
 from app.config import get_config
 from app.ddb import (
     Document,
-    batch_delete_items,
     delete_document_item,
     get_document_item,
     get_project_item,
