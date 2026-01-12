@@ -135,6 +135,14 @@ export class Backend extends Construct {
     lancedbLockTable.table.grantReadWriteData(taskRole);
     backendTable.table.grantReadWriteData(taskRole);
 
+    // Grant GSI1 query permissions (fromTableName doesn't include GSI permissions)
+    taskRole.addToPrincipalPolicy(
+      new PolicyStatement({
+        actions: ['dynamodb:Query'],
+        resources: [`${backendTable.table.tableArn}/index/GSI1`],
+      }),
+    );
+
     taskRole.addToPrincipalPolicy(
       new PolicyStatement({
         actions: ['s3express:*'],

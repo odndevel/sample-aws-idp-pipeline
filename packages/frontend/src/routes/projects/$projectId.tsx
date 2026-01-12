@@ -989,7 +989,11 @@ function ProjectDetailPage() {
                     >
                       <p
                         className="text-sm whitespace-pre-wrap"
-                        style={message.role === 'user' ? { color: 'white' } : undefined}
+                        style={
+                          message.role === 'user'
+                            ? { color: 'white' }
+                            : undefined
+                        }
                       >
                         {message.content}
                       </p>
@@ -1000,7 +1004,9 @@ function ProjectDetailPage() {
                   <div className="flex justify-start">
                     <div className="bg-slate-100 text-slate-800 px-4 py-3 rounded-2xl max-w-[80%]">
                       {streamingContent ? (
-                        <p className="text-sm whitespace-pre-wrap">{streamingContent}</p>
+                        <p className="text-sm whitespace-pre-wrap">
+                          {streamingContent}
+                        </p>
                       ) : (
                         <div className="flex items-center gap-1">
                           <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" />
