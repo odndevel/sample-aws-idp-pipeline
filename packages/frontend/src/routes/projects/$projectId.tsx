@@ -84,7 +84,8 @@ export const Route = createFileRoute('/projects/$projectId')({
 
 function ProjectDetailPage() {
   const { projectId } = Route.useParams();
-  const { fetchApi } = useAwsClient();
+  const { fetchApi, invokeAgent } = useAwsClient();
+  const [agentSessionId] = useState(() => crypto.randomUUID());
   const [project, setProject] = useState<Project | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
@@ -93,6 +94,7 @@ function ProjectDetailPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [streamingContent, setStreamingContent] = useState('');
   const [selectedWorkflow, setSelectedWorkflow] =
     useState<WorkflowDetail | null>(null);
   const [loadingWorkflow, setLoadingWorkflow] = useState(false);
@@ -251,7 +253,7 @@ function ProjectDetailPage() {
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, streamingContent]);
 
   // Handle workflow completion/failure
   const progressStatus = workflowProgress?.status;
@@ -470,21 +472,21 @@ function ProjectDetailPage() {
     setMessages((prev) => [...prev, userMessage]);
     setInputMessage('');
     setSending(true);
+    setStreamingContent('');
 
     try {
-      const response = await fetchApi<{ response: string }>(
-        `projects/${projectId}/chat`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: userMessage.content }),
+      const response = await invokeAgent(
+        userMessage.content,
+        agentSessionId,
+        (chunk) => {
+          setStreamingContent((prev) => prev + chunk);
         },
       );
 
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: response.response,
+        content: response,
         timestamp: new Date(),
       };
 
@@ -494,12 +496,13 @@ function ProjectDetailPage() {
       const errorMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: 'Failed to get response. Please try again.',
+        content: `Failed to get response: ${error instanceof Error ? error.message : 'Unknown error'}`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
     }
     setSending(false);
+    setStreamingContent('');
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -980,11 +983,14 @@ function ProjectDetailPage() {
                     <div
                       className={`max-w-[80%] px-4 py-3 rounded-2xl ${
                         message.role === 'user'
-                          ? 'bg-blue-600 text-white'
+                          ? 'bg-blue-600'
                           : 'bg-slate-100 text-slate-800'
                       }`}
                     >
-                      <p className="text-sm whitespace-pre-wrap">
+                      <p
+                        className="text-sm whitespace-pre-wrap"
+                        style={message.role === 'user' ? { color: 'white' } : undefined}
+                      >
                         {message.content}
                       </p>
                     </div>
@@ -992,18 +998,22 @@ function ProjectDetailPage() {
                 ))}
                 {sending && (
                   <div className="flex justify-start">
-                    <div className="bg-slate-100 text-slate-800 px-4 py-3 rounded-2xl">
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" />
-                        <div
-                          className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"
-                          style={{ animationDelay: '0.1s' }}
-                        />
-                        <div
-                          className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"
-                          style={{ animationDelay: '0.2s' }}
-                        />
-                      </div>
+                    <div className="bg-slate-100 text-slate-800 px-4 py-3 rounded-2xl max-w-[80%]">
+                      {streamingContent ? (
+                        <p className="text-sm whitespace-pre-wrap">{streamingContent}</p>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" />
+                          <div
+                            className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"
+                            style={{ animationDelay: '0.1s' }}
+                          />
+                          <div
+                            className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"
+                            style={{ animationDelay: '0.2s' }}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

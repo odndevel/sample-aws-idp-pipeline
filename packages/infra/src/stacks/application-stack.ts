@@ -6,6 +6,7 @@ import {
   SSM_KEYS,
 } from ':idp-v2/common-constructs';
 import { Stack, StackProps } from 'aws-cdk-lib';
+import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Vpc } from 'aws-cdk-lib/aws-ec2';
 import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
@@ -47,6 +48,16 @@ export class ApplicationStack extends Stack {
     backend.grantInvokeAccess(userIdentity.identityPool.authenticatedRole);
     documentStorageBucket.grantReadWrite(
       userIdentity.identityPool.authenticatedRole,
+    );
+
+    // Grant Bedrock Agentcore invoke permission
+    userIdentity.identityPool.authenticatedRole.addToPrincipalPolicy(
+      new PolicyStatement({
+        actions: ['bedrock-agentcore:InvokeAgentRuntime'],
+        resources: [
+          `arn:aws:bedrock-agentcore:${this.region}:${this.account}:runtime/*`,
+        ],
+      }),
     );
   }
 }
