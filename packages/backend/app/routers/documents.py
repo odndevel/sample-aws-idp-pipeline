@@ -1,29 +1,32 @@
 import contextlib
 import re
 import uuid
-from datetime import UTC, datetime
-from decimal import Decimal
-from typing import Any
 
 import boto3
-from boto3.dynamodb.conditions import Key
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.config import get_config
+from app.ddb import (
+    Document,
+    batch_delete_items,
+    delete_document_item,
+    delete_workflow_link,
+    get_document_item,
+    get_project_item,
+    get_workflow_meta,
+    put_document_item,
+    query_documents,
+    query_workflow_items,
+    query_workflow_segments,
+    query_workflows,
+    update_document_data,
+)
 
 router = APIRouter(prefix="/projects/{project_id}/documents", tags=["documents"])
 workflows_router = APIRouter(prefix="/projects/{project_id}/workflows", tags=["workflows"])
 
-_ddb_resource = None
 _s3_client = None
-
-
-def get_ddb_resource():
-    global _ddb_resource
-    if _ddb_resource is None:
-        _ddb_resource = boto3.resource("dynamodb")
-    return _ddb_resource
 
 
 def get_s3_client():
@@ -31,24 +34,6 @@ def get_s3_client():
     if _s3_client is None:
         _s3_client = boto3.client("s3")
     return _s3_client
-
-
-def get_table():
-    config = get_config()
-    return get_ddb_resource().Table(config.backend_table_name)
-
-
-def decimal_to_python(obj: Any) -> Any:
-    """Convert DynamoDB Decimal types to Python native types."""
-    if isinstance(obj, Decimal):
-        if obj % 1 == 0:
-            return int(obj)
-        return float(obj)
-    elif isinstance(obj, dict):
-        return {k: decimal_to_python(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [decimal_to_python(i) for i in obj]
-    return obj
 
 
 def generate_presigned_url_from_s3_uri(s3_uri: str, expires_in: int = 3600) -> str | None:
@@ -126,8 +111,22 @@ class DocumentResponse(BaseModel):
     file_size: int
     status: str
     s3_key: str
-    started_at: str
-    ended_at: str | None = None
+    created_at: str
+    updated_at: str
+
+    @staticmethod
+    def from_document(doc: Document) -> "DocumentResponse":
+        return DocumentResponse(
+            document_id=doc.data.document_id,
+            project_id=doc.data.project_id,
+            name=doc.data.name,
+            file_type=doc.data.file_type,
+            file_size=doc.data.file_size,
+            status=doc.data.status,
+            s3_key=doc.data.s3_key,
+            created_at=doc.created_at,
+            updated_at=doc.updated_at,
+        )
 
 
 class DocumentStatusUpdate(BaseModel):
@@ -137,37 +136,14 @@ class DocumentStatusUpdate(BaseModel):
 @router.get("")
 def list_documents(project_id: str) -> list[DocumentResponse]:
     """List all documents for a project."""
-    table = get_table()
-
-    response = table.query(
-        KeyConditionExpression=Key("PK").eq(f"PROJ#{project_id}") & Key("SK").begins_with("DOC#"),
-    )
-
-    documents = []
-    for item in response.get("Items", []):
-        data = item.get("data", {})
-        documents.append(
-            DocumentResponse(
-                document_id=data.get("document_id", ""),
-                project_id=data.get("project_id", ""),
-                name=data.get("name", ""),
-                file_type=data.get("file_type", ""),
-                file_size=data.get("file_size", 0),
-                status=data.get("status", "pending"),
-                s3_key=data.get("s3_key", ""),
-                started_at=item.get("started_at", ""),
-                ended_at=item.get("ended_at"),
-            )
-        )
-
-    return documents
+    documents = query_documents(project_id)
+    return [DocumentResponse.from_document(doc) for doc in documents]
 
 
 @router.post("")
 def create_document_upload(project_id: str, request: DocumentUploadRequest) -> DocumentUploadResponse:
     """Create a document record and return a presigned URL for upload."""
     config = get_config()
-    table = get_table()
     s3 = get_s3_client()
 
     # Validate file size (500MB max)
@@ -176,32 +152,24 @@ def create_document_upload(project_id: str, request: DocumentUploadRequest) -> D
         raise HTTPException(status_code=400, detail="File size exceeds 500MB limit")
 
     # Check project exists
-    project_response = table.get_item(Key={"PK": f"PROJ#{project_id}", "SK": f"PROJ#{project_id}"})
-    if not project_response.get("Item"):
+    if not get_project_item(project_id):
         raise HTTPException(status_code=404, detail="Project not found")
 
     # Generate document ID and S3 key
     document_id = str(uuid.uuid4())
     s3_key = f"projects/{project_id}/documents/{document_id}/{request.file_name}"
-    now = datetime.now(UTC).isoformat()
 
     # Create document record in DynamoDB
-    item = {
-        "PK": f"PROJ#{project_id}",
-        "SK": f"DOC#{document_id}",
-        "data": {
-            "document_id": document_id,
-            "project_id": project_id,
-            "name": request.file_name,
-            "file_type": request.content_type,
-            "file_size": request.file_size,
-            "status": "uploading",
-            "s3_key": s3_key,
-        },
-        "started_at": now,
-        "ended_at": now,
+    data = {
+        "document_id": document_id,
+        "project_id": project_id,
+        "name": request.file_name,
+        "file_type": request.content_type,
+        "file_size": request.file_size,
+        "status": "uploading",
+        "s3_key": s3_key,
     }
-    table.put_item(Item=item)
+    put_document_item(project_id, document_id, data)
 
     # Generate presigned URL for upload (valid for 1 hour)
     upload_url = s3.generate_presigned_url(
@@ -224,95 +192,50 @@ def create_document_upload(project_id: str, request: DocumentUploadRequest) -> D
 @router.put("/{document_id}/status")
 def update_document_status(project_id: str, document_id: str, request: DocumentStatusUpdate) -> DocumentResponse:
     """Update document status after upload completion."""
-    table = get_table()
-
-    # Check document exists
-    existing = table.get_item(Key={"PK": f"PROJ#{project_id}", "SK": f"DOC#{document_id}"})
-    if not existing.get("Item"):
+    existing = get_document_item(project_id, document_id)
+    if not existing:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    now = datetime.now(UTC).isoformat()
-    item = existing.get("Item")
-    data = item.get("data", {})
+    data = existing.data.model_dump()
     data["status"] = request.status
 
-    table.update_item(
-        Key={"PK": f"PROJ#{project_id}", "SK": f"DOC#{document_id}"},
-        UpdateExpression="SET #data = :data, ended_at = :ended_at",
-        ExpressionAttributeNames={"#data": "data"},
-        ExpressionAttributeValues={
-            ":data": data,
-            ":ended_at": now,
-        },
-    )
+    update_document_data(project_id, document_id, data)
 
     # Get updated document
-    response = table.get_item(Key={"PK": f"PROJ#{project_id}", "SK": f"DOC#{document_id}"})
-    item = response.get("Item", {})
-    data = item.get("data", {})
-
-    return DocumentResponse(
-        document_id=data.get("document_id", ""),
-        project_id=data.get("project_id", ""),
-        name=data.get("name", ""),
-        file_type=data.get("file_type", ""),
-        file_size=data.get("file_size", 0),
-        status=data.get("status", ""),
-        s3_key=data.get("s3_key", ""),
-        started_at=item.get("started_at", ""),
-        ended_at=item.get("ended_at"),
-    )
+    doc = get_document_item(project_id, document_id)
+    return DocumentResponse.from_document(doc)
 
 
 @router.get("/{document_id}")
 def get_document(project_id: str, document_id: str) -> DocumentResponse:
     """Get a single document."""
-    table = get_table()
+    doc = get_document_item(project_id, document_id)
 
-    response = table.get_item(Key={"PK": f"PROJ#{project_id}", "SK": f"DOC#{document_id}"})
-    item = response.get("Item")
-
-    if not item:
+    if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    data = item.get("data", {})
-    return DocumentResponse(
-        document_id=data.get("document_id", ""),
-        project_id=data.get("project_id", ""),
-        name=data.get("name", ""),
-        file_type=data.get("file_type", ""),
-        file_size=data.get("file_size", 0),
-        status=data.get("status", ""),
-        s3_key=data.get("s3_key", ""),
-        started_at=item.get("started_at", ""),
-        ended_at=item.get("ended_at"),
-    )
+    return DocumentResponse.from_document(doc)
 
 
 @router.delete("/{document_id}")
 def delete_document(project_id: str, document_id: str) -> dict:
     """Delete a document and all related data (DynamoDB, S3, LanceDB)."""
     config = get_config()
-    table = get_table()
     s3 = get_s3_client()
 
     # Check document exists and get info
-    existing = table.get_item(Key={"PK": f"PROJ#{project_id}", "SK": f"DOC#{document_id}"})
-    item = existing.get("Item")
+    doc = get_document_item(project_id, document_id)
 
-    if not item:
+    if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    data = item.get("data", {})
-    document_name = data.get("name", "")
-    s3_key = data.get("s3_key", "")
+    document_name = doc.data.name
+    s3_key = doc.data.s3_key
 
     # Find related workflow by document name
     workflow_id = None
-    workflow_response = table.query(
-        KeyConditionExpression=Key("PK").eq(f"PROJ#{project_id}") & Key("SK").begins_with("WF#"),
-    )
-    for wf_item in workflow_response.get("Items", []):
+    workflows = query_workflows(project_id)
+    for wf_item in workflows:
         wf_data = wf_item.get("data", {})
         if wf_data.get("file_name") == document_name:
             workflow_id = wf_item["SK"].replace("WF#", "")
@@ -347,31 +270,16 @@ def delete_document(project_id: str, document_id: str) -> dict:
 
     # 4. Delete workflow data from DynamoDB
     if workflow_id:
-        # Delete all WF#{workflow_id} items (META, STEP, SEG#*, ANALYSIS#*, CONN#*)
-        wf_items_response = table.query(KeyConditionExpression=Key("PK").eq(f"WF#{workflow_id}"))
-        wf_items = wf_items_response.get("Items", [])
-
-        # Handle pagination
-        while wf_items_response.get("LastEvaluatedKey"):
-            wf_items_response = table.query(
-                KeyConditionExpression=Key("PK").eq(f"WF#{workflow_id}"),
-                ExclusiveStartKey=wf_items_response["LastEvaluatedKey"],
-            )
-            wf_items.extend(wf_items_response.get("Items", []))
-
-        # Batch delete
-        with table.batch_writer() as batch:
-            for wf_item in wf_items:
-                batch.delete_item(Key={"PK": wf_item["PK"], "SK": wf_item["SK"]})
-
+        wf_items = query_workflow_items(workflow_id)
+        batch_delete_items(wf_items)
         deleted_info["workflow_items_deleted"] = len(wf_items)
 
         # Delete project-workflow link
         with contextlib.suppress(Exception):
-            table.delete_item(Key={"PK": f"PROJ#{project_id}", "SK": f"WF#{workflow_id}"})
+            delete_workflow_link(project_id, workflow_id)
 
     # 5. Delete document item from DynamoDB
-    table.delete_item(Key={"PK": f"PROJ#{project_id}", "SK": f"DOC#{document_id}"})
+    delete_document_item(project_id, document_id)
 
     return {"message": f"Document {document_id} deleted", "details": deleted_info}
 
@@ -443,15 +351,10 @@ class WorkflowDetail(BaseModel):
 @workflows_router.get("")
 def list_workflows(project_id: str) -> list[WorkflowSummary]:
     """List all workflows for a project."""
-    table = get_table()
-
-    response = table.query(
-        KeyConditionExpression=Key("PK").eq(f"PROJ#{project_id}") & Key("SK").begins_with("WF#"),
-    )
+    items = query_workflows(project_id)
 
     workflows = []
-    for item in response.get("Items", []):
-        item = decimal_to_python(item)
+    for item in items:
         data = item.get("data", {})
         sk = item.get("SK", "")
         workflow_id = sk.replace("WF#", "") if sk.startswith("WF#") else ""
@@ -473,16 +376,12 @@ def list_workflows(project_id: str) -> list[WorkflowSummary]:
 @workflows_router.get("/{workflow_id}")
 def get_workflow(project_id: str, workflow_id: str) -> WorkflowDetail:
     """Get workflow details including all segments."""
-    table = get_table()
-
     # Get workflow metadata
-    meta_response = table.get_item(Key={"PK": f"WF#{workflow_id}", "SK": "META"})
-    meta_item = meta_response.get("Item")
+    meta_item = get_workflow_meta(workflow_id)
 
     if not meta_item:
         raise HTTPException(status_code=404, detail="Workflow not found")
 
-    meta_item = decimal_to_python(meta_item)
     meta_data = meta_item.get("data", {})
 
     # Verify workflow belongs to project
@@ -490,13 +389,10 @@ def get_workflow(project_id: str, workflow_id: str) -> WorkflowDetail:
         raise HTTPException(status_code=404, detail="Workflow not found in this project")
 
     # Get all segments
-    segments_response = table.query(
-        KeyConditionExpression=Key("PK").eq(f"WF#{workflow_id}") & Key("SK").begins_with("SEG#"),
-    )
+    segment_items = query_workflow_segments(workflow_id)
 
     segments = []
-    for seg_item in segments_response.get("Items", []):
-        seg_item = decimal_to_python(seg_item)
+    for seg_item in segment_items:
         seg_data = seg_item.get("data", {})
         image_uri = seg_data.get("image_uri", "")
         bda_indexer = seg_data.get("bda_indexer", "")
