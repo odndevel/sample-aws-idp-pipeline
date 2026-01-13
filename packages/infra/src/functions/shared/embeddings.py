@@ -9,7 +9,7 @@ from pydantic import PrivateAttr
 
 @register('bedrock-nova')
 class BedrockEmbeddingFunction(TextEmbeddingFunction):
-    model_id: str = 'amazon.nova-embed-image-v1:0'
+    model_id: str = 'amazon.nova-2-multimodal-embeddings-v1:0'
     region_name: str = 'us-east-1'
 
     _client: Any = PrivateAttr()
@@ -19,7 +19,7 @@ class BedrockEmbeddingFunction(TextEmbeddingFunction):
         super().__init__(**data)
         self._client = boto3.client(
             'bedrock-runtime',
-            region_name=data.get('region_name', os.environ.get('AWS_REGION', 'us-east-1'))
+            region_name=os.environ.get('AWS_REGION', 'us-east-1')
         )
         self._ndims = 1024
 
@@ -33,12 +33,17 @@ class BedrockEmbeddingFunction(TextEmbeddingFunction):
                 response = self._client.invoke_model(
                     modelId=self.model_id,
                     body=json.dumps({
-                        'inputText': text[:10000]
+                        'taskType': 'SINGLE_EMBEDDING',
+                        'singleEmbeddingParams': {
+                            'embeddingPurpose': 'GENERIC_INDEX',
+                            'embeddingDimension': 1024,
+                            'text': {'truncationMode': 'END', 'value': text[:10000]}
+                        }
                     }),
                     contentType='application/json'
                 )
                 result = json.loads(response['body'].read())
-                embedding = result.get('embedding', [0.0] * self._ndims)
+                embedding = result['embeddings'][0]['embedding']
                 embeddings.append(embedding)
             except Exception as e:
                 print(f'Error generating embedding: {e}')
@@ -56,14 +61,19 @@ def generate_single_embedding(text: str, client=None) -> List[float]:
 
     try:
         response = client.invoke_model(
-            modelId='amazon.nova-embed-image-v1:0',
+            modelId='amazon.nova-2-multimodal-embeddings-v1:0',
             body=json.dumps({
-                'inputText': text[:10000]
+                'taskType': 'SINGLE_EMBEDDING',
+                'singleEmbeddingParams': {
+                    'embeddingPurpose': 'GENERIC_INDEX',
+                    'embeddingDimension': 1024,
+                    'text': {'truncationMode': 'END', 'value': text[:10000]}
+                }
             }),
             contentType='application/json'
         )
         result = json.loads(response['body'].read())
-        return result.get('embedding', [0.0] * 1024)
+        return result['embeddings'][0]['embedding']
     except Exception as e:
         print(f'Error generating embedding: {e}')
         return [0.0] * 1024

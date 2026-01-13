@@ -49,12 +49,16 @@ def extract_first_image_from_markdown(markdown: str, base_uri: str) -> str:
     match = re.search(pattern, markdown)
     if match:
         image_filename = match.group(1)
-        return f'{base_uri}/{image_filename}'
+        return f'{base_uri}/assets/{image_filename}'
     return ''
 
 
 def transform_markdown_image_urls(markdown: str, base_uri: str) -> str:
-    """Transform relative image paths in markdown to full S3 URIs."""
+    """Transform relative image paths in markdown to full S3 URIs.
+
+    BDA stores images in an 'assets/' subdirectory, but markdown references
+    them as ./filename.png. This function adds the assets/ path.
+    """
     if not markdown:
         return markdown
 
@@ -67,10 +71,12 @@ def transform_markdown_image_urls(markdown: str, base_uri: str) -> str:
             return match.group(0)
 
         # Convert relative path to full S3 URI
+        # BDA stores images in assets/ subdirectory
         if image_url.startswith('./'):
-            full_uri = f'{base_uri}/{image_url[2:]}'
+            filename = image_url[2:]
+            full_uri = f'{base_uri}/assets/{filename}'
         else:
-            full_uri = f'{base_uri}/{image_url}'
+            full_uri = f'{base_uri}/assets/{image_url}'
 
         return f'![{alt_text}]({full_uri})'
 
@@ -123,11 +129,12 @@ def handler(event, _context):
                             image_uri = asset_metadata.get('rectified_image', '')
 
                             # Handle relative path in rectified_image
+                            # BDA stores images in assets/ subdirectory
                             if image_uri and not image_uri.startswith('s3://'):
                                 if image_uri.startswith('./'):
-                                    image_uri = f'{standard_output_base}/{image_uri[2:]}'
+                                    image_uri = f'{standard_output_base}/assets/{image_uri[2:]}'
                                 else:
-                                    image_uri = f'{standard_output_base}/{image_uri}'
+                                    image_uri = f'{standard_output_base}/assets/{image_uri}'
 
                             if not image_uri and markdown:
                                 image_uri = extract_first_image_from_markdown(

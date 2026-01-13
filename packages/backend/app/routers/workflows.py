@@ -17,6 +17,21 @@ def _get_s3_client():
     return _s3_client
 
 
+def _get_content_type(key: str) -> str | None:
+    """Get content type based on file extension."""
+    ext = key.lower().split(".")[-1] if "." in key else ""
+    content_types = {
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "gif": "image/gif",
+        "webp": "image/webp",
+        "svg": "image/svg+xml",
+        "pdf": "application/pdf",
+    }
+    return content_types.get(ext)
+
+
 def _generate_presigned_url(s3_uri: str, expires_in: int = 3600) -> str | None:
     """Generate a presigned URL for an S3 URI."""
     if not s3_uri or not s3_uri.startswith("s3://"):
@@ -28,13 +43,41 @@ def _generate_presigned_url(s3_uri: str, expires_in: int = 3600) -> str | None:
         key = parsed.path.lstrip("/")
 
         s3 = _get_s3_client()
+        params = {"Bucket": bucket, "Key": key}
+
+        # Add ResponseContentType for images to fix ORB blocking
+        content_type = _get_content_type(key)
+        if content_type:
+            params["ResponseContentType"] = content_type
+
         return s3.generate_presigned_url(
             "get_object",
-            Params={"Bucket": bucket, "Key": key},
+            Params=params,
             ExpiresIn=expires_in,
         )
     except Exception:
         return None
+
+
+def _fix_image_uri(image_uri: str) -> str:
+    """Fix image_uri by adding /assets/ if missing.
+
+    BDA stores images in /assets/ subdirectory but some stored URIs
+    may be missing this path component.
+    """
+    if not image_uri or not image_uri.startswith("s3://"):
+        return image_uri
+
+    # Already has /assets/, return as-is
+    if "/assets/" in image_uri:
+        return image_uri
+
+    # Add /assets/ before the filename
+    parts = image_uri.rsplit("/", 1)
+    if len(parts) == 2:
+        return f"{parts[0]}/assets/{parts[1]}"
+
+    return image_uri
 
 
 def _transform_markdown_images(markdown: str, image_uri: str = "") -> str:
@@ -48,13 +91,22 @@ def _transform_markdown_images(markdown: str, image_uri: str = "") -> str:
         return markdown
 
     # Extract assets base path from image_uri
-    # e.g., s3://bucket/bda-output/.../assets/rectified_image_0.png
-    # -> s3://bucket/bda-output/.../assets/
+    # BDA stores images in /assets/ subdirectory
+    # e.g., s3://bucket/bda-output/.../standard_output/0/assets/rectified_image.png
+    # -> s3://bucket/bda-output/.../standard_output/0/assets/
     assets_base = ""
     if image_uri:
+        # Case 1: image_uri already contains /assets/
         assets_match = re.search(r"(s3://[^/]+/.+/assets/)", image_uri)
         if assets_match:
             assets_base = assets_match.group(1)
+        else:
+            # Case 2: image_uri doesn't have /assets/, construct it from parent dir
+            # e.g., s3://bucket/.../standard_output/0/rectified_image.png
+            # -> s3://bucket/.../standard_output/0/assets/
+            parent_dir = image_uri.rsplit("/", 1)[0]
+            if parent_dir:
+                assets_base = f"{parent_dir}/assets/"
 
     def transform_image(match):
         alt_text = match.group(1)
@@ -75,9 +127,23 @@ def _transform_markdown_images(markdown: str, image_uri: str = "") -> str:
                 img_url = presigned_url
         # Handle full S3 URIs
         elif img_url.startswith("s3://"):
-            presigned_url = _generate_presigned_url(img_url)
-            if presigned_url:
-                img_url = presigned_url
+            # Check if the URI is missing /assets/ and add it
+            if "/assets/" not in img_url:
+                parts = img_url.rsplit("/", 1)
+                if len(parts) == 2:
+                    img_url_with_assets = f"{parts[0]}/assets/{parts[1]}"
+                    presigned_url = _generate_presigned_url(img_url_with_assets)
+                    if presigned_url:
+                        img_url = presigned_url
+                    else:
+                        # Fallback to original URL if assets path doesn't work
+                        presigned_url = _generate_presigned_url(img_url)
+                        if presigned_url:
+                            img_url = presigned_url
+            else:
+                presigned_url = _generate_presigned_url(img_url)
+                if presigned_url:
+                    img_url = presigned_url
 
         return f"![{alt_text}]({img_url})"
 
@@ -150,7 +216,8 @@ def get_workflow(document_id: str, workflow_id: str) -> WorkflowDetailResponse:
     segment_items = query_workflow_segments(workflow_id)
     segments = []
     for seg in segment_items:
-        image_uri = seg.data.image_uri
+        # Fix image_uri by adding /assets/ if missing
+        image_uri = _fix_image_uri(seg.data.image_uri)
         bda_indexer = _transform_markdown_images(seg.data.bda_indexer, image_uri)
         format_parser = _transform_markdown_images(seg.data.format_parser, image_uri)
 

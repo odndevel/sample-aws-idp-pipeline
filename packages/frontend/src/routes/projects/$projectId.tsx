@@ -1332,7 +1332,20 @@ function ProjectDetailPage() {
                                   {/* Answer */}
                                   <div className="px-4 py-3">
                                     <div className="prose prose-slate prose-sm max-w-none prose-table:border-collapse prose-th:border prose-th:border-slate-300 prose-th:bg-slate-100 prose-th:p-2 prose-td:border prose-td:border-slate-300 prose-td:p-2">
-                                      <Markdown remarkPlugins={[remarkGfm]}>
+                                      <Markdown
+                                        remarkPlugins={[remarkGfm]}
+                                        components={{
+                                          img: ({ src, alt }) => (
+                                            <img
+                                              src={src}
+                                              alt={alt || ''}
+                                              className="max-w-full h-auto rounded-lg shadow-md my-4"
+                                              loading="lazy"
+                                            />
+                                          ),
+                                        }}
+                                        urlTransform={(url) => url}
+                                      >
                                         {item.answer}
                                       </Markdown>
                                     </div>

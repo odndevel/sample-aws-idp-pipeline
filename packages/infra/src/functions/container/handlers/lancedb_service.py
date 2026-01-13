@@ -11,11 +11,12 @@ from pydantic import PrivateAttr
 from kiwipiepy import Kiwi
 
 LANCEDB_EXPRESS_BUCKET_SSM_KEY = '/idp-v2/lancedb/express/bucket-name'
+LANCEDB_LOCK_TABLE_SSM_KEY = '/idp-v2/lancedb/lock/table-name'
 
-_db_connections = {}
-_table_name = 'documents'
+_db_connection = None
 _kiwi = None
 _bucket_name = None
+_lock_table_name = None
 
 
 def get_ssm_parameter(key: str) -> str:
@@ -31,12 +32,20 @@ def get_bucket_name():
     return _bucket_name
 
 
-def get_lancedb_connection(project_id: str):
-    global _db_connections
-    if project_id not in _db_connections:
+def get_lock_table_name():
+    global _lock_table_name
+    if _lock_table_name is None:
+        _lock_table_name = get_ssm_parameter(LANCEDB_LOCK_TABLE_SSM_KEY)
+    return _lock_table_name
+
+
+def get_lancedb_connection():
+    global _db_connection
+    if _db_connection is None:
         bucket_name = get_bucket_name()
-        _db_connections[project_id] = lancedb.connect(f's3://{bucket_name}/{project_id}.lance')
-    return _db_connections[project_id]
+        lock_table = get_lock_table_name()
+        _db_connection = lancedb.connect(f's3+ddb://{bucket_name}?ddbTableName={lock_table}')
+    return _db_connection
 
 
 def get_kiwi():
@@ -68,7 +77,7 @@ def extract_keywords(text: str) -> str:
 
 @register('bedrock-nova')
 class BedrockEmbeddingFunction(TextEmbeddingFunction):
-    model_id: str = 'amazon.nova-embed-image-v1:0'
+    model_id: str = 'amazon.nova-2-multimodal-embeddings-v1:0'
     region_name: str = 'us-east-1'
     _client: object = PrivateAttr()
     _ndims: int = PrivateAttr()
@@ -77,7 +86,7 @@ class BedrockEmbeddingFunction(TextEmbeddingFunction):
         super().__init__(**data)
         self._client = boto3.client(
             'bedrock-runtime',
-            region_name=data.get('region_name', os.environ.get('AWS_REGION', 'us-east-1'))
+            region_name=os.environ.get('AWS_REGION', 'us-east-1')
         )
         self._ndims = 1024
 
@@ -90,53 +99,93 @@ class BedrockEmbeddingFunction(TextEmbeddingFunction):
             try:
                 response = self._client.invoke_model(
                     modelId=self.model_id,
-                    body=json.dumps({'inputText': text[:10000]}),
+                    body=json.dumps({
+                        'taskType': 'SINGLE_EMBEDDING',
+                        'singleEmbeddingParams': {
+                            'embeddingPurpose': 'GENERIC_INDEX',
+                            'embeddingDimension': 1024,
+                            'text': {'truncationMode': 'END', 'value': text[:10000]}
+                        }
+                    }),
                     contentType='application/json'
                 )
                 result = json.loads(response['body'].read())
-                embeddings.append(result.get('embedding', [0.0] * self._ndims))
+                embedding = result['embeddings'][0]['embedding']
+                embeddings.append(embedding)
             except Exception as e:
                 print(f'Error generating embedding: {e}')
                 embeddings.append([0.0] * self._ndims)
         return embeddings
 
 
-bedrock_embeddings = BedrockEmbeddingFunction.create()
+_bedrock_embeddings = None
 
 
-class DocumentRecord(LanceModel):
-    workflow_id: str
-    segment_id: str
-    segment_index: int
-    content: str = bedrock_embeddings.SourceField()
-    vector: Vector(1024) = bedrock_embeddings.VectorField()
-    keywords: str
-    file_uri: str
-    file_type: str
-    image_uri: Optional[str] = None
-    created_at: datetime
+def get_bedrock_embeddings():
+    global _bedrock_embeddings
+    if _bedrock_embeddings is None:
+        _bedrock_embeddings = BedrockEmbeddingFunction.create()
+    return _bedrock_embeddings
+
+
+def get_document_record_schema():
+    embeddings = get_bedrock_embeddings()
+
+    class DocumentRecord(LanceModel):
+        workflow_id: str
+        segment_id: str
+        segment_index: int
+        content: str = embeddings.SourceField()
+        vector: Vector(1024) = embeddings.VectorField()
+        keywords: str
+        file_uri: str
+        file_type: str
+        image_uri: Optional[str] = None
+        created_at: datetime
+
+    return DocumentRecord
 
 
 def get_or_create_table(project_id: str):
-    db = get_lancedb_connection(project_id)
+    print(f'[get_or_create_table] Connecting to LanceDB...')
+    db = get_lancedb_connection()
+    print(f'[get_or_create_table] Connected: {db}')
+
+    table_name = project_id
+    print(f'[get_or_create_table] Getting table names...')
     table_names = db.table_names()
-    if _table_name in table_names:
-        return db.open_table(_table_name)
+    print(f'[get_or_create_table] Existing tables: {table_names}')
+
+    if table_name in table_names:
+        print(f'[get_or_create_table] Opening existing table: {table_name}')
+        return db.open_table(table_name)
     else:
-        table = db.create_table(_table_name, schema=DocumentRecord)
+        print(f'[get_or_create_table] Creating new table: {table_name}')
+        print(f'[get_or_create_table] Getting document record schema...')
+        DocumentRecord = get_document_record_schema()
+        print(f'[get_or_create_table] Schema ready, creating table...')
+        table = db.create_table(table_name, schema=DocumentRecord)
+        print(f'[get_or_create_table] Creating FTS index...')
         table.create_fts_index('keywords', replace=True)
+        print(f'[get_or_create_table] Table created successfully')
         return table
 
 
 def action_add_record(params: dict) -> dict:
     project_id = params.get('project_id', 'default')
+    print(f'[add_record] project_id: {project_id}')
+
+    print('[add_record] Getting or creating table...')
     table = get_or_create_table(project_id)
+    print(f'[add_record] Table ready: {table}')
 
     workflow_id = params.get('workflow_id', '')
     segment_index = params.get('segment_index', 0)
     segment_id = f'{workflow_id}_{segment_index:04d}'
     content = params.get('content_combined', '')
+    print(f'[add_record] Extracting keywords from content (len={len(content)})')
     keywords = extract_keywords(content) if content else ''
+    print(f'[add_record] Keywords: {keywords[:100]}...')
     created_at_str = params.get('created_at', '')
 
     if created_at_str:
@@ -156,7 +205,9 @@ def action_add_record(params: dict) -> dict:
         'created_at': created_at
     }
 
+    print(f'[add_record] Adding record to table...')
     table.add([record])
+    print(f'[add_record] Record added successfully: {segment_id}')
     return {'success': True, 'segment_id': segment_id}
 
 
@@ -207,11 +258,12 @@ def action_search(params: dict) -> dict:
     return {'success': True, 'results': combined[:limit]}
 
 
-def handler(event, context):
+def handler(event, _context):
     print(f'Event: {json.dumps(event)}')
 
     action = event.get('action')
     params = event.get('params', {})
+    print(f'Action: {action}')
 
     actions = {
         'add_record': action_add_record,
@@ -220,13 +272,16 @@ def handler(event, context):
     }
 
     if action not in actions:
+        print(f'Unknown action: {action}')
         return {
             'statusCode': 400,
             'error': f'Unknown action: {action}'
         }
 
     try:
+        print(f'Executing action: {action}')
         result = actions[action](params)
+        print(f'Action result: {result}')
         return {
             'statusCode': 200,
             **result

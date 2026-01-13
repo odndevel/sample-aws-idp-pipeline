@@ -35,9 +35,33 @@ export class WorkflowStack extends Stack {
     // ========================================
 
     // LanceDB Express Bucket (S3 Directory Bucket)
-    const lancedbExpressBucketName = ssm.StringParameter.valueForStringParameter(
+    const lancedbExpressBucketName =
+      ssm.StringParameter.valueForStringParameter(
+        this,
+        SSM_KEYS.LANCEDB_EXPRESS_BUCKET_NAME,
+      );
+
+    // LanceDB Storage Bucket (Standard S3)
+    const lancedbStorageBucketName =
+      ssm.StringParameter.valueForStringParameter(
+        this,
+        SSM_KEYS.LANCEDB_STORAGE_BUCKET_NAME,
+      );
+    const lancedbStorageBucket = s3.Bucket.fromBucketName(
       this,
-      SSM_KEYS.LANCEDB_EXPRESS_BUCKET_NAME,
+      'LanceDBStorageBucket',
+      lancedbStorageBucketName,
+    );
+
+    // LanceDB Lock Table (DynamoDB)
+    const lancedbLockTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      SSM_KEYS.LANCEDB_LOCK_TABLE_NAME,
+    );
+    const lancedbLockTable = dynamodb.Table.fromTableName(
+      this,
+      'LanceDBLockTable',
+      lancedbLockTableName,
     );
 
     // Backend Table (existing) - for workflow state management
@@ -134,27 +158,31 @@ export class WorkflowStack extends Stack {
 
     backendTable.grantReadWriteData(websocketHandler);
 
-    const webSocketApi = new apigwv2.WebSocketApi(this, 'WorkflowWebSocketApi', {
-      apiName: 'idp-v2-workflow-websocket',
-      connectRouteOptions: {
-        integration: new WebSocketLambdaIntegration(
-          'ConnectIntegration',
-          websocketHandler,
-        ),
+    const webSocketApi = new apigwv2.WebSocketApi(
+      this,
+      'WorkflowWebSocketApi',
+      {
+        apiName: 'idp-v2-workflow-websocket',
+        connectRouteOptions: {
+          integration: new WebSocketLambdaIntegration(
+            'ConnectIntegration',
+            websocketHandler,
+          ),
+        },
+        disconnectRouteOptions: {
+          integration: new WebSocketLambdaIntegration(
+            'DisconnectIntegration',
+            websocketHandler,
+          ),
+        },
+        defaultRouteOptions: {
+          integration: new WebSocketLambdaIntegration(
+            'DefaultIntegration',
+            websocketHandler,
+          ),
+        },
       },
-      disconnectRouteOptions: {
-        integration: new WebSocketLambdaIntegration(
-          'DisconnectIntegration',
-          websocketHandler,
-        ),
-      },
-      defaultRouteOptions: {
-        integration: new WebSocketLambdaIntegration(
-          'DefaultIntegration',
-          websocketHandler,
-        ),
-      },
-    });
+    );
 
     const webSocketStage = new apigwv2.WebSocketStage(
       this,
@@ -647,6 +675,12 @@ export class WorkflowStack extends Stack {
           ],
         }),
       );
+
+      // S3 Standard permissions (LanceDB Storage)
+      lancedbStorageBucket.grantReadWrite(fn);
+
+      // DynamoDB permissions for LanceDB Lock table
+      lancedbLockTable.grantReadWriteData(fn);
 
       // DynamoDB permissions for Backend table (workflow state)
       backendTable.grantReadWriteData(fn);
