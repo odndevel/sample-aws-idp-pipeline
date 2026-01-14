@@ -123,8 +123,8 @@ export class Backend extends Construct {
         cpuArchitecture: CpuArchitecture.ARM64,
         operatingSystemFamily: OperatingSystemFamily.LINUX,
       },
-      memoryLimitMiB: 4096,
-      cpu: 1024,
+      memoryLimitMiB: 8192,
+      cpu: 2048,
       desiredCount: 1,
       publicLoadBalancer: false,
     });
@@ -156,6 +156,7 @@ export class Backend extends Construct {
         actions: [
           'bedrock:InvokeModel',
           'bedrock:InvokeModelWithResponseStream',
+          'bedrock:Rerank',
         ],
         resources: ['*'],
       }),
