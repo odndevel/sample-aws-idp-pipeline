@@ -41,10 +41,12 @@ readme = "README.md"
 dependencies = [
   "boto3>=1.42.0",
   "fastapi[standard]>=0.123.0",
+  "kiwipiepy>=0.22.2",
   "lancedb>=0.26.0",
   "pyarrow>=19.0.0",
   "pydantic>=2.12.5",
   "pydantic-settings>=2.0.0",
+  "sentence-transformers>=5.2.0",
 ]
 
 [build-system]

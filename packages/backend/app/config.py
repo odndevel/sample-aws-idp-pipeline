@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings
 
 
 class Config(BaseSettings):
+    aws_region: str = "us-east-1"
     lancedb_storage_bucket_name: str = ""
     lancedb_lock_table_name: str = ""
     document_storage_bucket_name: str = ""
