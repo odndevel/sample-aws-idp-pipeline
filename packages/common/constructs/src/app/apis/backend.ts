@@ -150,6 +150,17 @@ export class Backend extends Construct {
       }),
     );
 
+    // Grant Bedrock model invoke permissions
+    taskRole.addToPrincipalPolicy(
+      new PolicyStatement({
+        actions: [
+          'bedrock:InvokeModel',
+          'bedrock:InvokeModelWithResponseStream',
+        ],
+        resources: ['*'],
+      }),
+    );
+
     // Security Group for VPC Link
     const vpcLinkSg = new SecurityGroup(this, 'VpcLinkSg', {
       vpc,
