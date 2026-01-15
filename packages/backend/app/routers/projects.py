@@ -1,6 +1,5 @@
 import contextlib
 
-import boto3
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -17,6 +16,7 @@ from app.ddb import (
     update_project_data,
 )
 from app.ddb.workflows import delete_workflow_item, query_workflows
+from app.s3 import delete_s3_prefix, get_s3_client
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -139,7 +139,7 @@ def update_project(project_id: str, request: ProjectUpdate) -> ProjectResponse:
 def delete_project(project_id: str) -> dict:
     """Delete a project and all related data (documents, workflows, S3, LanceDB)."""
     config = get_config()
-    s3 = _get_s3_client()
+    s3 = get_s3_client()
 
     existing = get_project_item(project_id)
     if not existing:
@@ -163,13 +163,13 @@ def delete_project(project_id: str) -> dict:
     deleted_info["workflow_count"] = len(workflow_ids)
 
     # 2. Delete from LanceDB (per-project S3 Express bucket)
-    try:
-        lancedb_bucket = _get_ssm_parameter("/idp-v2/lancedb/express/bucket-name")
-        lancedb_prefix = f"{project_id}.lance/"
-        lancedb_deleted = _delete_s3_prefix(s3, lancedb_bucket, lancedb_prefix)
-        deleted_info["lancedb_objects_deleted"] = lancedb_deleted
-    except Exception as e:
-        deleted_info["lancedb_error"] = str(e)
+    if config.lancedb_express_bucket_name:
+        try:
+            lancedb_prefix = f"{project_id}.lance/"
+            lancedb_deleted = delete_s3_prefix(config.lancedb_express_bucket_name, lancedb_prefix)
+            deleted_info["lancedb_objects_deleted"] = lancedb_deleted
+        except Exception as e:
+            deleted_info["lancedb_error"] = str(e)
 
     # 3. Delete workflow items from DynamoDB (including STEP, SEG#*, etc.)
     total_wf_deleted = 0
@@ -183,7 +183,7 @@ def delete_project(project_id: str) -> dict:
     # 4. Delete from S3 - entire project folder
     project_prefix = f"projects/{project_id}/"
     with contextlib.suppress(Exception):
-        s3_deleted = _delete_s3_prefix(s3, config.document_storage_bucket_name, project_prefix)
+        s3_deleted = delete_s3_prefix(config.document_storage_bucket_name, project_prefix)
         deleted_info["s3_objects_deleted"] = s3_deleted
 
     # 5. Delete all project items from DynamoDB (PROJ#, DOC#*, WF#* links)
@@ -192,37 +192,3 @@ def delete_project(project_id: str) -> dict:
     deleted_info["project_items_deleted"] = len(project_items)
 
     return {"message": f"Project {project_id} deleted", "details": deleted_info}
-
-
-_s3_client = None
-
-
-def _get_s3_client():
-    global _s3_client
-    if _s3_client is None:
-        _s3_client = boto3.client("s3")
-    return _s3_client
-
-
-def _get_ssm_parameter(key: str) -> str:
-    """Get SSM parameter value."""
-    ssm = boto3.client("ssm")
-    response = ssm.get_parameter(Name=key)
-    return response["Parameter"]["Value"]
-
-
-def _delete_s3_prefix(s3_client, bucket: str, prefix: str) -> int:
-    """Delete all objects under a prefix."""
-    deleted_count = 0
-    paginator = s3_client.get_paginator("list_objects_v2")
-
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-        objects = page.get("Contents", [])
-        if not objects:
-            continue
-
-        delete_keys = [{"Key": obj["Key"]} for obj in objects]
-        s3_client.delete_objects(Bucket=bucket, Delete={"Objects": delete_keys})
-        deleted_count += len(delete_keys)
-
-    return deleted_count

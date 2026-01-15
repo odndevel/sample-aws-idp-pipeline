@@ -1,22 +1,29 @@
 import json
 import re
 
-import boto3
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.config import get_config
+from app.s3 import get_s3_client
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
-_s3_client = None
+
+def get_session_bucket():
+    """Get S3 client and bucket name for session storage."""
+    config = get_config()
+    bucket_name = config.session_storage_bucket_name
+
+    if not bucket_name:
+        raise HTTPException(status_code=500, detail="Session storage bucket not configured")
+
+    return get_s3_client(), bucket_name
 
 
-def _get_s3_client():
-    global _s3_client
-    if _s3_client is None:
-        _s3_client = boto3.client("s3")
-    return _s3_client
+def get_session_messages_prefix(session_id: str) -> str:
+    """Get S3 prefix for session messages."""
+    return f"sessions/session_{session_id}/agents/agent_default/messages/"
 
 
 class ChatMessage(BaseModel):
@@ -36,14 +43,8 @@ def get_chat_history(session_id: str) -> ChatHistoryResponse:
     Strands SDK stores messages in:
     sessions/session_{id}/agents/agent_default/messages/message_*.json
     """
-    config = get_config()
-    bucket_name = config.session_storage_bucket_name
-
-    if not bucket_name:
-        raise HTTPException(status_code=500, detail="Session storage bucket not configured")
-
-    s3 = _get_s3_client()
-    prefix = f"sessions/session_{session_id}/agents/agent_default/messages/"
+    s3, bucket_name = get_session_bucket()
+    prefix = get_session_messages_prefix(session_id)
 
     try:
         # List all message files

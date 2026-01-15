@@ -2,20 +2,11 @@ import json
 import re
 from urllib.parse import urlparse
 
-import boto3
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.ddb.workflows import get_workflow_item, query_workflow_segments, query_workflows
-
-_s3_client = None
-
-
-def _get_s3_client():
-    global _s3_client
-    if _s3_client is None:
-        _s3_client = boto3.client("s3")
-    return _s3_client
+from app.s3 import get_s3_client
 
 
 def _parse_s3_uri(uri: str) -> tuple:
@@ -40,7 +31,7 @@ def _get_segment_from_s3(file_uri: str, s3_key: str) -> dict | None:
         return None
 
     try:
-        s3 = _get_s3_client()
+        s3 = get_s3_client()
         bucket, _ = _parse_s3_uri(file_uri)
 
         response = s3.get_object(Bucket=bucket, Key=s3_key)
@@ -75,7 +66,7 @@ def _generate_presigned_url(s3_uri: str, expires_in: int = 3600) -> str | None:
         bucket = parsed.netloc
         key = parsed.path.lstrip("/")
 
-        s3 = _get_s3_client()
+        s3 = get_s3_client()
         params = {"Bucket": bucket, "Key": key}
 
         # Add ResponseContentType for images to fix ORB blocking

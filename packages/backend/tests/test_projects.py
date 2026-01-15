@@ -284,7 +284,7 @@ class TestUpdateProject:
 
 class TestDeleteProject:
     @patch("app.ddb.workflows.get_table")
-    @patch("app.routers.projects._get_s3_client")
+    @patch("app.routers.projects.get_s3_client")
     @patch("app.ddb.client.get_table")
     @patch("app.ddb.projects.get_table")
     def test_delete_project_success(self, mock_proj_get_table, mock_client_get_table, mock_get_s3, mock_wf_get_table):
