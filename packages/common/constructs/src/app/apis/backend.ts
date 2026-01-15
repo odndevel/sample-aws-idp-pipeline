@@ -129,8 +129,8 @@ export class Backend extends Construct {
         cpuArchitecture: CpuArchitecture.ARM64,
         operatingSystemFamily: OperatingSystemFamily.LINUX,
       },
-      memoryLimitMiB: 8192,
-      cpu: 2048,
+      memoryLimitMiB: 2048,
+      cpu: 1024,
       desiredCount: 1,
       publicLoadBalancer: false,
     });
