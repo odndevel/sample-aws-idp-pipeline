@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import documents, etc, health, projects, search, tables, workflows
+from app.routers import documents, etc, health, projects, search, workflows
 
 app = FastAPI(
     openapi_tags=[
@@ -10,7 +10,6 @@ app = FastAPI(
         {"name": "projects", "description": "프로젝트 관리"},
         {"name": "documents", "description": "문서 관리"},
         {"name": "workflows", "description": "워크플로우 관리"},
-        {"name": "tables", "description": "테이블 관리"},
         {"name": "search", "description": "검색 API"},
     ]
 )
@@ -28,5 +27,4 @@ app.include_router(etc.router)
 app.include_router(health.router)
 app.include_router(projects.router)
 app.include_router(search.router)
-app.include_router(tables.router)
 app.include_router(workflows.router)
