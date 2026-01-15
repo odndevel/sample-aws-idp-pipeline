@@ -11,6 +11,7 @@ import {
 
 export interface IdpAgentProps {
   agentPath: string;
+  agentName: string;
   sessionStorageBucket: IBucket;
   lancedbLockTable: ITable;
   lancedbExpressBucketName: string;
@@ -24,6 +25,7 @@ export class IdpAgent extends Construct {
 
     const {
       agentPath,
+      agentName,
       sessionStorageBucket,
       lancedbLockTable,
       lancedbExpressBucketName,
@@ -34,7 +36,7 @@ export class IdpAgent extends Construct {
     });
 
     this.runtime = new Runtime(this, 'Runtime', {
-      runtimeName: 'idp_agent_runtime',
+      runtimeName: agentName,
       protocolConfiguration: ProtocolType.HTTP,
       agentRuntimeArtifact: dockerImage,
       environmentVariables: {

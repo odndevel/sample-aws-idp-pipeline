@@ -45,6 +45,7 @@ export class AgentStack extends Stack {
 
     const idpAgent = new IdpAgent(this, 'IdpAgent', {
       agentPath: path.resolve(process.cwd(), '../../packages/agents/idp-agent'),
+      agentName: 'idp_agent',
       sessionStorageBucket,
       lancedbLockTable,
       lancedbExpressBucketName,
@@ -55,6 +56,7 @@ export class AgentStack extends Stack {
         process.cwd(),
         '../../packages/agents/bidi-agent',
       ),
+      agentName: 'bidi_agent',
       sessionStorageBucket,
       lancedbLockTable,
       lancedbExpressBucketName,

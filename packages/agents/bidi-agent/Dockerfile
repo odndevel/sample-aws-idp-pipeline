@@ -2,9 +2,10 @@ FROM public.ecr.aws/docker/library/python:3.13-slim
 
 WORKDIR /app
 
-# Install audio libraries for pyaudio
+# Install audio libraries and build tools for pyaudio
 RUN apt-get update && apt-get install -y --no-install-recommends \
     portaudio19-dev \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy project files
