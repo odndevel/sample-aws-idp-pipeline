@@ -1,0 +1,73 @@
+import { Construct } from 'constructs';
+import { Platform } from 'aws-cdk-lib/aws-ecr-assets';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import { IBucket } from 'aws-cdk-lib/aws-s3';
+import { ITable } from 'aws-cdk-lib/aws-dynamodb';
+import {
+  AgentRuntimeArtifact,
+  ProtocolType,
+  Runtime,
+} from '@aws-cdk/aws-bedrock-agentcore-alpha';
+
+export interface IdpAgentProps {
+  agentPath: string;
+  sessionStorageBucket: IBucket;
+  lancedbLockTable: ITable;
+  lancedbExpressBucketName: string;
+}
+
+export class IdpAgent extends Construct {
+  public readonly runtime: Runtime;
+
+  constructor(scope: Construct, id: string, props: IdpAgentProps) {
+    super(scope, id);
+
+    const {
+      agentPath,
+      sessionStorageBucket,
+      lancedbLockTable,
+      lancedbExpressBucketName,
+    } = props;
+
+    const dockerImage = AgentRuntimeArtifact.fromAsset(agentPath, {
+      platform: Platform.LINUX_ARM64,
+    });
+
+    this.runtime = new Runtime(this, 'Runtime', {
+      runtimeName: 'idp_agent_runtime',
+      protocolConfiguration: ProtocolType.HTTP,
+      agentRuntimeArtifact: dockerImage,
+      environmentVariables: {
+        SESSION_STORAGE_BUCKET_NAME: sessionStorageBucket.bucketName,
+        LANCEDB_LOCK_TABLE_NAME: lancedbLockTable.tableName,
+        LANCEDB_EXPRESS_BUCKET_NAME: lancedbExpressBucketName,
+      },
+    });
+
+    // Grant S3 read/write access for session storage
+    sessionStorageBucket.grantReadWrite(this.runtime.role);
+
+    // Grant DynamoDB read/write access for LanceDB lock table
+    lancedbLockTable.grantReadWriteData(this.runtime.role);
+
+    // Grant S3 Express access for LanceDB storage
+    this.runtime.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['s3express:*'],
+        resources: ['*'],
+      }),
+    );
+
+    // Add Bedrock model invocation permissions
+    this.runtime.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          'bedrock:InvokeModel',
+          'bedrock:InvokeModelWithResponseStream',
+          'bedrock:Rerank',
+        ],
+        resources: ['*'],
+      }),
+    );
+  }
+}
