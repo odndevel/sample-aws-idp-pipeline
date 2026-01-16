@@ -14,24 +14,58 @@ interface Credentials {
   expiration?: Date;
 }
 
-/** 스트림 파싱 (plain text) */
+export interface StreamEvent {
+  type: 'text' | 'tool_use' | 'complete';
+  content?: string;
+  name?: string;
+}
+
+/** 스트림 파싱 (JSON 이벤트) */
 async function parseStream(
   response: Response,
-  onChunk?: (chunk: string) => void,
+  onEvent?: (event: StreamEvent) => void,
 ): Promise<string> {
   const reader = response.body?.getReader();
   if (!reader) throw new Error('No response body');
 
   const decoder = new TextDecoder();
   let result = '';
+  let buffer = '';
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
 
-    const chunk = decoder.decode(value, { stream: true });
-    result += chunk;
-    onChunk?.(chunk);
+    buffer += decoder.decode(value, { stream: true });
+
+    // JSON 객체 단위로 파싱
+    let startIdx = 0;
+    for (let i = 0; i < buffer.length; i++) {
+      if (buffer[i] === '{') {
+        let braceCount = 1;
+        let j = i + 1;
+        while (j < buffer.length && braceCount > 0) {
+          if (buffer[j] === '{') braceCount++;
+          else if (buffer[j] === '}') braceCount--;
+          j++;
+        }
+        if (braceCount === 0) {
+          const jsonStr = buffer.slice(i, j);
+          try {
+            const event = JSON.parse(jsonStr) as StreamEvent;
+            onEvent?.(event);
+            if (event.type === 'text' && event.content) {
+              result += event.content;
+            }
+          } catch {
+            // JSON 파싱 실패 시 무시
+          }
+          startIdx = j;
+          i = j - 1;
+        }
+      }
+    }
+    buffer = buffer.slice(startIdx);
   }
 
   return result;
@@ -154,7 +188,7 @@ export function useAwsClient() {
       prompt: string,
       sessionId: string,
       projectId: string,
-      onChunk?: (chunk: string) => void,
+      onEvent?: (event: StreamEvent) => void,
     ): Promise<string> => {
       if (!agentRuntimeArn) throw new Error('Agent runtime ARN not available');
 
@@ -187,7 +221,7 @@ export function useAwsClient() {
         ?.includes('text/event-stream');
 
       if (isStreaming) {
-        return parseStream(response, onChunk);
+        return parseStream(response, onEvent);
       }
 
       return JSON.stringify(await response.json());
