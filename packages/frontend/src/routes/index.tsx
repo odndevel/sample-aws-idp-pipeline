@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from 'react-oidc-context';
+import { useTranslation } from 'react-i18next';
 import { useAwsClient } from '../hooks/useAwsClient';
 
 interface Project {
@@ -21,22 +22,16 @@ interface Project {
 const OCR_MODELS = [
   {
     value: 'paddleocr-vl',
-    name: 'PaddleOCR-VL',
-    description: 'Vision-Language model for complex documents',
     hasLangOption: false,
     hasOptions: false,
   },
   {
     value: 'pp-ocrv5',
-    name: 'PP-OCRv5',
-    description: 'General-purpose OCR with high accuracy',
     hasLangOption: true,
     hasOptions: true,
   },
   {
     value: 'pp-structurev3',
-    name: 'PP-StructureV3',
-    description: 'Document structure analysis with table detection',
     hasLangOption: true,
     hasOptions: true,
   },
@@ -105,26 +100,51 @@ const OCR_LANGUAGES = [
   { code: 'sw', name: 'Swahili' },
 ];
 
-const OCR_OPTIONS_INFO = {
-  use_doc_orientation_classify: {
-    title: 'Document Orientation',
-    description: 'Auto-detect and correct document orientation',
-  },
-  use_doc_unwarping: {
-    title: 'Document Unwarping',
-    description: 'Correct perspective distortion and warping',
-  },
-  use_textline_orientation: {
-    title: 'Textline Orientation',
-    description: 'Detect and handle rotated text lines (PP-OCRv5 only)',
-  },
-};
-
 const LANGUAGES = [
+  // East Asian
   { code: 'ko', name: 'Korean', flag: 'KR' },
-  { code: 'en', name: 'English', flag: 'EN' },
   { code: 'ja', name: 'Japanese', flag: 'JP' },
   { code: 'zh', name: 'Chinese', flag: 'CN' },
+  { code: 'zh-tw', name: 'Chinese (Traditional)', flag: 'TW' },
+  // Western
+  { code: 'en', name: 'English', flag: 'US' },
+  { code: 'fr', name: 'French', flag: 'FR' },
+  { code: 'de', name: 'German', flag: 'DE' },
+  { code: 'it', name: 'Italian', flag: 'IT' },
+  { code: 'es', name: 'Spanish', flag: 'ES' },
+  { code: 'pt', name: 'Portuguese', flag: 'PT' },
+  { code: 'nl', name: 'Dutch', flag: 'NL' },
+  { code: 'pl', name: 'Polish', flag: 'PL' },
+  // Eastern European
+  { code: 'ru', name: 'Russian', flag: 'RU' },
+  { code: 'uk', name: 'Ukrainian', flag: 'UA' },
+  { code: 'cs', name: 'Czech', flag: 'CZ' },
+  { code: 'hu', name: 'Hungarian', flag: 'HU' },
+  { code: 'ro', name: 'Romanian', flag: 'RO' },
+  { code: 'bg', name: 'Bulgarian', flag: 'BG' },
+  // Nordic
+  { code: 'sv', name: 'Swedish', flag: 'SE' },
+  { code: 'no', name: 'Norwegian', flag: 'NO' },
+  { code: 'da', name: 'Danish', flag: 'DK' },
+  { code: 'fi', name: 'Finnish', flag: 'FI' },
+  // Southeast Asian
+  { code: 'vi', name: 'Vietnamese', flag: 'VN' },
+  { code: 'th', name: 'Thai', flag: 'TH' },
+  { code: 'id', name: 'Indonesian', flag: 'ID' },
+  { code: 'ms', name: 'Malay', flag: 'MY' },
+  { code: 'tl', name: 'Tagalog', flag: 'PH' },
+  // South Asian
+  { code: 'hi', name: 'Hindi', flag: 'IN' },
+  { code: 'bn', name: 'Bengali', flag: 'BD' },
+  { code: 'ne', name: 'Nepali', flag: 'NP' },
+  // Middle Eastern
+  { code: 'ar', name: 'Arabic', flag: 'SA' },
+  { code: 'fa', name: 'Persian', flag: 'IR' },
+  { code: 'tr', name: 'Turkish', flag: 'TR' },
+  { code: 'he', name: 'Hebrew', flag: 'IL' },
+  // Other
+  { code: 'mn', name: 'Mongolian', flag: 'MN' },
+  { code: 'sw', name: 'Swahili', flag: 'KE' },
 ];
 
 export const Route = createFileRoute('/')({
@@ -155,6 +175,7 @@ function ProjectFolder({
   onEdit,
   onDelete,
 }: ProjectFolderProps) {
+  const { t } = useTranslation();
   const [isHovered, setIsHovered] = useState(false);
   const colors = FOLDER_GRADIENTS[colorIndex % FOLDER_GRADIENTS.length];
 
@@ -309,7 +330,7 @@ function ProjectFolder({
             onEdit(project);
           }}
           className="w-8 h-8 flex items-center justify-center bg-white/90 hover:bg-blue-500 hover:text-white text-slate-600 rounded-full shadow-md border border-slate-200 transition-colors"
-          title="Edit project"
+          title={t('projects.editProject')}
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -333,7 +354,7 @@ function ProjectFolder({
             onDelete(project.project_id);
           }}
           className="w-8 h-8 flex items-center justify-center bg-white/90 hover:bg-red-500 hover:text-white text-slate-600 rounded-full shadow-md border border-slate-200 transition-colors"
-          title="Delete project"
+          title={t('projects.deleteProject')}
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -356,12 +377,16 @@ function ProjectFolder({
 }
 
 function ProjectsPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { fetchApi } = useAwsClient();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showAdvancedModal, setShowAdvancedModal] = useState(false);
+  const [showOcrAccordion, setShowOcrAccordion] = useState(false);
+  const [showInstructionsAccordion, setShowInstructionsAccordion] =
+    useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -509,8 +534,7 @@ function ProjectsPage() {
   };
 
   const handleDeleteProject = async (projectId: string) => {
-    if (!window.confirm('Are you sure you want to delete this project?'))
-      return;
+    if (!window.confirm(t('projects.deleteConfirm'))) return;
     try {
       await fetchApi(`projects/${projectId}`, { method: 'DELETE' });
       await loadProjects();
@@ -523,10 +547,10 @@ function ProjectsPage() {
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       <div className="flex justify-between items-center mb-8 flex-shrink-0">
         <div>
-          <h1 className="text-3xl font-bold text-slate-800">Projects</h1>
-          <p className="text-slate-500 mt-1">
-            Manage your document analysis projects
-          </p>
+          <h1 className="text-3xl font-bold text-slate-800">
+            {t('projects.title')}
+          </h1>
+          <p className="text-slate-500 mt-1">{t('projects.manageProjects')}</p>
         </div>
         <button
           onClick={openCreateModal}
@@ -546,7 +570,7 @@ function ProjectsPage() {
               d="M12 4v16m8-8H4"
             />
           </svg>
-          <span className="font-medium">New Project</span>
+          <span className="font-medium">{t('projects.newProject')}</span>
         </button>
       </div>
 
@@ -554,7 +578,7 @@ function ProjectsPage() {
         <div className="flex-1 flex items-center justify-center">
           <div className="flex flex-col items-center gap-3">
             <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-            <span className="text-slate-500">Loading projects...</span>
+            <span className="text-slate-500">{t('common.loading')}</span>
           </div>
         </div>
       ) : projects.length === 0 ? (
@@ -577,16 +601,14 @@ function ProjectsPage() {
               </svg>
             </div>
             <h3 className="text-lg font-semibold text-slate-700 mb-1">
-              No projects yet
+              {t('projects.noProjects')}
             </h3>
-            <p className="text-slate-500 mb-4">
-              Create your first project to get started
-            </p>
+            <p className="text-slate-500 mb-4">{t('projects.createFirst')}</p>
             <button
               onClick={openCreateModal}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
-              Create Project
+              {t('projects.createProject')}
             </button>
           </div>
         </div>
@@ -616,10 +638,10 @@ function ProjectsPage() {
                 </svg>
               </div>
               <span className="text-slate-600 group-hover:text-blue-600 font-semibold transition-colors">
-                New Project
+                {t('projects.newProject')}
               </span>
               <span className="text-xs text-slate-400 mt-1">
-                Click to create
+                {t('projects.clickToCreate')}
               </span>
             </button>
 
@@ -641,7 +663,7 @@ function ProjectsPage() {
       {showModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
           <div
-            className="bg-white rounded-2xl shadow-2xl flex overflow-hidden mx-4 max-h-[90vh]"
+            className="bg-white rounded-2xl shadow-2xl flex overflow-hidden mx-4 h-[70vh]"
             style={{
               animation: 'modalIn 0.3s ease-out',
               width: showAdvancedModal ? '1000px' : '500px',
@@ -650,21 +672,23 @@ function ProjectsPage() {
           >
             {/* Main Panel */}
             <div
-              className={`p-6 flex flex-col flex-shrink-0 ${
+              className={`p-6 flex flex-col h-full overflow-y-auto ${
                 showAdvancedModal
-                  ? 'w-[500px] border-r border-slate-200'
+                  ? 'w-[500px] flex-shrink-0 border-r border-slate-200'
                   : 'w-full'
               }`}
             >
               <h2 className="text-xl font-bold text-slate-800 mb-4">
-                {editingProject ? 'Edit Project' : 'Create New Project'}
+                {editingProject
+                  ? t('projects.editProject')
+                  : t('projects.createProject')}
               </h2>
 
               <div className="space-y-4">
                 {editingProject && (
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Project ID
+                      {t('projects.projectId')}
                     </label>
                     <div className="px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-slate-600 text-sm font-mono">
                       {editingProject.project_id}
@@ -674,7 +698,7 @@ function ProjectsPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Project Name
+                    {t('projects.projectName')}
                   </label>
                   <input
                     type="text"
@@ -682,14 +706,14 @@ function ProjectsPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, name: e.target.value })
                     }
-                    placeholder="My Project"
+                    placeholder={t('projects.projectNamePlaceholder')}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Description
+                    {t('projects.description')}
                   </label>
                   <textarea
                     value={formData.description}
@@ -699,7 +723,7 @@ function ProjectsPage() {
                         description: e.target.value,
                       })
                     }
-                    placeholder="Project description..."
+                    placeholder={t('projects.descriptionPlaceholder')}
                     rows={3}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none transition-shadow"
                   />
@@ -707,7 +731,7 @@ function ProjectsPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Language
+                    {t('common.language')}
                   </label>
                   <select
                     value={formData.language}
@@ -718,7 +742,7 @@ function ProjectsPage() {
                   >
                     {LANGUAGES.map((lang) => (
                       <option key={lang.code} value={lang.code}>
-                        {lang.name}
+                        {t(`languages.${lang.code}`)}
                       </option>
                     ))}
                   </select>
@@ -726,7 +750,7 @@ function ProjectsPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Folder Color
+                    {t('projects.folderColor')}
                   </label>
                   <div className="flex gap-2 flex-wrap">
                     {FOLDER_GRADIENTS.map((gradient, index) => (
@@ -781,7 +805,7 @@ function ProjectsPage() {
                       d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
                     />
                   </svg>
-                  Advanced Settings
+                  {t('projects.advancedSettings')}
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     className={`h-4 w-4 transition-transform duration-300 ${
@@ -804,14 +828,18 @@ function ProjectsPage() {
                     onClick={closeModal}
                     className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                   >
-                    Cancel
+                    {t('common.cancel')}
                   </button>
                   <button
                     onClick={handleSave}
                     disabled={!formData.name.trim() || saving}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
                   >
-                    {saving ? 'Saving...' : editingProject ? 'Save' : 'Create'}
+                    {saving
+                      ? t('common.saving')
+                      : editingProject
+                        ? t('common.save')
+                        : t('common.create')}
                   </button>
                 </div>
               </div>
@@ -820,211 +848,261 @@ function ProjectsPage() {
             {/* Advanced Settings Panel */}
             {showAdvancedModal && (
               <div
-                className="w-[500px] flex-shrink-0 p-6 bg-slate-50 overflow-y-auto"
+                className="w-[500px] flex-shrink-0 h-full p-6 bg-slate-50 overflow-y-auto"
                 style={{ animation: 'slideIn 0.2s ease-out' }}
               >
                 <h3 className="text-lg font-bold text-slate-800 mb-4">
-                  Advanced Settings
+                  {t('projects.advancedSettings')}
                 </h3>
 
                 <div className="space-y-5">
-                  {/* OCR Model Selection */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      OCR Model
-                    </label>
-                    <div className="space-y-2">
-                      {OCR_MODELS.map((model) => (
-                        <label
-                          key={model.value}
-                          className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-all bg-white ${
-                            advancedSettings.ocr_model === model.value
-                              ? 'border-blue-500 bg-blue-50'
-                              : 'border-slate-200 hover:border-slate-300'
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="ocr_model"
-                            value={model.value}
-                            checked={advancedSettings.ocr_model === model.value}
-                            onChange={(e) =>
-                              setAdvancedSettings({
-                                ...advancedSettings,
-                                ocr_model: e.target.value,
-                                ...(e.target.value === 'paddleocr-vl'
-                                  ? {
-                                      ocr_lang: '',
-                                      use_doc_orientation_classify: false,
-                                      use_doc_unwarping: false,
-                                      use_textline_orientation: false,
-                                    }
-                                  : {}),
-                              })
-                            }
-                            className="mt-1"
-                          />
-                          <div>
-                            <div className="font-medium text-slate-800">
-                              {model.name}
-                            </div>
-                            <div className="text-xs text-slate-500">
-                              {model.description}
-                            </div>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Language Selection */}
-                  {OCR_MODELS.find(
-                    (m) => m.value === advancedSettings.ocr_model,
-                  )?.hasLangOption && (
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
-                        OCR Language
-                      </label>
-                      <select
-                        value={advancedSettings.ocr_lang}
-                        onChange={(e) =>
-                          setAdvancedSettings({
-                            ...advancedSettings,
-                            ocr_lang: e.target.value,
-                          })
-                        }
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow bg-white"
+                  {/* OCR Settings - Accordion */}
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setShowOcrAccordion(!showOcrAccordion)}
+                      className="w-full flex items-center justify-between p-3 bg-white hover:bg-slate-50 transition-colors"
+                    >
+                      <span className="text-sm font-medium text-slate-700">
+                        {t('ocr.title')}
+                      </span>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className={`h-4 w-4 text-slate-500 transition-transform duration-200 ${
+                          showOcrAccordion ? 'rotate-180' : ''
+                        }`}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
                       >
-                        {OCR_LANGUAGES.map((lang) => (
-                          <option key={lang.code} value={lang.code}>
-                            {lang.name}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Select the primary language of documents in this project
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Processing Options */}
-                  {OCR_MODELS.find(
-                    (m) => m.value === advancedSettings.ocr_model,
-                  )?.hasOptions && (
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
-                        Processing Options
-                      </label>
-                      <div className="space-y-3">
-                        <label className="flex items-start gap-3 p-3 border border-slate-200 rounded-lg cursor-pointer hover:border-slate-300 transition-all bg-white">
-                          <input
-                            type="checkbox"
-                            checked={
-                              advancedSettings.use_doc_orientation_classify
-                            }
-                            onChange={(e) =>
-                              setAdvancedSettings({
-                                ...advancedSettings,
-                                use_doc_orientation_classify: e.target.checked,
-                              })
-                            }
-                            className="mt-0.5"
-                          />
-                          <div>
-                            <div className="font-medium text-slate-800 text-sm">
-                              {
-                                OCR_OPTIONS_INFO.use_doc_orientation_classify
-                                  .title
-                              }
-                            </div>
-                            <div className="text-xs text-slate-500">
-                              {
-                                OCR_OPTIONS_INFO.use_doc_orientation_classify
-                                  .description
-                              }
-                            </div>
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                    </button>
+                    {showOcrAccordion && (
+                      <div className="p-3 border-t border-slate-200 bg-white space-y-4">
+                        {/* OCR Model Selection */}
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-2">
+                            {t('ocr.model')}
+                          </label>
+                          <div className="space-y-2">
+                            {OCR_MODELS.map((model) => (
+                              <label
+                                key={model.value}
+                                className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-all bg-white ${
+                                  advancedSettings.ocr_model === model.value
+                                    ? 'border-blue-500 bg-blue-50'
+                                    : 'border-slate-200 hover:border-slate-300'
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name="ocr_model"
+                                  value={model.value}
+                                  checked={
+                                    advancedSettings.ocr_model === model.value
+                                  }
+                                  onChange={(e) =>
+                                    setAdvancedSettings({
+                                      ...advancedSettings,
+                                      ocr_model: e.target.value,
+                                      ...(e.target.value === 'paddleocr-vl'
+                                        ? {
+                                            ocr_lang: '',
+                                            use_doc_orientation_classify: false,
+                                            use_doc_unwarping: false,
+                                            use_textline_orientation: false,
+                                          }
+                                        : {}),
+                                    })
+                                  }
+                                  className="mt-1"
+                                />
+                                <div>
+                                  <div className="font-medium text-slate-800">
+                                    {t(`ocr.models.${model.value}.name`)}
+                                  </div>
+                                  <div className="text-xs text-slate-500">
+                                    {t(`ocr.models.${model.value}.description`)}
+                                  </div>
+                                </div>
+                              </label>
+                            ))}
                           </div>
-                        </label>
+                        </div>
 
-                        <label className="flex items-start gap-3 p-3 border border-slate-200 rounded-lg cursor-pointer hover:border-slate-300 transition-all bg-white">
-                          <input
-                            type="checkbox"
-                            checked={advancedSettings.use_doc_unwarping}
-                            onChange={(e) =>
-                              setAdvancedSettings({
-                                ...advancedSettings,
-                                use_doc_unwarping: e.target.checked,
-                              })
-                            }
-                            className="mt-0.5"
-                          />
+                        {/* Language Selection */}
+                        {OCR_MODELS.find(
+                          (m) => m.value === advancedSettings.ocr_model,
+                        )?.hasLangOption && (
                           <div>
-                            <div className="font-medium text-slate-800 text-sm">
-                              {OCR_OPTIONS_INFO.use_doc_unwarping.title}
-                            </div>
-                            <div className="text-xs text-slate-500">
-                              {OCR_OPTIONS_INFO.use_doc_unwarping.description}
-                            </div>
-                          </div>
-                        </label>
-
-                        {advancedSettings.ocr_model === 'pp-ocrv5' && (
-                          <label className="flex items-start gap-3 p-3 border border-slate-200 rounded-lg cursor-pointer hover:border-slate-300 transition-all bg-white">
-                            <input
-                              type="checkbox"
-                              checked={
-                                advancedSettings.use_textline_orientation
-                              }
+                            <label className="block text-sm font-medium text-slate-700 mb-2">
+                              {t('ocr.language')}
+                            </label>
+                            <select
+                              value={advancedSettings.ocr_lang}
                               onChange={(e) =>
                                 setAdvancedSettings({
                                   ...advancedSettings,
-                                  use_textline_orientation: e.target.checked,
+                                  ocr_lang: e.target.value,
                                 })
                               }
-                              className="mt-0.5"
-                            />
-                            <div>
-                              <div className="font-medium text-slate-800 text-sm">
-                                {
-                                  OCR_OPTIONS_INFO.use_textline_orientation
-                                    .title
-                                }
-                              </div>
-                              <div className="text-xs text-slate-500">
-                                {
-                                  OCR_OPTIONS_INFO.use_textline_orientation
-                                    .description
-                                }
-                              </div>
+                              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow bg-white"
+                            >
+                              {OCR_LANGUAGES.map((lang) => (
+                                <option key={lang.code} value={lang.code}>
+                                  {lang.name}
+                                </option>
+                              ))}
+                            </select>
+                            <p className="text-xs text-slate-500 mt-1">
+                              {t('ocr.languageHint')}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Processing Options */}
+                        {OCR_MODELS.find(
+                          (m) => m.value === advancedSettings.ocr_model,
+                        )?.hasOptions && (
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">
+                              {t('ocr.processingOptions')}
+                            </label>
+                            <div className="space-y-3">
+                              <label className="flex items-start gap-3 p-3 border border-slate-200 rounded-lg cursor-pointer hover:border-slate-300 transition-all bg-white">
+                                <input
+                                  type="checkbox"
+                                  checked={
+                                    advancedSettings.use_doc_orientation_classify
+                                  }
+                                  onChange={(e) =>
+                                    setAdvancedSettings({
+                                      ...advancedSettings,
+                                      use_doc_orientation_classify:
+                                        e.target.checked,
+                                    })
+                                  }
+                                  className="mt-0.5"
+                                />
+                                <div>
+                                  <div className="font-medium text-slate-800 text-sm">
+                                    {t('ocr.documentOrientation')}
+                                  </div>
+                                  <div className="text-xs text-slate-500">
+                                    {t('ocr.documentOrientationDesc')}
+                                  </div>
+                                </div>
+                              </label>
+
+                              <label className="flex items-start gap-3 p-3 border border-slate-200 rounded-lg cursor-pointer hover:border-slate-300 transition-all bg-white">
+                                <input
+                                  type="checkbox"
+                                  checked={advancedSettings.use_doc_unwarping}
+                                  onChange={(e) =>
+                                    setAdvancedSettings({
+                                      ...advancedSettings,
+                                      use_doc_unwarping: e.target.checked,
+                                    })
+                                  }
+                                  className="mt-0.5"
+                                />
+                                <div>
+                                  <div className="font-medium text-slate-800 text-sm">
+                                    {t('ocr.documentUnwarping')}
+                                  </div>
+                                  <div className="text-xs text-slate-500">
+                                    {t('ocr.documentUnwarpingDesc')}
+                                  </div>
+                                </div>
+                              </label>
+
+                              {advancedSettings.ocr_model === 'pp-ocrv5' && (
+                                <label className="flex items-start gap-3 p-3 border border-slate-200 rounded-lg cursor-pointer hover:border-slate-300 transition-all bg-white">
+                                  <input
+                                    type="checkbox"
+                                    checked={
+                                      advancedSettings.use_textline_orientation
+                                    }
+                                    onChange={(e) =>
+                                      setAdvancedSettings({
+                                        ...advancedSettings,
+                                        use_textline_orientation:
+                                          e.target.checked,
+                                      })
+                                    }
+                                    className="mt-0.5"
+                                  />
+                                  <div>
+                                    <div className="font-medium text-slate-800 text-sm">
+                                      {t('ocr.textlineOrientation')}
+                                    </div>
+                                    <div className="text-xs text-slate-500">
+                                      {t('ocr.textlineOrientationDesc')}
+                                    </div>
+                                  </div>
+                                </label>
+                              )}
                             </div>
-                          </label>
+                          </div>
                         )}
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
 
-                  {/* Document Analysis Instructions */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Document Analysis Instructions
-                    </label>
-                    <textarea
-                      value={advancedSettings.document_prompt}
-                      onChange={(e) =>
-                        setAdvancedSettings({
-                          ...advancedSettings,
-                          document_prompt: e.target.value,
-                        })
+                  {/* Document Analysis Instructions - Accordion */}
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setShowInstructionsAccordion(!showInstructionsAccordion)
                       }
-                      placeholder="Enter custom instructions for document analysis (optional)&#10;&#10;Example:&#10;- Focus on extracting financial data and dates&#10;- Pay special attention to signature blocks&#10;- Extract all table data in structured format"
-                      rows={8}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow resize-y text-sm bg-white"
-                    />
-                    <p className="text-xs text-slate-500 mt-1">
-                      Custom instructions to guide document analysis. These
-                      instructions will be applied when analyzing documents in
-                      this project.
-                    </p>
+                      className="w-full flex items-center justify-between p-3 bg-white hover:bg-slate-50 transition-colors"
+                    >
+                      <span className="text-sm font-medium text-slate-700">
+                        {t('analysis.title')}
+                      </span>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className={`h-4 w-4 text-slate-500 transition-transform duration-200 ${
+                          showInstructionsAccordion ? 'rotate-180' : ''
+                        }`}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                    </button>
+                    {showInstructionsAccordion && (
+                      <div className="p-3 border-t border-slate-200 bg-white">
+                        <textarea
+                          value={advancedSettings.document_prompt}
+                          onChange={(e) =>
+                            setAdvancedSettings({
+                              ...advancedSettings,
+                              document_prompt: e.target.value,
+                            })
+                          }
+                          placeholder={t('analysis.placeholder')}
+                          rows={6}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow resize-y text-sm bg-white"
+                        />
+                        <p className="text-xs text-slate-500 mt-1">
+                          {t('analysis.hint')}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

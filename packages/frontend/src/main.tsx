@@ -6,6 +6,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
 import { routeTree } from './routeTree.gen';
+import './i18n';
 
 export type RouterProviderContext = {
   runtimeConfig?: ReturnType<typeof useRuntimeConfig>;
