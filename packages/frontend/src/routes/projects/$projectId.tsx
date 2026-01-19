@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { nanoid } from 'nanoid';
@@ -18,10 +19,50 @@ interface Project {
 }
 
 const LANGUAGES = [
+  // East Asian
   { code: 'ko', name: 'Korean', flag: 'KR' },
-  { code: 'en', name: 'English', flag: 'EN' },
   { code: 'ja', name: 'Japanese', flag: 'JP' },
   { code: 'zh', name: 'Chinese', flag: 'CN' },
+  { code: 'zh-tw', name: 'Chinese (Traditional)', flag: 'TW' },
+  // Western
+  { code: 'en', name: 'English', flag: 'US' },
+  { code: 'fr', name: 'French', flag: 'FR' },
+  { code: 'de', name: 'German', flag: 'DE' },
+  { code: 'it', name: 'Italian', flag: 'IT' },
+  { code: 'es', name: 'Spanish', flag: 'ES' },
+  { code: 'pt', name: 'Portuguese', flag: 'PT' },
+  { code: 'nl', name: 'Dutch', flag: 'NL' },
+  { code: 'pl', name: 'Polish', flag: 'PL' },
+  // Eastern European
+  { code: 'ru', name: 'Russian', flag: 'RU' },
+  { code: 'uk', name: 'Ukrainian', flag: 'UA' },
+  { code: 'cs', name: 'Czech', flag: 'CZ' },
+  { code: 'hu', name: 'Hungarian', flag: 'HU' },
+  { code: 'ro', name: 'Romanian', flag: 'RO' },
+  { code: 'bg', name: 'Bulgarian', flag: 'BG' },
+  // Nordic
+  { code: 'sv', name: 'Swedish', flag: 'SE' },
+  { code: 'no', name: 'Norwegian', flag: 'NO' },
+  { code: 'da', name: 'Danish', flag: 'DK' },
+  { code: 'fi', name: 'Finnish', flag: 'FI' },
+  // Southeast Asian
+  { code: 'vi', name: 'Vietnamese', flag: 'VN' },
+  { code: 'th', name: 'Thai', flag: 'TH' },
+  { code: 'id', name: 'Indonesian', flag: 'ID' },
+  { code: 'ms', name: 'Malay', flag: 'MY' },
+  { code: 'tl', name: 'Tagalog', flag: 'PH' },
+  // South Asian
+  { code: 'hi', name: 'Hindi', flag: 'IN' },
+  { code: 'bn', name: 'Bengali', flag: 'BD' },
+  { code: 'ne', name: 'Nepali', flag: 'NP' },
+  // Middle Eastern
+  { code: 'ar', name: 'Arabic', flag: 'SA' },
+  { code: 'fa', name: 'Persian', flag: 'IR' },
+  { code: 'tr', name: 'Turkish', flag: 'TR' },
+  { code: 'he', name: 'Hebrew', flag: 'IL' },
+  // Other
+  { code: 'mn', name: 'Mongolian', flag: 'MN' },
+  { code: 'sw', name: 'Swahili', flag: 'KE' },
 ];
 
 interface Document {
@@ -122,6 +163,7 @@ export const Route = createFileRoute('/projects/$projectId')({
 });
 
 function ProjectDetailPage() {
+  const { t } = useTranslation();
   const { projectId } = Route.useParams();
   const { fetchApi, invokeAgent } = useAwsClient();
   // AgentCore requires session ID >= 33 chars
@@ -646,8 +688,7 @@ function ProjectDetailPage() {
   };
 
   const handleDeleteDocument = async (documentId: string) => {
-    if (!window.confirm('Are you sure you want to delete this document?'))
-      return;
+    if (!window.confirm(t('documents.deleteConfirm'))) return;
     try {
       await fetchApi(`projects/${projectId}/documents/${documentId}`, {
         method: 'DELETE',
@@ -787,7 +828,7 @@ function ProjectDetailPage() {
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <div className="text-slate-500">Loading project...</div>
+        <div className="text-slate-500">{t('common.loading')}</div>
       </div>
     );
   }
@@ -795,12 +836,12 @@ function ProjectDetailPage() {
   if (!project) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-4">
-        <div className="text-slate-500">Project not found</div>
+        <div className="text-slate-500">{t('projects.notFound')}</div>
         <Link
           to="/"
           className="text-blue-600 hover:text-blue-700 hover:underline"
         >
-          Back to Projects
+          {t('projects.backToProjects')}
         </Link>
       </div>
     );
@@ -813,7 +854,7 @@ function ProjectDetailPage() {
         <Link
           to="/"
           className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-          title="Back to Projects"
+          title={t('projects.backToProjects')}
         >
           <svg
             className="h-5 w-5 text-slate-600"
@@ -926,12 +967,12 @@ function ProjectDetailPage() {
                     d="M12 4v16m8-8H4"
                   />
                 </svg>
-                Add Document
+                {t('documents.addDocument')}
               </button>
               <button
                 onClick={() => loadDocuments()}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
-                title="Refresh documents"
+                title={t('documents.refresh')}
               >
                 <svg
                   className="h-4 w-4"
@@ -946,10 +987,10 @@ function ProjectDetailPage() {
                     d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                   />
                 </svg>
-                Refresh
+                {t('documents.refresh')}
               </button>
               <span className="ml-auto text-xs text-slate-500">
-                {documents.length} files
+                {documents.length} {t('documents.files')}
               </span>
             </div>
           </div>
@@ -1010,17 +1051,13 @@ function ProjectDetailPage() {
                   }`}
                 >
                   {uploading
-                    ? 'Uploading...'
+                    ? t('documents.uploading')
                     : isDragging
-                      ? 'Drop files here'
-                      : 'Drag and drop files or click to upload'}
+                      ? t('documents.dropHere')
+                      : t('documents.dragDrop')}
                 </p>
                 <p className="text-xs text-slate-500 text-center leading-relaxed">
-                  Supports documents (PDF, DOC, TXT), images (PNG, JPG, GIF,
-                  TIFF),
-                  <br />
-                  videos (MP4, MOV, AVI), and audio files (MP3, WAV, FLAC) up to
-                  500MB
+                  {t('documents.supportedFormats')}
                 </p>
                 <input
                   ref={fileInputRef}
@@ -1053,10 +1090,10 @@ function ProjectDetailPage() {
                   />
                 </svg>
                 <p className="text-sm font-medium text-slate-500 mb-1">
-                  No documents yet
+                  {t('documents.noDocuments')}
                 </p>
                 <p className="text-xs text-slate-400">
-                  Click "Add Document" to upload files
+                  {t('documents.uploadFirst')}
                 </p>
               </div>
             ) : (
@@ -1154,7 +1191,7 @@ function ProjectDetailPage() {
                                     d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
                                   />
                                 </svg>
-                                View
+                                {t('documents.view')}
                               </button>
                             )}
                             <button
@@ -1253,7 +1290,7 @@ function ProjectDetailPage() {
                               {isConnected && isProcessing && (
                                 <span className="ml-auto text-xs text-green-600 flex items-center gap-1">
                                   <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                                  Live
+                                  {t('workflow.live')}
                                 </span>
                               )}
                             </div>
@@ -1273,7 +1310,7 @@ function ProjectDetailPage() {
                               isProcessing && (
                                 <div className="mt-2">
                                   <div className="flex justify-between text-xs text-blue-600 mb-1">
-                                    <span>Segments</span>
+                                    <span>{t('workflow.segments')}</span>
                                     <span>
                                       {
                                         workflowProgress.segmentProgress
@@ -1306,10 +1343,8 @@ function ProjectDetailPage() {
         <div className="w-2/3 flex flex-col bg-white border border-slate-200 rounded-xl overflow-hidden">
           {/* Chat Header */}
           <div className="p-4 border-b border-slate-200">
-            <h2 className="font-semibold text-slate-800">Chat</h2>
-            <p className="text-sm text-slate-500">
-              Ask questions about your documents
-            </p>
+            <h2 className="font-semibold text-slate-800">{t('chat.title')}</h2>
+            <p className="text-sm text-slate-500">{t('chat.askQuestions')}</p>
           </div>
 
           {/* Chat Messages */}
@@ -1329,9 +1364,11 @@ function ProjectDetailPage() {
                     d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
                   />
                 </svg>
-                <p className="text-slate-500 mb-2">Start a conversation</p>
+                <p className="text-slate-500 mb-2">
+                  {t('chat.startConversation')}
+                </p>
                 <p className="text-sm text-slate-400">
-                  Upload documents and ask questions about them
+                  {t('chat.uploadAndAsk')}
                 </p>
               </div>
             ) : (
@@ -1385,7 +1422,9 @@ function ProjectDetailPage() {
                               d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                             />
                           </svg>
-                          <span>Using {currentToolUse}...</span>
+                          <span>
+                            {t('chat.usingTool', { tool: currentToolUse })}
+                          </span>
                         </div>
                       )}
                       {streamingContent ? (
@@ -1420,7 +1459,7 @@ function ProjectDetailPage() {
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Type your message..."
+                placeholder={t('chat.placeholder')}
                 rows={1}
                 className="flex-1 px-4 py-2.5 border border-slate-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 style={{ maxHeight: '120px' }}
@@ -1446,7 +1485,7 @@ function ProjectDetailPage() {
               </button>
             </div>
             <p className="text-xs text-slate-400 mt-2">
-              Press Enter to send, Shift+Enter for new line
+              {t('chat.enterToSend')}
             </p>
           </div>
         </div>
@@ -1500,10 +1539,10 @@ function ProjectDetailPage() {
                   </div>
                   <div className="flex-1">
                     <h2 className="text-lg font-semibold text-slate-800">
-                      Document Details
+                      {t('workflow.documentDetails')}
                     </h2>
                     <p className="text-sm text-slate-500">
-                      Complete document information
+                      {t('workflow.completeDocumentInfo')}
                     </p>
                   </div>
                 </div>
@@ -1513,7 +1552,7 @@ function ProjectDetailPage() {
               <div className="flex-1 overflow-y-auto p-5">
                 {loadingWorkflow ? (
                   <div className="flex items-center justify-center h-full">
-                    <div className="text-slate-500">Loading...</div>
+                    <div className="text-slate-500">{t('common.loading')}</div>
                   </div>
                 ) : analysisPopup.type ? (
                   /* Analysis Content View */
@@ -1529,7 +1568,7 @@ function ProjectDetailPage() {
                           })
                         }
                         className="p-2 hover:bg-slate-200 rounded-lg transition-colors"
-                        title="Back to Details"
+                        title={t('workflow.backToDetails')}
                       >
                         <svg
                           className="h-4 w-4 text-slate-600"
@@ -1651,7 +1690,7 @@ function ProjectDetailPage() {
                               />
                             </svg>
                             <p className="text-sm font-medium">
-                              No AI analysis for this segment
+                              {t('workflow.noAiAnalysis')}
                             </p>
                           </div>
                         ) : (
@@ -1734,7 +1773,7 @@ function ProjectDetailPage() {
                             />
                           </svg>
                           <p className="text-sm font-medium">
-                            No content for this segment
+                            {t('workflow.noContent')}
                           </p>
                         </div>
                       ) : (
@@ -1779,13 +1818,13 @@ function ProjectDetailPage() {
                             />
                           </svg>
                         </span>
-                        Basic Information
+                        {t('workflow.basicInformation')}
                       </h3>
 
                       <div className="space-y-4">
                         <div>
                           <p className="text-xs text-slate-500 mb-1">
-                            File Name
+                            {t('workflow.fileName')}
                           </p>
                           <p className="text-sm text-slate-800">
                             {selectedWorkflow.file_name}
@@ -1795,7 +1834,7 @@ function ProjectDetailPage() {
                         <div className="grid grid-cols-2 gap-4">
                           <div>
                             <p className="text-xs text-slate-500 mb-1">
-                              File Type
+                              {t('workflow.fileType')}
                             </p>
                             <span className="inline-block px-2 py-1 bg-slate-200 text-slate-700 text-xs rounded">
                               {selectedWorkflow.file_type || 'PDF'}
@@ -1803,7 +1842,7 @@ function ProjectDetailPage() {
                           </div>
                           <div>
                             <p className="text-xs text-slate-500 mb-1">
-                              Total Segments
+                              {t('workflow.totalSegments')}
                             </p>
                             <p className="text-sm text-slate-800">
                               {selectedWorkflow.total_segments}
@@ -1813,7 +1852,7 @@ function ProjectDetailPage() {
 
                         <div>
                           <p className="text-xs text-slate-500 mb-1">
-                            Analysis Language
+                            {t('workflow.analysisLanguage')}
                           </p>
                           <div className="flex items-center gap-2">
                             <span className="inline-block px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded font-medium">
@@ -1834,7 +1873,9 @@ function ProjectDetailPage() {
                         </div>
 
                         <div>
-                          <p className="text-xs text-slate-500 mb-1">Status</p>
+                          <p className="text-xs text-slate-500 mb-1">
+                            {t('workflow.status')}
+                          </p>
                           <div className="flex items-center gap-2">
                             <span className="w-2 h-2 bg-green-500 rounded-full"></span>
                             <span className="text-sm text-slate-800">
@@ -1844,7 +1885,9 @@ function ProjectDetailPage() {
                         </div>
 
                         <div>
-                          <p className="text-xs text-slate-500 mb-1">Created</p>
+                          <p className="text-xs text-slate-500 mb-1">
+                            {t('workflow.created')}
+                          </p>
                           <p className="text-sm text-slate-800">
                             {new Date(
                               selectedWorkflow.created_at,
@@ -1860,10 +1903,12 @@ function ProjectDetailPage() {
                     {selectedWorkflow.segments.length > 0 && (
                       <div>
                         <h3 className="text-sm font-medium text-slate-700 mb-4">
-                          Segment {currentSegmentIndex + 1} Analysis
+                          {t('workflow.segmentAnalysis', {
+                            index: currentSegmentIndex + 1,
+                          })}
                         </h3>
                         <p className="text-xs text-slate-400 mb-3">
-                          Click to view content
+                          {t('workflow.clickToView')}
                         </p>
                         <div className="flex gap-2">
                           <button
@@ -2022,10 +2067,10 @@ function ProjectDetailPage() {
                     {selectedWorkflow.segments.map((segment, idx) => (
                       <option key={idx} value={idx}>
                         {segment.segment_type === 'CHAPTER'
-                          ? `Chapter ${idx + 1}`
+                          ? `${t('workflow.chapter')} ${idx + 1}`
                           : segment.segment_type === 'VIDEO'
-                            ? `Video ${idx + 1}`
-                            : `Page ${idx + 1}`}
+                            ? `${t('workflow.video')} ${idx + 1}`
+                            : `${t('workflow.segment')} ${idx + 1}`}
                       </option>
                     ))}
                   </select>
@@ -2074,7 +2119,9 @@ function ProjectDetailPage() {
               {/* Media Display (Image or Video) */}
               <div className="flex-1 flex items-center justify-center p-6 overflow-auto relative">
                 {selectedWorkflow.segments.length === 0 ? (
-                  <div className="text-slate-500">No segments available</div>
+                  <div className="text-slate-500">
+                    {t('workflow.noSegments')}
+                  </div>
                 ) : (
                   (() => {
                     const currentSegment =
@@ -2132,7 +2179,7 @@ function ProjectDetailPage() {
                                   />
                                 </svg>
                                 <p className="text-sm text-slate-500">
-                                  Loading image...
+                                  {t('workflow.loadingImage')}
                                 </p>
                               </div>
                             </div>
@@ -2164,8 +2211,8 @@ function ProjectDetailPage() {
                         </svg>
                         <p>
                           {isVideoSegment
-                            ? 'No video available for this segment'
-                            : 'No image available for this segment'}
+                            ? t('workflow.noVideoAvailable')
+                            : t('workflow.noImageAvailable')}
                         </p>
                       </div>
                     );

@@ -78,7 +78,6 @@ a {
 }
 
 .user-greeting {
-  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -96,6 +95,89 @@ a {
 
 .signout-link:hover {
   background: #e0f2fe;
+}
+
+/* Language Selector */
+.language-selector {
+  position: relative;
+  margin-left: auto;
+}
+
+.lang-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: #334155;
+  transition: all 0.15s;
+}
+
+.lang-button:hover {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+}
+
+.lang-flag {
+  font-size: 1rem;
+}
+
+.lang-name {
+  font-weight: 500;
+}
+
+.lang-chevron {
+  transition: transform 0.2s;
+}
+
+.lang-chevron.open {
+  transform: rotate(180deg);
+}
+
+.lang-dropdown {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  min-width: 140px;
+  z-index: 100;
+  overflow: hidden;
+}
+
+.lang-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: #334155;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.lang-option:hover {
+  background: #f1f5f9;
+}
+
+.lang-option.active {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.lang-check {
+  margin-left: auto;
+  color: #2563eb;
 }
 
 .app-main {
