@@ -1,6 +1,6 @@
 import sys
 
-from bedrock_agentcore.runtime import BedrockAgentCoreApp, BedrockAgentCoreContext
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from pydantic import BaseModel
 
 from agent import get_agent
@@ -11,6 +11,7 @@ class InvokeRequest(BaseModel):
     prompt: str
     session_id: str
     project_id: str
+    user_id: str | None = None
 
 
 app = BedrockAgentCoreApp()
@@ -47,10 +48,7 @@ async def invoke(request: dict):
     """Entry point for agent invocation"""
     req = InvokeRequest(**request)
 
-    headers = BedrockAgentCoreContext.get_request_headers()
-    user_id = headers.get("x-user-id") if headers else None
-
-    with get_agent(session_id=req.session_id, project_id=req.project_id, user_id=user_id) as agent:
+    with get_agent(session_id=req.session_id, project_id=req.project_id, user_id=req.user_id) as agent:
         stream = agent.stream_async(req.prompt)
         async for event in stream:
             filtered = filter_stream_event(event)

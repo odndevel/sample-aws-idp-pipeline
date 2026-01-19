@@ -210,12 +210,12 @@ export function useAwsClient() {
           headers: {
             'Content-Type': 'application/json',
             'X-Amzn-Bedrock-AgentCore-Runtime-Session-Id': sessionId,
-            'X-User-Id': user.profile?.['cognito:username'] as string,
           },
           body: JSON.stringify({
             prompt,
             session_id: sessionId,
             project_id: projectId,
+            user_id: user.profile?.['cognito:username'] as string,
           }),
         },
       );
