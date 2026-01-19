@@ -1,20 +1,11 @@
 import json
 import re
-from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.ddb.workflows import get_workflow_item, query_workflow_segments, query_workflows
-from app.s3 import get_s3_client
-
-
-def _parse_s3_uri(uri: str) -> tuple:
-    """Parse S3 URI into bucket and key."""
-    parsed = urlparse(uri)
-    bucket = parsed.netloc
-    key = parsed.path.lstrip("/")
-    return bucket, key
+from app.s3 import generate_presigned_url, get_s3_client, parse_s3_uri
 
 
 def _get_segment_from_s3(file_uri: str, s3_key: str) -> dict | None:
@@ -32,54 +23,12 @@ def _get_segment_from_s3(file_uri: str, s3_key: str) -> dict | None:
 
     try:
         s3 = get_s3_client()
-        bucket, _ = _parse_s3_uri(file_uri)
+        bucket, _ = parse_s3_uri(file_uri)
 
         response = s3.get_object(Bucket=bucket, Key=s3_key)
         return json.loads(response["Body"].read().decode("utf-8"))
     except Exception as e:
         print(f"Error getting segment from S3 {s3_key}: {e}")
-        return None
-
-
-def _get_content_type(key: str) -> str | None:
-    """Get content type based on file extension."""
-    ext = key.lower().split(".")[-1] if "." in key else ""
-    content_types = {
-        "png": "image/png",
-        "jpg": "image/jpeg",
-        "jpeg": "image/jpeg",
-        "gif": "image/gif",
-        "webp": "image/webp",
-        "svg": "image/svg+xml",
-        "pdf": "application/pdf",
-    }
-    return content_types.get(ext)
-
-
-def _generate_presigned_url(s3_uri: str, expires_in: int = 3600) -> str | None:
-    """Generate a presigned URL for an S3 URI."""
-    if not s3_uri or not s3_uri.startswith("s3://"):
-        return None
-
-    try:
-        parsed = urlparse(s3_uri)
-        bucket = parsed.netloc
-        key = parsed.path.lstrip("/")
-
-        s3 = get_s3_client()
-        params = {"Bucket": bucket, "Key": key}
-
-        # Add ResponseContentType for images to fix ORB blocking
-        content_type = _get_content_type(key)
-        if content_type:
-            params["ResponseContentType"] = content_type
-
-        return s3.generate_presigned_url(
-            "get_object",
-            Params=params,
-            ExpiresIn=expires_in,
-        )
-    except Exception:
         return None
 
 
@@ -155,7 +104,7 @@ def _transform_markdown_images(markdown: str, image_uri: str = "") -> str:
         if img_url.startswith("./") and assets_base:
             filename = img_url[2:]  # Remove "./"
             s3_uri = f"{assets_base}{filename}"
-            presigned_url = _generate_presigned_url(s3_uri)
+            presigned_url = generate_presigned_url(s3_uri)
             if presigned_url:
                 img_url = presigned_url
         # Handle full S3 URIs
@@ -164,7 +113,7 @@ def _transform_markdown_images(markdown: str, image_uri: str = "") -> str:
         # Handle plain filenames (no ./ prefix, not s3://, not http)
         elif assets_base and not img_url.startswith(("http://", "https://")):
             s3_uri = f"{assets_base}{img_url}"
-            presigned_url = _generate_presigned_url(s3_uri)
+            presigned_url = generate_presigned_url(s3_uri)
             if presigned_url:
                 img_url = presigned_url
 
@@ -175,16 +124,16 @@ def _transform_markdown_images(markdown: str, image_uri: str = "") -> str:
                 parts = img_url.rsplit("/", 1)
                 if len(parts) == 2:
                     img_url_with_assets = f"{parts[0]}/assets/{parts[1]}"
-                    presigned_url = _generate_presigned_url(img_url_with_assets)
+                    presigned_url = generate_presigned_url(img_url_with_assets)
                     if presigned_url:
                         img_url = presigned_url
                     else:
                         # Fallback to original URL if assets path doesn't work
-                        presigned_url = _generate_presigned_url(img_url)
+                        presigned_url = generate_presigned_url(img_url)
                         if presigned_url:
                             img_url = presigned_url
             else:
-                presigned_url = _generate_presigned_url(img_url)
+                presigned_url = generate_presigned_url(img_url)
                 if presigned_url:
                     img_url = presigned_url
 
@@ -295,7 +244,7 @@ def get_workflow(document_id: str, workflow_id: str) -> WorkflowDetailResponse:
                 SegmentData(
                     segment_index=s3_data.get("segment_index", seg.data.segment_index),
                     image_uri=image_uri,
-                    image_url=_generate_presigned_url(image_uri),
+                    image_url=generate_presigned_url(image_uri),
                     bda_indexer=bda_indexer,
                     paddleocr=paddleocr,
                     format_parser=format_parser,
@@ -309,7 +258,7 @@ def get_workflow(document_id: str, workflow_id: str) -> WorkflowDetailResponse:
                 SegmentData(
                     segment_index=seg.data.segment_index,
                     image_uri=image_uri,
-                    image_url=_generate_presigned_url(image_uri),
+                    image_url=generate_presigned_url(image_uri),
                     bda_indexer="",
                     paddleocr="",
                     format_parser="",
