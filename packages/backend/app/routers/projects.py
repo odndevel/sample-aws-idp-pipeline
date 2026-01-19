@@ -108,7 +108,7 @@ def list_project_workflows(project_id: str) -> list[DocumentWorkflows]:
     result = []
 
     for doc in documents:
-        document_id = doc.SK.replace("DOC#", "") if doc.SK.startswith("DOC#") else doc.SK
+        document_id = doc.data.document_id
         workflows = query_workflows(document_id)
 
         workflow_summaries = [

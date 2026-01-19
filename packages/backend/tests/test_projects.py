@@ -333,6 +333,182 @@ class TestUpdateProject:
         mock_table.update_item.assert_called_once()
 
 
+class TestListProjectWorkflows:
+    @patch("app.ddb.workflows.get_table")
+    @patch("app.ddb.documents.get_table")
+    @patch("app.ddb.projects.get_table")
+    def test_list_project_workflows_success(
+        self, mock_proj_get_table, mock_doc_get_table, mock_wf_get_table
+    ):
+        # Mock project exists
+        mock_proj_table = MagicMock()
+        mock_proj_table.get_item.return_value = {
+            "Item": {
+                "PK": "PROJ#proj-1",
+                "SK": "META",
+                "data": {
+                    "project_id": "proj-1",
+                    "name": "Test Project",
+                    "description": "",
+                    "status": "active",
+                },
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "updated_at": "2024-01-01T00:00:00+00:00",
+            }
+        }
+        mock_proj_get_table.return_value = mock_proj_table
+
+        # Mock documents query
+        mock_doc_table = MagicMock()
+        mock_doc_table.query.return_value = {
+            "Items": [
+                {
+                    "PK": "PROJ#proj-1",
+                    "SK": "DOC#doc-1",
+                    "data": {
+                        "document_id": "doc-1",
+                        "project_id": "proj-1",
+                        "name": "Document One",
+                        "file_type": "pdf",
+                        "file_size": 1024,
+                        "status": "completed",
+                        "s3_key": "projects/proj-1/doc-1/file.pdf",
+                    },
+                    "created_at": "2024-01-01T00:00:00+00:00",
+                    "updated_at": "2024-01-01T00:00:00+00:00",
+                },
+                {
+                    "PK": "PROJ#proj-1",
+                    "SK": "DOC#doc-2",
+                    "data": {
+                        "document_id": "doc-2",
+                        "project_id": "proj-1",
+                        "name": "Document Two",
+                        "file_type": "pdf",
+                        "file_size": 2048,
+                        "status": "completed",
+                        "s3_key": "projects/proj-1/doc-2/file.pdf",
+                    },
+                    "created_at": "2024-01-02T00:00:00+00:00",
+                    "updated_at": "2024-01-02T00:00:00+00:00",
+                },
+            ]
+        }
+        mock_doc_get_table.return_value = mock_doc_table
+
+        # Mock workflows query
+        mock_wf_table = MagicMock()
+        call_count = {"value": 0}
+
+        def wf_query_side_effect(**kwargs):
+            call_count["value"] += 1
+            if call_count["value"] == 1:
+                return {
+                    "Items": [
+                        {
+                            "PK": "DOC#doc-1",
+                            "SK": "WF#wf-1",
+                            "data": {
+                                "execution_arn": "arn:aws:states:...",
+                                "status": "completed",
+                                "file_name": "file1.pdf",
+                                "file_type": "pdf",
+                                "file_uri": "s3://bucket/file1.pdf",
+                                "project_id": "proj-1",
+                                "language": "ko",
+                            },
+                            "created_at": "2024-01-01T00:00:00+00:00",
+                            "updated_at": "2024-01-01T00:00:00+00:00",
+                        }
+                    ]
+                }
+            elif call_count["value"] == 2:
+                return {
+                    "Items": [
+                        {
+                            "PK": "DOC#doc-2",
+                            "SK": "WF#wf-2",
+                            "data": {
+                                "execution_arn": "arn:aws:states:...",
+                                "status": "processing",
+                                "file_name": "file2.pdf",
+                                "file_type": "pdf",
+                                "file_uri": "s3://bucket/file2.pdf",
+                                "project_id": "proj-1",
+                                "language": "en",
+                            },
+                            "created_at": "2024-01-02T00:00:00+00:00",
+                            "updated_at": "2024-01-02T00:00:00+00:00",
+                        }
+                    ]
+                }
+            return {"Items": []}
+
+        mock_wf_table.query.side_effect = wf_query_side_effect
+        mock_wf_get_table.return_value = mock_wf_table
+
+        response = client.get("/projects/proj-1/workflows")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+
+        # Check first document
+        assert data[0]["document_id"] == "doc-1"
+        assert data[0]["document_name"] == "Document One"
+        assert len(data[0]["workflows"]) == 1
+        assert data[0]["workflows"][0]["workflow_id"] == "wf-1"
+        assert data[0]["workflows"][0]["status"] == "completed"
+
+        # Check second document
+        assert data[1]["document_id"] == "doc-2"
+        assert data[1]["document_name"] == "Document Two"
+        assert len(data[1]["workflows"]) == 1
+        assert data[1]["workflows"][0]["workflow_id"] == "wf-2"
+
+    @patch("app.ddb.projects.get_table")
+    def test_list_project_workflows_project_not_found(self, mock_get_table):
+        mock_table = MagicMock()
+        mock_table.get_item.return_value = {}
+        mock_get_table.return_value = mock_table
+
+        response = client.get("/projects/nonexistent/workflows")
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Project not found"
+
+    @patch("app.ddb.documents.get_table")
+    @patch("app.ddb.projects.get_table")
+    def test_list_project_workflows_no_documents(
+        self, mock_proj_get_table, mock_doc_get_table
+    ):
+        mock_proj_table = MagicMock()
+        mock_proj_table.get_item.return_value = {
+            "Item": {
+                "PK": "PROJ#proj-1",
+                "SK": "META",
+                "data": {
+                    "project_id": "proj-1",
+                    "name": "Empty Project",
+                    "description": "",
+                    "status": "active",
+                },
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "updated_at": "2024-01-01T00:00:00+00:00",
+            }
+        }
+        mock_proj_get_table.return_value = mock_proj_table
+
+        mock_doc_table = MagicMock()
+        mock_doc_table.query.return_value = {"Items": []}
+        mock_doc_get_table.return_value = mock_doc_table
+
+        response = client.get("/projects/proj-1/workflows")
+
+        assert response.status_code == 200
+        assert response.json() == []
+
+
 class TestDeleteProject:
     @patch("app.ddb.workflows.get_table")
     @patch("app.s3.delete_s3_prefix")
