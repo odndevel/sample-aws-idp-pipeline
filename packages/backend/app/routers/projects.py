@@ -16,10 +16,27 @@ from app.ddb import (
     query_projects,
     update_project_data,
 )
+from app.ddb.documents import query_documents
 from app.ddb.workflows import delete_workflow_item, query_workflows
 from app.s3 import delete_s3_prefix
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+class WorkflowSummary(BaseModel):
+    workflow_id: str
+    status: str
+    file_name: str
+    file_uri: str
+    language: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class DocumentWorkflows(BaseModel):
+    document_id: str
+    document_name: str
+    workflows: list[WorkflowSummary]
 
 
 class ProjectCreate(BaseModel):
@@ -78,6 +95,44 @@ class ProjectResponse(BaseModel):
 def list_projects() -> list[ProjectResponse]:
     projects = query_projects()
     return [ProjectResponse.from_project(p) for p in projects]
+
+
+@router.get("/{project_id}/workflows")
+def list_project_workflows(project_id: str) -> list[DocumentWorkflows]:
+    """List all workflows for all documents in a project."""
+    project = get_project_item(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    documents = query_documents(project_id)
+    result = []
+
+    for doc in documents:
+        document_id = doc.SK.replace("DOC#", "") if doc.SK.startswith("DOC#") else doc.SK
+        workflows = query_workflows(document_id)
+
+        workflow_summaries = [
+            WorkflowSummary(
+                workflow_id=wf.SK.replace("WF#", "") if wf.SK.startswith("WF#") else wf.SK,
+                status=wf.data.status,
+                file_name=wf.data.file_name,
+                file_uri=wf.data.file_uri,
+                language=wf.data.language,
+                created_at=wf.created_at,
+                updated_at=wf.updated_at,
+            )
+            for wf in workflows
+        ]
+
+        result.append(
+            DocumentWorkflows(
+                document_id=document_id,
+                document_name=doc.data.name,
+                workflows=workflow_summaries,
+            )
+        )
+
+    return result
 
 
 @router.get("/{project_id}")

@@ -134,7 +134,7 @@ class TestTransformMarkdownImages:
         markdown = "![alt](./image.png)"
         image_uri = "s3://bucket/path/to/base.png"  # No /assets/
 
-        result = transform_markdown_images(markdown, image_uri)
+        transform_markdown_images(markdown, image_uri)
 
         # Should construct assets base from parent dir
         mock_presigned.assert_called_with("s3://bucket/path/to/assets/image.png")

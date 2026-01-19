@@ -50,6 +50,22 @@ interface Workflow {
   updated_at: string;
 }
 
+interface WorkflowSummary {
+  workflow_id: string;
+  status: string;
+  file_name: string;
+  file_uri: string;
+  language: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface DocumentWorkflows {
+  document_id: string;
+  document_name: string;
+  workflows: WorkflowSummary[];
+}
+
 interface SegmentData {
   segment_index: number;
   image_uri: string;
@@ -239,30 +255,21 @@ function ProjectDetailPage() {
 
   const loadWorkflows = useCallback(async () => {
     try {
-      // Fetch workflows for each document
-      const allWorkflows: Workflow[] = [];
-      for (const doc of documents) {
-        try {
-          const docWorkflows = await fetchApi<Omit<Workflow, 'document_id'>[]>(
-            `documents/${doc.document_id}/workflows`,
-          );
-          // Add document_id to each workflow
-          allWorkflows.push(
-            ...docWorkflows.map((wf) => ({
-              ...wf,
-              document_id: doc.document_id,
-            })),
-          );
-        } catch {
-          // Skip documents with no workflows
-        }
-      }
+      const data = await fetchApi<DocumentWorkflows[]>(
+        `projects/${projectId}/workflows`,
+      );
+      const allWorkflows: Workflow[] = data.flatMap((doc) =>
+        doc.workflows.map((wf) => ({
+          ...wf,
+          document_id: doc.document_id,
+        })),
+      );
       setWorkflows(allWorkflows);
     } catch (error) {
       console.error('Failed to load workflows:', error);
       setWorkflows([]);
     }
-  }, [fetchApi, documents]);
+  }, [fetchApi, projectId]);
 
   const loadChatHistory = useCallback(async () => {
     if (historyLoaded) return;
@@ -308,18 +315,11 @@ function ProjectDetailPage() {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      await Promise.all([loadProject(), loadDocuments()]);
+      await Promise.all([loadProject(), loadDocuments(), loadWorkflows()]);
       setLoading(false);
     };
     load();
-  }, [loadProject, loadDocuments]);
-
-  // Load workflows after documents are loaded
-  useEffect(() => {
-    if (documents.length > 0) {
-      loadWorkflows();
-    }
-  }, [documents, loadWorkflows]);
+  }, [loadProject, loadDocuments, loadWorkflows]);
 
   // Load chat history when page loads
   useEffect(() => {
