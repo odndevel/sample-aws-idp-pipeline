@@ -1,6 +1,6 @@
 import json
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel
 
 from app.config import get_config
@@ -30,8 +30,19 @@ class ChatHistoryResponse(BaseModel):
     messages: list[ChatMessage]
 
 
+class SessionListResponse(BaseModel):
+    sessions: list[Session]
+    next_cursor: str | None = None
+
+
 @router.get("/projects/{project_id}/sessions")
-def get_project_sessions(project_id: str, x_user_id: str = Header(alias="x-user-id")) -> list[Session]:
+def get_project_sessions(
+    project_id: str,
+    x_user_id: str = Header(alias="x-user-id"),
+    limit: int = Query(default=20, ge=1, le=100),
+    cursor: str | None = Query(default=None),
+    after: str | None = Query(default=None, description="Filter sessions created after this ISO timestamp"),
+) -> SessionListResponse:
     """Get sessions for a project from S3 using DuckDB."""
     config = get_config()
     bucket_name = config.session_storage_bucket_name
@@ -40,6 +51,8 @@ def get_project_sessions(project_id: str, x_user_id: str = Header(alias="x-user-
         raise HTTPException(status_code=500, detail="Session storage bucket not configured")
 
     s3_path = f"s3://{bucket_name}/sessions/{x_user_id}/{project_id}/*/session.json"
+
+    after_condition = f"WHERE created_at > '{after}'" if after else ""
 
     conn = get_duckdb_connection()
     try:
@@ -55,12 +68,22 @@ def get_project_sessions(project_id: str, x_user_id: str = Header(alias="x-user-
                     session_name: 'VARCHAR'
                 }}
             )
-            ORDER BY created_at DESC
+            {after_condition}
+            ORDER BY created_at DESC, session_id DESC
         """).fetchall()
     except Exception:
-        return []
+        return SessionListResponse(sessions=[])
 
-    return [
+    if cursor:
+        cursor_index = next((i for i, row in enumerate(result) if row[0] == cursor), -1)
+        if cursor_index >= 0:
+            result = result[cursor_index + 1 :]
+
+    has_more = len(result) > limit
+    if has_more:
+        result = result[:limit]
+
+    sessions = [
         Session(
             session_id=row[0],
             session_type=row[1],
@@ -70,6 +93,10 @@ def get_project_sessions(project_id: str, x_user_id: str = Header(alias="x-user-
         )
         for row in result
     ]
+
+    next_cursor = sessions[-1].session_id if has_more and sessions else None
+
+    return SessionListResponse(sessions=sessions, next_cursor=next_cursor)
 
 
 @router.get("/projects/{project_id}/sessions/{session_id}")
