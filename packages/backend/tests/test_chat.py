@@ -102,8 +102,8 @@ class TestGetChatHistory:
 
         mock_conn = MagicMock()
         mock_conn.execute.return_value.fetchall.return_value = [
-            ("user", "Hello", "2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z"),
-            ("assistant", "Hi there!", "2024-01-01T00:00:01Z", "2024-01-01T00:00:01Z"),
+            (1, "user", [{"text": "Hello"}], "2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z"),
+            (2, "assistant", [{"text": "Hi there!"}], "2024-01-01T00:00:01Z", "2024-01-01T00:00:01Z"),
         ]
         mock_get_duckdb.return_value = mock_conn
 
@@ -114,8 +114,40 @@ class TestGetChatHistory:
         assert data["session_id"] == "session-1"
         assert len(data["messages"]) == 2
         assert data["messages"][0]["role"] == "user"
-        assert data["messages"][0]["content"] == "Hello"
+        assert data["messages"][0]["content"] == [{"type": "text", "text": "Hello"}]
         assert data["messages"][1]["role"] == "assistant"
+        assert data["messages"][1]["content"] == [{"type": "text", "text": "Hi there!"}]
+
+    @patch("app.routers.chat.get_duckdb_connection")
+    @patch("app.routers.chat.get_config")
+    def test_get_chat_history_with_image(self, mock_get_config, mock_get_duckdb):
+        mock_config = MagicMock()
+        mock_config.session_storage_bucket_name = "test-bucket"
+        mock_get_config.return_value = mock_config
+
+        mock_conn = MagicMock()
+        mock_conn.execute.return_value.fetchall.return_value = [
+            (
+                1,
+                "user",
+                [
+                    {"text": "이 이미지를 설명해줘"},
+                    {"image": {"format": "png", "source": {"bytes": "base64data"}}},
+                ],
+                "2024-01-01T00:00:00Z",
+                "2024-01-01T00:00:00Z",
+            ),
+        ]
+        mock_get_duckdb.return_value = mock_conn
+
+        response = client.get("/chat/projects/proj-1/sessions/session-1", headers={"x-user-id": "user-1"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["messages"]) == 1
+        assert len(data["messages"][0]["content"]) == 2
+        assert data["messages"][0]["content"][0] == {"type": "text", "text": "이 이미지를 설명해줘"}
+        assert data["messages"][0]["content"][1] == {"type": "image", "format": "png", "source": "base64data"}
 
     @patch("app.routers.chat.get_duckdb_connection")
     @patch("app.routers.chat.get_config")
