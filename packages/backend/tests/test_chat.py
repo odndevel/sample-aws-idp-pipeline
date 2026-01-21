@@ -101,9 +101,11 @@ class TestGetChatHistory:
         mock_get_config.return_value = mock_config
 
         mock_conn = MagicMock()
+        # Format: (message_id, role, content, created_at, updated_at)
+        # content is a list of dicts with "text" key
         mock_conn.execute.return_value.fetchall.return_value = [
-            ("user", "Hello", "2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z"),
-            ("assistant", "Hi there!", "2024-01-01T00:00:01Z", "2024-01-01T00:00:01Z"),
+            ("msg-1", "user", [{"text": "Hello"}], "2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z"),
+            ("msg-2", "assistant", [{"text": "Hi there!"}], "2024-01-01T00:00:01Z", "2024-01-01T00:00:01Z"),
         ]
         mock_get_duckdb.return_value = mock_conn
 
@@ -114,7 +116,7 @@ class TestGetChatHistory:
         assert data["session_id"] == "session-1"
         assert len(data["messages"]) == 2
         assert data["messages"][0]["role"] == "user"
-        assert data["messages"][0]["content"] == "Hello"
+        assert data["messages"][0]["content"][0]["text"] == "Hello"
         assert data["messages"][1]["role"] == "assistant"
 
     @patch("app.routers.chat.get_duckdb_connection")
