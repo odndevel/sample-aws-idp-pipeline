@@ -157,8 +157,10 @@ def get_chat_history(
                 bytes_data = source.get("bytes")
                 if isinstance(bytes_data, dict) and bytes_data.get("__bytes_encoded__"):
                     source_value = bytes_data.get("data", "")
+                elif isinstance(bytes_data, str):
+                    source_value = bytes_data
                 else:
-                    source_value = bytes_data or ""
+                    source_value = ""
                 parsed_content.append(
                     ImageContent(
                         format=img.get("format", "png"),
