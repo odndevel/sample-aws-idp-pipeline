@@ -154,7 +154,11 @@ def get_chat_history(
                 img = item["image"]
                 source = img.get("source", {})
                 # bytes가 있으면 base64, 아니면 S3 URL 등
-                source_value = source.get("bytes", source.get("url", ""))
+                bytes_data = source.get("bytes")
+                if isinstance(bytes_data, dict) and bytes_data.get("__bytes_encoded__"):
+                    source_value = bytes_data.get("data", "")
+                else:
+                    source_value = bytes_data or ""
                 parsed_content.append(
                     ImageContent(
                         format=img.get("format", "png"),
