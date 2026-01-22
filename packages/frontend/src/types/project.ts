@@ -66,8 +66,7 @@ export interface SegmentData {
   start_timecode_smpte?: string;
   end_timecode_smpte?: string;
   bda_indexer: string;
-  paddleocr: string;
-  paddleocr_blocks?: PaddleOcrBlocks;
+  paddleocr_blocks: PaddleOcrBlocks | null;
   format_parser: string;
   ai_analysis: { analysis_query: string; content: string }[];
 }

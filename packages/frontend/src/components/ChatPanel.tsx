@@ -9,6 +9,7 @@ import {
   Box,
   Sparkles,
   ChevronDown,
+  MessageSquarePlus,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
@@ -33,6 +34,7 @@ interface ChatPanelProps {
   onInputChange: (value: string) => void;
   onSendMessage: (files: AttachedFile[]) => void;
   onAgentClick: () => void;
+  onNewChat: () => void;
 }
 
 const formatFileSize = (bytes: number) => {
@@ -92,6 +94,7 @@ export default function ChatPanel({
   onInputChange,
   onSendMessage,
   onAgentClick,
+  onNewChat,
 }: ChatPanelProps) {
   const { t } = useTranslation();
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -331,16 +334,25 @@ export default function ChatPanel({
   return (
     <div className="w-full h-full flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
       {/* Agent Header */}
-      <div className="flex items-center px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
         <button
           onClick={onAgentClick}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium bg-slate-100 dark:bg-slate-800 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+          style={{ color: 'var(--color-text-secondary)' }}
         >
-          <Sparkles className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+          <Sparkles className="w-4 h-4" />
+          <span>
             {selectedAgent?.name || t('agent.default', 'Default Agent')}
           </span>
-          <ChevronDown className="w-4 h-4 text-slate-400" />
+          <ChevronDown className="w-4 h-4 opacity-70" />
+        </button>
+        <button
+          onClick={onNewChat}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-slate-100 dark:bg-slate-800 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+          style={{ color: 'var(--color-text-secondary)' }}
+        >
+          <MessageSquarePlus className="w-4 h-4" />
+          <span>{t('chat.newChat')}</span>
         </button>
       </div>
 

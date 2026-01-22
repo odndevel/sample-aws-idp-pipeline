@@ -893,7 +893,6 @@ function ProjectDetailPage() {
         documentCount={documents.length}
         isConnected={isConnected}
         onSettingsClick={() => setShowProjectSettings(true)}
-        onNewChat={handleNewSession}
       />
 
       {/* Main Content - 3 Column Resizable Layout */}
@@ -949,6 +948,7 @@ function ProjectDetailPage() {
                 onInputChange={setInputMessage}
                 onSendMessage={handleSendMessage}
                 onAgentClick={() => setShowAgentModal(true)}
+                onNewChat={handleNewSession}
               />
             </div>
           </ResizablePanel>
