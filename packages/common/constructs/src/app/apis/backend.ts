@@ -138,7 +138,7 @@ export class Backend extends Construct {
     const taskRole = this.service.taskDefinition.taskRole;
     lancedbStorage.bucket.grantReadWrite(taskRole);
     documentStorage.bucket.grantReadWrite(taskRole);
-    sessionStorage.bucket.grantRead(taskRole);
+    sessionStorage.bucket.grantReadWrite(taskRole);
     lancedbLockTable.table.grantReadWriteData(taskRole);
     backendTable.table.grantReadWriteData(taskRole);
 

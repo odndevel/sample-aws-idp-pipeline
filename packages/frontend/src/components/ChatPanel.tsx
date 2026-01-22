@@ -2,10 +2,11 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowUp, Plus, X, FileText, Archive, Box } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 import { ChatMessage } from '../types/project';
 
-interface AttachedFile {
+export interface AttachedFile {
   id: string;
   file: File;
   type: string;
@@ -20,8 +21,7 @@ interface ChatPanelProps {
   currentToolUse: string | null;
   loadingHistory?: boolean;
   onInputChange: (value: string) => void;
-  onSendMessage: () => void;
-  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  onSendMessage: (files: AttachedFile[]) => void;
 }
 
 const formatFileSize = (bytes: number) => {
@@ -30,6 +30,44 @@ const formatFileSize = (bytes: number) => {
   const sizes = ['Bytes', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+/** Prepare content for markdown parsing */
+const prepareMarkdown = (content: string): string => {
+  // Decode HTML entities
+  let result = content
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+
+  // Strip HTML tags (except strong/em which we'll add)
+  result = result
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>\s*<p>/gi, '\n\n')
+    .replace(/<(?!\/?(?:strong|em))[^>]*>/g, '');
+
+  // Unescape markdown characters (backslash-escaped)
+  result = result
+    .replace(/\\\*/g, '___ESCAPED_ASTERISK___')
+    .replace(/\\#/g, '#')
+    .replace(/\\_/g, '_')
+    .replace(/\\`/g, '`')
+    .replace(/\\\[/g, '[')
+    .replace(/\\\]/g, ']');
+
+  // Convert bold markdown to HTML (handles non-ASCII characters after closing **)
+  result = result.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+  // Convert italic markdown to HTML
+  result = result.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+  // Restore escaped asterisks
+  result = result.replace(/___ESCAPED_ASTERISK___/g, '*');
+
+  return result;
 };
 
 export default function ChatPanel({
@@ -41,7 +79,6 @@ export default function ChatPanel({
   loadingHistory = false,
   onInputChange,
   onSendMessage,
-  onKeyDown,
 }: ChatPanelProps) {
   const { t } = useTranslation();
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -114,6 +151,22 @@ export default function ChatPanel({
   const hasMessages = messages.length > 0 || sending;
   const hasContent = inputMessage.trim().length > 0 || attachedFiles.length > 0;
 
+  const handleSend = useCallback(() => {
+    if (!hasContent || sending) return;
+    onSendMessage(attachedFiles);
+    setAttachedFiles([]);
+  }, [hasContent, sending, onSendMessage, attachedFiles]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
+    },
+    [handleSend],
+  );
+
   // Input Box - inline JSX to prevent re-mounting on every render
   const inputBox = (
     <div
@@ -178,7 +231,7 @@ export default function ChatPanel({
               ref={textareaRef}
               value={inputMessage}
               onChange={(e) => onInputChange(e.target.value)}
-              onKeyDown={onKeyDown}
+              onKeyDown={handleKeyDown}
               placeholder={t('chat.placeholder')}
               className="w-full border-0 outline-none text-base resize-none overflow-hidden py-0 leading-relaxed"
               rows={1}
@@ -203,7 +256,7 @@ export default function ChatPanel({
               </button>
             </div>
             <button
-              onClick={onSendMessage}
+              onClick={handleSend}
               disabled={!hasContent || sending}
               type="button"
               className={`inline-flex items-center justify-center h-8 w-8 rounded-xl transition-all active:scale-95 ${
@@ -320,10 +373,40 @@ export default function ChatPanel({
               message.role === 'user' ? (
                 /* User message - bubble style */
                 <div key={message.id} className="flex justify-end">
-                  <div className="max-w-[80%] px-4 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white">
-                    <p className="text-sm whitespace-pre-wrap">
-                      {message.content}
-                    </p>
+                  <div className="max-w-[80%] space-y-2">
+                    {/* Attachments */}
+                    {message.attachments && message.attachments.length > 0 && (
+                      <div className="flex flex-wrap gap-2 justify-end">
+                        {message.attachments.map((attachment) =>
+                          attachment.type === 'image' && attachment.preview ? (
+                            <img
+                              key={attachment.id}
+                              src={attachment.preview}
+                              alt={attachment.name}
+                              className="max-w-48 max-h-48 rounded-xl object-cover border border-slate-200 dark:border-slate-600"
+                            />
+                          ) : (
+                            <div
+                              key={attachment.id}
+                              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600"
+                            >
+                              <FileText className="w-4 h-4 text-slate-500" />
+                              <span className="text-sm text-slate-700 dark:text-slate-300">
+                                {attachment.name}
+                              </span>
+                            </div>
+                          ),
+                        )}
+                      </div>
+                    )}
+                    {/* Text content */}
+                    {message.content && (
+                      <div className="px-4 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white">
+                        <p className="text-sm whitespace-pre-wrap">
+                          {message.content}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -332,8 +415,11 @@ export default function ChatPanel({
                   key={message.id}
                   className="prose prose-sm dark:prose-invert max-w-none text-slate-800 dark:text-slate-200 [&_strong]:!text-inherit"
                 >
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {message.content}
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeRaw]}
+                  >
+                    {prepareMarkdown(message.content)}
                   </ReactMarkdown>
                 </div>
               ),
@@ -367,8 +453,11 @@ export default function ChatPanel({
                 )}
                 {streamingContent ? (
                   <div className="prose prose-sm dark:prose-invert max-w-none text-slate-800 dark:text-slate-200 [&_strong]:!text-inherit">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {streamingContent}
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      rehypePlugins={[rehypeRaw]}
+                    >
+                      {prepareMarkdown(streamingContent)}
                     </ReactMarkdown>
                   </div>
                 ) : !currentToolUse ? (

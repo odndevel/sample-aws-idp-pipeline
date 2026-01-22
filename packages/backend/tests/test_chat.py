@@ -101,9 +101,11 @@ class TestGetChatHistory:
         mock_get_config.return_value = mock_config
 
         mock_conn = MagicMock()
+        # Format: (message_id, role, content, created_at, updated_at)
+        # content is a list of dicts with "text" key
         mock_conn.execute.return_value.fetchall.return_value = [
-            (1, "user", [{"text": "Hello"}], "2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z"),
-            (2, "assistant", [{"text": "Hi there!"}], "2024-01-01T00:00:01Z", "2024-01-01T00:00:01Z"),
+            ("msg-1", "user", [{"text": "Hello"}], "2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z"),
+            ("msg-2", "assistant", [{"text": "Hi there!"}], "2024-01-01T00:00:01Z", "2024-01-01T00:00:01Z"),
         ]
         mock_get_duckdb.return_value = mock_conn
 

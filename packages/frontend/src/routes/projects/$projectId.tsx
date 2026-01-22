@@ -2,7 +2,11 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { nanoid } from 'nanoid';
-import { useAwsClient, StreamEvent } from '../../hooks/useAwsClient';
+import {
+  useAwsClient,
+  StreamEvent,
+  ContentBlock,
+} from '../../hooks/useAwsClient';
 import { useWebSocket, WebSocketMessage } from '../../hooks/useWebSocket';
 import { useToast } from '../../components/Toast';
 import CubeLoader from '../../components/CubeLoader';
@@ -12,7 +16,7 @@ import ProjectSettingsModal, {
 } from '../../components/ProjectSettingsModal';
 import ProjectNavBar from '../../components/ProjectNavBar';
 import DocumentsPanel from '../../components/DocumentsPanel';
-import ChatPanel from '../../components/ChatPanel';
+import ChatPanel, { AttachedFile } from '../../components/ChatPanel';
 import SidePanel from '../../components/SidePanel';
 import WorkflowDetailModal from '../../components/WorkflowDetailModal';
 import {
@@ -26,6 +30,7 @@ import {
   Workflow,
   WorkflowDetail,
   ChatMessage,
+  ChatAttachment,
   ChatSession,
   WorkflowProgress,
 } from '../../types/project';
@@ -262,7 +267,10 @@ function ProjectDetailPage() {
       try {
         const response = await fetchApi<{
           session_id: string;
-          messages: { role: string; content: string }[];
+          messages: {
+            role: string;
+            content: { type: string; text?: string }[];
+          }[];
         }>(`chat/projects/${projectId}/sessions/${sessionId}`);
 
         if (response.messages.length === 0) {
@@ -276,7 +284,10 @@ function ProjectDetailPage() {
             (msg, idx) => ({
               id: `history-${idx}`,
               role: msg.role as 'user' | 'assistant',
-              content: msg.content,
+              content: msg.content
+                .filter((item) => item.type === 'text' && item.text)
+                .map((item) => item.text)
+                .join('\n'),
               timestamp: new Date(),
             }),
           );
@@ -298,6 +309,23 @@ function ProjectDetailPage() {
     setCurrentSessionId(newSessionId);
     setMessages([]);
   }, []);
+
+  const handleSessionRename = useCallback(
+    async (sessionId: string, newName: string) => {
+      await fetchApi(`chat/projects/${projectId}/sessions/${sessionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_name: newName }),
+      });
+      // Update local state
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.session_id === sessionId ? { ...s, session_name: newName } : s,
+        ),
+      );
+    },
+    [fetchApi, projectId],
+  );
 
   const loadWorkflowDetail = async (documentId: string, workflowId: string) => {
     setLoadingWorkflow(true);
@@ -571,61 +599,124 @@ function ProjectDetailPage() {
     }
   }, []);
 
-  const handleSendMessage = async () => {
-    if (!inputMessage.trim() || sending) return;
+  const handleSendMessage = useCallback(
+    async (files: AttachedFile[]) => {
+      if ((!inputMessage.trim() && files.length === 0) || sending) return;
 
-    const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: inputMessage.trim(),
-      timestamp: new Date(),
-    };
+      // Convert AttachedFile to ChatAttachment for display
+      const attachments: ChatAttachment[] = files.map((f) => ({
+        id: f.id,
+        type: f.type === 'image' ? 'image' : 'document',
+        name: f.file.name,
+        preview: f.preview,
+      }));
 
-    setMessages((prev) => [...prev, userMessage]);
-    setInputMessage('');
-    setSending(true);
-    setStreamingContent('');
-    setCurrentToolUse(null);
-
-    try {
-      const response = await invokeAgent(
-        [{ text: userMessage.content }],
-        currentSessionId,
-        projectId,
-        handleStreamEvent,
-      );
-
-      const assistantMessage: ChatMessage = {
+      const userMessage: ChatMessage = {
         id: crypto.randomUUID(),
-        role: 'assistant',
-        content: response,
+        role: 'user',
+        content: inputMessage.trim(),
+        attachments: attachments.length > 0 ? attachments : undefined,
         timestamp: new Date(),
       };
 
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch (error) {
-      console.error('Failed to send message:', error);
-      const errorMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: `Failed to get response: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    }
-    setSending(false);
-    setStreamingContent('');
-    setCurrentToolUse(null);
-    // Refresh sessions list after sending a message
-    loadSessions();
-  };
+      setMessages((prev) => [...prev, userMessage]);
+      setInputMessage('');
+      setSending(true);
+      setStreamingContent('');
+      setCurrentToolUse(null);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  };
+      try {
+        // Convert files to ContentBlock[]
+        const contentBlocks: ContentBlock[] = [];
+
+        // Process attached files
+        for (const attachedFile of files) {
+          // Use FileReader for reliable base64 encoding
+          const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const result = reader.result as string;
+              // Remove data URL prefix (e.g., "data:image/png;base64,")
+              const base64Data = result.split(',')[1];
+              resolve(base64Data);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(attachedFile.file);
+          });
+
+          if (attachedFile.type === 'image') {
+            // Extract and normalize format (jpeg -> jpg for backend compatibility)
+            let format =
+              attachedFile.file.type.split('/')[1] ||
+              attachedFile.file.name.split('.').pop()?.toLowerCase() ||
+              'png';
+            if (format === 'jpeg') format = 'jpg';
+            contentBlocks.push({
+              image: {
+                format,
+                source: { base64 },
+              },
+            });
+          } else {
+            // Document type
+            const format =
+              attachedFile.file.name.split('.').pop()?.toLowerCase() || 'txt';
+            contentBlocks.push({
+              document: {
+                format,
+                name: attachedFile.file.name,
+                source: { base64 },
+              },
+            });
+          }
+        }
+
+        // Add text message if present
+        if (userMessage.content) {
+          contentBlocks.push({ text: userMessage.content });
+        }
+
+        const response = await invokeAgent(
+          contentBlocks,
+          currentSessionId,
+          projectId,
+          handleStreamEvent,
+        );
+
+        const assistantMessage: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: response,
+          timestamp: new Date(),
+        };
+
+        setMessages((prev) => [...prev, assistantMessage]);
+      } catch (error) {
+        console.error('Failed to send message:', error);
+        const errorMessage: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `Failed to get response: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      }
+      setSending(false);
+      setStreamingContent('');
+      setCurrentToolUse(null);
+      // Refresh sessions list after sending a message
+      loadSessions();
+    },
+    [
+      inputMessage,
+      sending,
+      invokeAgent,
+      currentSessionId,
+      projectId,
+      handleStreamEvent,
+      loadSessions,
+    ],
+  );
 
   if (loading) {
     return (
@@ -711,7 +802,6 @@ function ProjectDetailPage() {
                 loadingHistory={loadingHistory}
                 onInputChange={setInputMessage}
                 onSendMessage={handleSendMessage}
-                onKeyDown={handleKeyDown}
               />
             </div>
           </ResizablePanel>
@@ -725,6 +815,7 @@ function ProjectDetailPage() {
                 sessions={sessions}
                 currentSessionId={currentSessionId}
                 onSessionSelect={handleSessionSelect}
+                onSessionRename={handleSessionRename}
                 hasMoreSessions={!!sessionsNextCursor}
                 loadingMoreSessions={loadingMoreSessions}
                 onLoadMoreSessions={loadMoreSessions}
