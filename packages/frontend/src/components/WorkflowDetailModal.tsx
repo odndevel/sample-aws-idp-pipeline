@@ -49,10 +49,9 @@ export default function WorkflowDetailModal({
         };
       } else {
         // Determine which content type is being viewed from the title
-        const contentType = prev.title.split(' ')[0]; // 'BDA', 'OCR', or 'PDF'
+        const contentType = prev.title.split(' ')[0]; // 'BDA' or 'PDF'
         const contentMap: Record<string, string> = {
           BDA: currentSegment?.bda_indexer || '',
-          OCR: currentSegment?.paddleocr || '',
           PDF: currentSegment?.format_parser || '',
         };
         return {
@@ -164,10 +163,8 @@ export default function WorkflowDetailModal({
                         if (type === 'BDA')
                           return !!currentSegment?.bda_indexer;
                         if (type === 'OCR')
-                          return (
-                            !!currentSegment?.paddleocr ||
-                            !!currentSegment?.paddleocr_blocks?.blocks?.length
-                          );
+                          return !!currentSegment?.paddleocr_blocks?.blocks
+                            ?.length;
                         if (type === 'PDF')
                           return !!currentSegment?.format_parser;
                         if (type === 'AI')
@@ -191,24 +188,12 @@ export default function WorkflowDetailModal({
                                 qaItems,
                               });
                             } else if (type === 'OCR') {
-                              // Use document view if blocks exist, otherwise fallback to text
-                              if (
-                                currentSegment?.paddleocr_blocks?.blocks?.length
-                              ) {
-                                setAnalysisPopup({
-                                  type: 'ocr',
-                                  content: '',
-                                  title: `OCR Content - Segment ${currentSegmentIndex + 1}`,
-                                  qaItems: [],
-                                });
-                              } else {
-                                setAnalysisPopup({
-                                  type: 'ocr',
-                                  content: currentSegment?.paddleocr || '',
-                                  title: `OCR Content - Segment ${currentSegmentIndex + 1}`,
-                                  qaItems: [],
-                                });
-                              }
+                              setAnalysisPopup({
+                                type: 'ocr',
+                                content: '',
+                                title: `OCR Content - Segment ${currentSegmentIndex + 1}`,
+                                qaItems: [],
+                              });
                             } else {
                               const contentMap: Record<string, string> = {
                                 BDA: currentSegment?.bda_indexer || '',
@@ -476,11 +461,10 @@ export default function WorkflowDetailModal({
                           label: 'OCR',
                           hasBlocks:
                             !!currentSegment?.paddleocr_blocks?.blocks?.length,
-                          content:
-                            currentSegment?.paddleocr ||
-                            (currentSegment?.paddleocr_blocks?.blocks?.length
-                              ? 'blocks'
-                              : ''),
+                          content: currentSegment?.paddleocr_blocks?.blocks
+                            ?.length
+                            ? 'blocks'
+                            : '',
                         },
                         {
                           type: 'bda',

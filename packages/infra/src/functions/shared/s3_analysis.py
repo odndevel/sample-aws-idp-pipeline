@@ -171,7 +171,7 @@ def update_segment_analysis(
             'bda_indexer': '',
             'format_parser': '',
             'paddleocr': '',
-            'paddleocr_blocks': [],
+            'paddleocr_blocks': None,
             'ai_analysis': []
         }
 
@@ -232,7 +232,7 @@ def add_segment_ai_analysis(
             'bda_indexer': '',
             'format_parser': '',
             'paddleocr': '',
-            'paddleocr_blocks': [],
+            'paddleocr_blocks': None,
             'ai_analysis': []
         }
 

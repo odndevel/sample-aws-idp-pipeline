@@ -55,7 +55,7 @@ class SegmentData(BaseModel):
     start_timecode_smpte: str | None = None
     end_timecode_smpte: str | None = None
     bda_indexer: str
-    paddleocr: str
+    paddleocr_blocks: dict | None = None
     format_parser: str
     ai_analysis: list[dict]
 
@@ -115,7 +115,7 @@ def get_workflow(document_id: str, workflow_id: str) -> WorkflowDetailResponse:
 
         image_uri = fix_image_uri(s3_data.get("image_uri", ""))
         bda_indexer = transform_markdown_images(s3_data.get("bda_indexer", ""), image_uri)
-        paddleocr = s3_data.get("paddleocr", "")
+        paddleocr_blocks = s3_data.get("paddleocr_blocks")
         format_parser = transform_markdown_images(s3_data.get("format_parser", ""), image_uri)
 
         # Transform ai_analysis content
@@ -147,7 +147,7 @@ def get_workflow(document_id: str, workflow_id: str) -> WorkflowDetailResponse:
                 start_timecode_smpte=s3_data.get("start_timecode_smpte"),
                 end_timecode_smpte=s3_data.get("end_timecode_smpte"),
                 bda_indexer=bda_indexer,
-                paddleocr=paddleocr,
+                paddleocr_blocks=paddleocr_blocks,
                 format_parser=format_parser,
                 ai_analysis=ai_analysis,
             )

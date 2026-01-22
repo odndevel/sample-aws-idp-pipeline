@@ -1,142 +1,162 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { OcrBlock, PaddleOcrBlocks } from '../types/project';
 
 interface OcrDocumentViewProps {
-  blocks: PaddleOcrBlocks | undefined;
+  blocks: PaddleOcrBlocks | undefined | null;
   imageUrl: string | null;
 }
 
 // Visual block types that should show cropped images
 const VISUAL_BLOCK_TYPES = ['figure', 'chart', 'seal', 'stamp', 'image'];
 
+// Process text to convert footnote markers like $^{2}$ or $ ^{2} $ to superscript
+const processFootnotes = (text: string): React.ReactNode => {
+  if (!text) return text;
+
+  // Match patterns like $^{n}$ or $ ^{n} $ where n is a number
+  const pattern = /\$\s*\^\s*\{(\d+)\}\s*\$/g;
+
+  if (!pattern.test(text)) {
+    return text;
+  }
+
+  // Reset regex lastIndex after test
+  pattern.lastIndex = 0;
+
+  const result: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match;
+  let keyIndex = 0;
+
+  while ((match = pattern.exec(text)) !== null) {
+    // Add text before the match
+    if (match.index > lastIndex) {
+      result.push(text.slice(lastIndex, match.index));
+    }
+
+    // Add the superscript
+    result.push(
+      <sup
+        key={keyIndex++}
+        className="text-xs font-medium"
+        style={{ color: 'var(--color-blue-500)' }}
+      >
+        {match[1]}
+      </sup>,
+    );
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    result.push(text.slice(lastIndex));
+  }
+
+  return result;
+};
+
 export default function OcrDocumentView({
   blocks,
   imageUrl,
 }: OcrDocumentViewProps) {
-  const [croppedImages, setCroppedImages] = useState<Map<number, string>>(
-    new Map(),
-  );
+  const [imageDimensions, setImageDimensions] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
-  const imageRef = useRef<HTMLImageElement | null>(null);
 
-  // Crop images from the original image using block bboxes
-  const cropImages = useCallback(async () => {
-    if (!imageUrl || !blocks?.blocks || !blocks.width || !blocks.height) {
-      return;
-    }
-
-    const visualBlocks = blocks.blocks.filter((block) =>
-      VISUAL_BLOCK_TYPES.includes(block.block_label),
-    );
-
-    if (visualBlocks.length === 0) {
-      setImageLoaded(true);
-      return;
-    }
-
-    // Load the image
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-
-    img.onload = () => {
-      imageRef.current = img;
-      const newCroppedImages = new Map<number, string>();
-
-      // Calculate scale factors (blocks.width and blocks.height are already validated above)
-      const blockWidth = blocks.width ?? img.naturalWidth;
-      const blockHeight = blocks.height ?? img.naturalHeight;
-      const scaleX = img.naturalWidth / blockWidth;
-      const scaleY = img.naturalHeight / blockHeight;
-
-      visualBlocks.forEach((block) => {
-        if (block.block_bbox && block.block_bbox.length === 4) {
-          const [x1, y1, x2, y2] = block.block_bbox;
-
-          // Scale bbox to actual image dimensions
-          const cropX = Math.floor(x1 * scaleX);
-          const cropY = Math.floor(y1 * scaleY);
-          const cropWidth = Math.floor((x2 - x1) * scaleX);
-          const cropHeight = Math.floor((y2 - y1) * scaleY);
-
-          if (cropWidth > 0 && cropHeight > 0) {
-            const canvas = document.createElement('canvas');
-            canvas.width = cropWidth;
-            canvas.height = cropHeight;
-            const ctx = canvas.getContext('2d');
-
-            if (ctx) {
-              ctx.drawImage(
-                img,
-                cropX,
-                cropY,
-                cropWidth,
-                cropHeight,
-                0,
-                0,
-                cropWidth,
-                cropHeight,
-              );
-
-              try {
-                const dataUrl = canvas.toDataURL('image/png');
-                newCroppedImages.set(block.block_id, dataUrl);
-              } catch {
-                console.warn(
-                  `Failed to crop image for block ${block.block_id}`,
-                );
-              }
-            }
-          }
-        }
-      });
-
-      setCroppedImages(newCroppedImages);
-      setImageLoaded(true);
-    };
-
-    img.onerror = () => {
-      console.warn('Failed to load image for cropping');
-      setImageLoaded(true);
-    };
-
-    img.src = imageUrl;
-  }, [imageUrl, blocks]);
-
+  // Load image to get natural dimensions for CSS-based cropping
   useEffect(() => {
-    cropImages();
-  }, [cropImages]);
+    if (!imageUrl) {
+      setImageLoaded(true);
+      return;
+    }
+
+    const img = new Image();
+    img.onload = () => {
+      setImageDimensions({
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+      });
+      setImageLoaded(true);
+    };
+    img.onerror = () => {
+      console.warn('Failed to load image');
+      setImageLoaded(true);
+    };
+    img.src = imageUrl;
+  }, [imageUrl]);
 
   // Render a single block
   const renderBlock = (block: OcrBlock) => {
     const isVisualBlock = VISUAL_BLOCK_TYPES.includes(block.block_label);
-    const croppedSrc = croppedImages.get(block.block_id);
 
     // Skip empty non-visual blocks
     if (!isVisualBlock && !block.block_content?.trim()) {
       return null;
     }
 
-    // Render visual blocks with cropped image
-    if (isVisualBlock) {
-      const [x1, , x2] = block.block_bbox || [0, 0, 0, 0];
-      const width = x2 - x1;
+    // Render visual blocks with CSS-based cropping
+    if (isVisualBlock && imageUrl && block.block_bbox?.length === 4) {
+      const [x1, y1, x2, y2] = block.block_bbox;
+      const cropWidth = x2 - x1;
+      const cropHeight = y2 - y1;
+
+      // Use blocks dimensions or fallback to image dimensions
+      const sourceWidth = blocks?.width || imageDimensions?.width || 1;
+      const sourceHeight = blocks?.height || imageDimensions?.height || 1;
+
+      // Calculate display size (max 400px width)
+      const displayWidth = Math.min(cropWidth, 400);
+      const scale = displayWidth / cropWidth;
+      const displayHeight = cropHeight * scale;
+
+      // Scale factor for background positioning
+      const bgScale = displayWidth / cropWidth;
+      const bgWidth = sourceWidth * bgScale;
+      const bgHeight = sourceHeight * bgScale;
+      const bgX = -x1 * bgScale;
+      const bgY = -y1 * bgScale;
 
       return (
         <div key={block.block_id} className="ocr-block ocr-block-visual my-4">
-          {croppedSrc ? (
+          <div
+            className="rounded-lg shadow-md overflow-hidden"
+            style={{
+              width: displayWidth,
+              height: displayHeight,
+              backgroundImage: `url(${imageUrl})`,
+              backgroundSize: `${bgWidth}px ${bgHeight}px`,
+              backgroundPosition: `${bgX}px ${bgY}px`,
+              backgroundRepeat: 'no-repeat',
+            }}
+          />
+          {block.block_content?.trim() && (
+            <p className="text-sm text-slate-500 italic mt-2">
+              {block.block_content}
+            </p>
+          )}
+        </div>
+      );
+    }
+
+    // Fallback for visual blocks without valid bbox - show full image
+    if (isVisualBlock) {
+      return (
+        <div key={block.block_id} className="ocr-block ocr-block-visual my-4">
+          {imageUrl ? (
             <img
-              src={croppedSrc}
-              alt={`${block.block_label} #${block.block_id}`}
-              style={{
-                width: Math.min(width, 600),
-                maxWidth: '100%',
-                height: 'auto',
-              }}
-              className="rounded-lg shadow-md"
+              src={imageUrl}
+              alt={block.block_label}
+              className="max-w-full h-auto rounded-lg shadow-md"
+              style={{ maxHeight: 300 }}
             />
           ) : (
-            <div className="text-sm text-slate-400 italic">
-              [{block.block_label.toUpperCase()}: Block #{block.block_id}]
+            <div className="flex items-center justify-center h-32 bg-slate-100 dark:bg-slate-800 rounded-lg">
+              <span className="text-sm text-slate-400">
+                [{block.block_label.toUpperCase()}]
+              </span>
             </div>
           )}
           {block.block_content?.trim() && (
@@ -203,6 +223,18 @@ export default function OcrDocumentView({
           </div>
         );
 
+      case 'footnote':
+        return (
+          <div
+            key={block.block_id}
+            className="ocr-block-footnote my-2 pl-4 border-l-2 border-slate-200 dark:border-slate-700"
+          >
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              {processFootnotes(block.block_content)}
+            </p>
+          </div>
+        );
+
       case 'text':
       default:
         return (
@@ -210,7 +242,7 @@ export default function OcrDocumentView({
             key={block.block_id}
             className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-3"
           >
-            {block.block_content}
+            {processFootnotes(block.block_content)}
           </p>
         );
     }
