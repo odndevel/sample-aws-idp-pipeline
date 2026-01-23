@@ -9,10 +9,11 @@ import {
   Box,
   Sparkles,
   ChevronDown,
+  ChevronUp,
   MessageSquarePlus,
-  Wand2,
   Download,
   File,
+  Search,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
@@ -105,6 +106,27 @@ export default function ChatPanel({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  // Expansion levels: 0=collapsed, 1=medium, 2=large, 3=full
+  const [toolResultExpandLevel, setToolResultExpandLevel] = useState<
+    Map<string, number>
+  >(new Map());
+
+  const expandToolResult = useCallback((messageId: string) => {
+    setToolResultExpandLevel((prev) => {
+      const next = new Map(prev);
+      const current = next.get(messageId) || 0;
+      next.set(messageId, Math.min(current + 1, 6));
+      return next;
+    });
+  }, []);
+
+  const collapseToolResult = useCallback((messageId: string) => {
+    setToolResultExpandLevel((prev) => {
+      const next = new Map(prev);
+      next.delete(messageId);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -467,7 +489,7 @@ export default function ChatPanel({
                       {message.toolResultType === 'artifact' ? (
                         <File className="w-3.5 h-3.5 text-white" />
                       ) : (
-                        <Wand2 className="w-3.5 h-3.5 text-white" />
+                        <Search className="w-3.5 h-3.5 text-white" />
                       )}
                     </div>
                     <span className="text-xs font-semibold text-slate-600 dark:text-fuchsia-300">
@@ -524,17 +546,81 @@ export default function ChatPanel({
                         )}
                       </div>
                     )}
-                    {/* Text content */}
-                    {message.content && (
-                      <div className="prose prose-sm dark:prose-invert max-w-none text-slate-700 dark:text-violet-100 [&_strong]:!text-inherit">
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
-                          rehypePlugins={[rehypeRaw]}
-                        >
-                          {prepareMarkdown(message.content)}
-                        </ReactMarkdown>
-                      </div>
-                    )}
+                    {/* Text content - multi-level collapsible */}
+                    {message.content &&
+                      (() => {
+                        const contentLength = message.content.length;
+                        const expandLevel =
+                          toolResultExpandLevel.get(message.id) || 0;
+
+                        // Level configs: [charLimit, maxHeightClass]
+                        const levels = [
+                          { chars: 150, height: 'max-h-20' },
+                          { chars: 400, height: 'max-h-36' },
+                          { chars: 800, height: 'max-h-56' },
+                          { chars: 1500, height: 'max-h-72' },
+                          { chars: 3000, height: 'max-h-96' },
+                          { chars: 6000, height: 'max-h-[32rem]' },
+                          { chars: Infinity, height: '' },
+                        ];
+
+                        const currentLevel = levels[expandLevel];
+                        const isFullyExpanded =
+                          expandLevel >= levels.length - 1;
+                        const canExpand =
+                          !isFullyExpanded &&
+                          contentLength > currentLevel.chars;
+                        const canCollapse = expandLevel > 0;
+
+                        const displayContent =
+                          contentLength > currentLevel.chars
+                            ? message.content.slice(0, currentLevel.chars) +
+                              '...'
+                            : message.content;
+
+                        return (
+                          <div className="space-y-2">
+                            <div
+                              className={`prose prose-sm dark:prose-invert max-w-none text-slate-700 dark:text-violet-100 [&_strong]:!text-inherit ${
+                                currentLevel.height
+                                  ? `${currentLevel.height} overflow-hidden`
+                                  : ''
+                              }`}
+                            >
+                              <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                rehypePlugins={[rehypeRaw]}
+                              >
+                                {prepareMarkdown(displayContent)}
+                              </ReactMarkdown>
+                            </div>
+                            {(canExpand || canCollapse) && (
+                              <div className="flex items-center gap-3">
+                                {canExpand && (
+                                  <button
+                                    onClick={() => expandToolResult(message.id)}
+                                    className="flex items-center gap-1 text-xs font-medium text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300 transition-colors"
+                                  >
+                                    <ChevronDown className="w-3.5 h-3.5" />
+                                    {t('common.showMore', 'Show more')}
+                                  </button>
+                                )}
+                                {canCollapse && (
+                                  <button
+                                    onClick={() =>
+                                      collapseToolResult(message.id)
+                                    }
+                                    className="flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+                                  >
+                                    <ChevronUp className="w-3.5 h-3.5" />
+                                    {t('common.showLess', 'Show less')}
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                   </div>
                 </div>
               ) : (

@@ -20,7 +20,9 @@
     "noResults": "No results found",
     "language": "Language",
     "yesterday": "Yesterday",
-    "daysAgo": "{{count}} days ago"
+    "daysAgo": "{{count}} days ago",
+    "showMore": "Show more",
+    "showLess": "Show less"
   },
   "nav": {
     "projects": "Projects",
