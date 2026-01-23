@@ -2,16 +2,21 @@ import { Stack, StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import {
+  ElastiCache,
   S3Bucket,
   S3DirectoryBucket,
   SSM_KEYS,
 } from ':idp-v2/common-constructs';
 import { AttributeType, Billing, TableV2 } from 'aws-cdk-lib/aws-dynamodb';
 import { HttpMethods } from 'aws-cdk-lib/aws-s3';
+import { Vpc } from 'aws-cdk-lib/aws-ec2';
 
 export class StorageStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
+
+    const vpcId = StringParameter.valueFromLookup(this, SSM_KEYS.VPC_ID);
+    const vpc = Vpc.fromLookup(this, 'Vpc', { vpcId });
 
     // LanceDB Storage Bucket
     const lancedbStorage = new S3Bucket(this, 'LancedbStorage', {
@@ -132,6 +137,16 @@ export class StorageStack extends Stack {
     new StringParameter(this, 'LancedbExpressAzIdParam', {
       parameterName: SSM_KEYS.LANCEDB_EXPRESS_AZ_ID,
       stringValue: 'use1-az4',
+    });
+
+    // ElastiCache Serverless (Redis)
+    const elasticache = new ElastiCache(this, 'ElastiCache', {
+      vpc,
+    });
+
+    new StringParameter(this, 'ElastiCacheEndpointParam', {
+      parameterName: SSM_KEYS.ELASTICACHE_ENDPOINT,
+      stringValue: elasticache.cache.serverlessCacheEndpointAddress,
     });
   }
 }

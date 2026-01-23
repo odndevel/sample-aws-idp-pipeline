@@ -16,4 +16,5 @@ export const SSM_KEYS = {
   BACKEND_URL: '/idp-v2/backend/url',
   SEARCH_MCP_FUNCTION_ARN: '/idp-v2/mcp/search/function-arn',
   SEARCH_MCP_ROLE_ARN: '/idp-v2/mcp/search/role-arn',
+  ELASTICACHE_ENDPOINT: '/idp-v2/elasticache/endpoint',
 } as const;
