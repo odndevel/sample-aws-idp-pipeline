@@ -51,14 +51,19 @@ const formatFileSize = (bytes: number) => {
 
 /** Prepare content for markdown parsing */
 const prepareMarkdown = (content: string): string => {
-  // Decode HTML entities
-  let result = content
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&');
+  // Decode HTML entities in a single pass to avoid double-unescaping
+  const entityMap: Record<string, string> = {
+    '&lt;': '<',
+    '&gt;': '>',
+    '&amp;': '&',
+    '&quot;': '"',
+    '&#39;': "'",
+    '&nbsp;': ' ',
+  };
+  let result = content.replace(
+    /&(?:lt|gt|amp|quot|nbsp|#39);/g,
+    (match) => entityMap[match] ?? match,
+  );
 
   // Strip HTML tags (except strong/em which we'll add)
   result = result
