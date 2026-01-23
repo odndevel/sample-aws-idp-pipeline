@@ -25,7 +25,15 @@ class DocumentContent(BaseModel):
     s3_url: str | None = None
 
 
-ContentItem = TextContent | ImageContent | DocumentContent
+ToolResultContentItem = TextContent | ImageContent | DocumentContent
+
+
+class ToolResultContent(BaseModel):
+    type: str = "tool_result"
+    content: list[ToolResultContentItem]
+
+
+ContentItem = TextContent | ImageContent | DocumentContent | ToolResultContent
 
 
 BytesEncoded = TypedDict("BytesEncoded", {"__bytes_encoded__": bool, "data": str}, total=False)
@@ -88,6 +96,7 @@ def parse_image(img: ImageDict) -> ImageContent:
 class ToolResultSubItemDict(TypedDict, total=False):
     text: str
     image: ImageDict
+    document: DocumentDict
 
 
 class ToolResultDict(TypedDict, total=False):
@@ -112,9 +121,14 @@ def parse_content_items(content_items: list[ContentItemDict]) -> list[ContentIte
             parsed.append(parse_document(item["document"]))
         elif "toolResult" in item and item["toolResult"]:
             tool_result = item["toolResult"]
+            sub_contents: list[ToolResultContentItem] = []
             for sub_item in tool_result.get("content", []):
                 if "text" in sub_item and sub_item["text"]:
-                    parsed.append(TextContent(text=sub_item["text"]))
+                    sub_contents.append(TextContent(text=sub_item["text"]))
                 elif "image" in sub_item and sub_item["image"]:
-                    parsed.append(parse_image(sub_item["image"]))
+                    sub_contents.append(parse_image(sub_item["image"]))
+                elif "document" in sub_item and sub_item["document"]:
+                    sub_contents.append(parse_document(sub_item["document"]))
+            if sub_contents:
+                parsed.append(ToolResultContent(content=sub_contents))
     return parsed
