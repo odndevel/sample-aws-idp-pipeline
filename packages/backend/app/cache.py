@@ -56,7 +56,7 @@ def _cached(
                     return type_adapter.validate_json(cached_value)
                 return json.loads(cached_value)
 
-            result = await fn(*args, **kwargs)
+            result = await _call_fn(*args, **kwargs)
             serialized = type_adapter.dump_json(result) if type_adapter else json.dumps(result).encode()
             await client.set(key, serialized.decode())
             await client.expire(key, expire)
