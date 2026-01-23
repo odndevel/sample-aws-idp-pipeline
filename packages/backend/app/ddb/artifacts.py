@@ -79,9 +79,7 @@ def query_user_project_artifacts(
 
     query_params = {
         "IndexName": "GSI2",
-        "KeyConditionExpression": Key("GSI2PK").eq(
-            f"USR#{user_id}#PROJ#{project_id}#ART"
-        ),
+        "KeyConditionExpression": Key("GSI2PK").eq(f"USR#{user_id}#PROJ#{project_id}#ART"),
         "ScanIndexForward": False,
         "Limit": limit,
     }

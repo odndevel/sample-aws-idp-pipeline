@@ -84,9 +84,7 @@ def list_documents(project_id: str) -> list[DocumentResponse]:
 
 
 @router.post("")
-def create_document_upload(
-    project_id: str, request: DocumentUploadRequest
-) -> DocumentUploadResponse:
+def create_document_upload(project_id: str, request: DocumentUploadRequest) -> DocumentUploadResponse:
     """Create a document record and return a presigned URL for upload."""
     config = get_config()
     s3 = get_s3_client()
@@ -137,9 +135,7 @@ def create_document_upload(
 
 
 @router.put("/{document_id}/status")
-def update_document_status(
-    project_id: str, document_id: str, request: DocumentStatusUpdate
-) -> DocumentResponse:
+def update_document_status(project_id: str, document_id: str, request: DocumentStatusUpdate) -> DocumentResponse:
     """Update document status after upload completion."""
     existing = get_document_item(project_id, document_id)
     if not existing:
@@ -196,9 +192,7 @@ def delete_document(project_id: str, document_id: str) -> DeleteDocumentResponse
         try:
             import lancedb
 
-            db = lancedb.connect(
-                f"s3://{config.lancedb_express_bucket_name}/{project_id}.lance"
-            )
+            db = lancedb.connect(f"s3://{config.lancedb_express_bucket_name}/{project_id}.lance")
             if "documents" in db.table_names():
                 lance_table = db.open_table("documents")
                 lance_table.delete(f"workflow_id = '{workflow_id}'")
@@ -225,6 +219,4 @@ def delete_document(project_id: str, document_id: str) -> DeleteDocumentResponse
     # 5. Delete document item from DynamoDB
     delete_document_item(project_id, document_id)
 
-    return DeleteDocumentResponse(
-        message=f"Document {document_id} deleted", details=deleted_info
-    )
+    return DeleteDocumentResponse(message=f"Document {document_id} deleted", details=deleted_info)

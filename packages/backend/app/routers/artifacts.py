@@ -82,9 +82,7 @@ def delete_artifact(
         raise HTTPException(status_code=404, detail="Artifact not found")
 
     if artifact.data.user_id != user_id:
-        raise HTTPException(
-            status_code=403, detail="Not authorized to delete this artifact"
-        )
+        raise HTTPException(status_code=403, detail="Not authorized to delete this artifact")
 
     # Delete from S3
     s3.delete_object(Bucket=artifact.data.s3_bucket, Key=artifact.data.s3_key)
