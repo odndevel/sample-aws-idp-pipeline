@@ -95,6 +95,7 @@ Backend Table은 Single Table Design을 사용합니다.
 |---|---|---|
 | `query_projects` | `query_projects` | 3600초 (1시간) |
 | `session_list:{user_id}:{project_id}` | `query_sessions` | 3600초 (1시간) |
+| `agent_list:{user_id}:{project_id}` | `query_agents` | 3600초 (1시간) |
 
 ### 캐시 무효화
 
@@ -104,3 +105,4 @@ Backend Table은 Single Table Design을 사용합니다.
 |---|---|
 | `query_projects` | 프로젝트 생성/수정/삭제 시 |
 | `session_list:{user_id}:{project_id}` | 세션 수정/삭제 시 |
+| `agent_list:{user_id}:{project_id}` | 에이전트 생성/수정/삭제 시 |
