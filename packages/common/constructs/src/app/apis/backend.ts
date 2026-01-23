@@ -108,6 +108,10 @@ export class Backend extends Construct {
       'AgentStorageBucket',
       SSM_KEYS.AGENT_STORAGE_BUCKET_NAME,
     );
+    const elasticacheEndpoint = StringParameter.valueForStringParameter(
+      this,
+      SSM_KEYS.ELASTICACHE_ENDPOINT,
+    );
 
     this.service = new ApplicationLoadBalancedFargateService(this, 'Service', {
       cluster,
@@ -129,6 +133,7 @@ export class Backend extends Construct {
           WEBSOCKET_ENDPOINT: websocketEndpoint,
           SESSION_STORAGE_BUCKET_NAME: sessionStorage.bucketName,
           AGENT_STORAGE_BUCKET_NAME: agentStorage.bucketName,
+          ELASTICACHE_ENDPOINT: elasticacheEndpoint,
         },
       },
       runtimePlatform: {

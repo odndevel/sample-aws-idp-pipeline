@@ -4,6 +4,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from app.cache import CacheKey, cached_query_projects, invalidate
 from app.config import get_config
 from app.ddb import (
     Project,
@@ -14,7 +15,6 @@ from app.ddb import (
     now_iso,
     put_project_item,
     query_all_project_items,
-    query_projects,
     update_project_data,
 )
 from app.ddb.documents import query_documents
@@ -109,8 +109,8 @@ class ProjectResponse(BaseModel):
 
 
 @router.get("")
-def list_projects() -> list[ProjectResponse]:
-    projects = query_projects()
+async def list_projects() -> list[ProjectResponse]:
+    projects = await cached_query_projects()
     return [ProjectResponse.from_project(p) for p in projects]
 
 
@@ -162,7 +162,7 @@ def get_project(project_id: str) -> ProjectResponse:
 
 
 @router.post("")
-def create_project(request: ProjectCreate) -> ProjectResponse:
+async def create_project(request: ProjectCreate) -> ProjectResponse:
     project_id = generate_project_id()
 
     now = now_iso()
@@ -180,6 +180,7 @@ def create_project(request: ProjectCreate) -> ProjectResponse:
     )
 
     put_project_item(project_id, data)
+    await invalidate(CacheKey.QUERY_PROJECTS)
 
     return ProjectResponse(
         project_id=project_id,
@@ -225,7 +226,7 @@ def update_project(project_id: str, request: ProjectUpdate) -> ProjectResponse:
 
 
 @router.delete("/{project_id}")
-def delete_project(project_id: str) -> DeleteProjectResponse:
+async def delete_project(project_id: str) -> DeleteProjectResponse:
     """Delete a project and all related data (documents, workflows, S3, LanceDB)."""
     config = get_config()
 
@@ -279,4 +280,5 @@ def delete_project(project_id: str) -> DeleteProjectResponse:
 
     deleted_info.project_items_deleted = len(project_items)
 
+    await invalidate(CacheKey.QUERY_PROJECTS)
     return DeleteProjectResponse(message=f"Project {project_id} deleted", details=deleted_info)

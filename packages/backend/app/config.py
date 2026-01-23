@@ -15,6 +15,7 @@ class Config(BaseSettings):
     websocket_endpoint: str = ""
     session_storage_bucket_name: str = ""
     agent_storage_bucket_name: str = ""
+    elasticache_endpoint: str = ""
 
 
 @lru_cache
