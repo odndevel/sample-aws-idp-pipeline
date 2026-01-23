@@ -29,6 +29,10 @@ class AgentResponse(BaseModel):
     created_at: str
 
 
+class DeleteAgentResponse(BaseModel):
+    message: str
+
+
 class AgentListItem(BaseModel):
     agent_id: str
     name: str
@@ -187,7 +191,7 @@ def upsert_agent(
 
 
 @router.delete("/{agent_id}")
-def delete_agent(project_id: str, agent_id: str, x_user_id: str = Header(alias="x-user-id")) -> dict:
+def delete_agent(project_id: str, agent_id: str, x_user_id: str = Header(alias="x-user-id")) -> DeleteAgentResponse:
     """Delete an agent."""
     config = get_config()
     s3 = get_s3_client()
@@ -203,4 +207,4 @@ def delete_agent(project_id: str, agent_id: str, x_user_id: str = Header(alias="
 
     s3.delete_object(Bucket=config.agent_storage_bucket_name, Key=key)
 
-    return {"message": f"Agent {agent_id} deleted"}
+    return DeleteAgentResponse(message=f"Agent {agent_id} deleted")
