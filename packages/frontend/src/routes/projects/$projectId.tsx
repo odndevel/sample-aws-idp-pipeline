@@ -62,8 +62,7 @@ function ProjectDetailPage() {
   const { t } = useTranslation();
   const { projectId } = Route.useParams();
   const { fetchApi, invokeAgent } = useAwsClient();
-  const { user } = useAuth();
-  const userId = user?.profile?.['cognito:username'] as string;
+  useAuth();
   const { showToast } = useToast();
   // AgentCore requires session ID >= 33 chars
   const [currentSessionId, setCurrentSessionId] = useState(() => nanoid(33));
@@ -250,12 +249,9 @@ function ProjectDetailPage() {
   }, []);
 
   const loadAgents = useCallback(async () => {
-    if (!userId) return;
     setLoadingAgents(true);
     try {
-      const data = await fetchApi<Agent[]>(
-        `users/${userId}/projects/${projectId}/agents`,
-      );
+      const data = await fetchApi<Agent[]>(`projects/${projectId}/agents`);
       setAgents(data);
     } catch (error) {
       console.error('Failed to load agents:', error);
@@ -263,7 +259,7 @@ function ProjectDetailPage() {
     } finally {
       setLoadingAgents(false);
     }
-  }, [fetchApi, projectId, userId]);
+  }, [fetchApi, projectId]);
 
   const loadArtifacts = useCallback(async () => {
     try {
@@ -279,37 +275,22 @@ function ProjectDetailPage() {
 
   const loadAgentDetail = useCallback(
     async (agentName: string): Promise<Agent | null> => {
-      if (!userId) return null;
       try {
         return await fetchApi<Agent>(
-          `users/${userId}/projects/${projectId}/agents/${encodeURIComponent(agentName)}`,
+          `projects/${projectId}/agents/${encodeURIComponent(agentName)}`,
         );
       } catch (error) {
         console.error('Failed to load agent detail:', error);
         return null;
       }
     },
-    [fetchApi, projectId, userId],
+    [fetchApi, projectId],
   );
 
-  const handleAgentCreate = useCallback(
+  const handleAgentUpsert = useCallback(
     async (name: string, content: string) => {
-      if (!userId) return;
-      await fetchApi(`users/${userId}/projects/${projectId}/agents`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, content }),
-      });
-      await loadAgents();
-    },
-    [fetchApi, projectId, userId, loadAgents],
-  );
-
-  const handleAgentUpdate = useCallback(
-    async (name: string, content: string) => {
-      if (!userId) return;
       await fetchApi(
-        `users/${userId}/projects/${projectId}/agents/${encodeURIComponent(name)}`,
+        `projects/${projectId}/agents/${encodeURIComponent(name)}`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -322,14 +303,13 @@ function ProjectDetailPage() {
         setSelectedAgent((prev) => (prev ? { ...prev, content } : null));
       }
     },
-    [fetchApi, projectId, userId, loadAgents, selectedAgent],
+    [fetchApi, projectId, loadAgents, selectedAgent],
   );
 
   const handleAgentDelete = useCallback(
     async (name: string) => {
-      if (!userId) return;
       await fetchApi(
-        `users/${userId}/projects/${projectId}/agents/${encodeURIComponent(name)}`,
+        `projects/${projectId}/agents/${encodeURIComponent(name)}`,
         {
           method: 'DELETE',
         },
@@ -341,7 +321,7 @@ function ProjectDetailPage() {
         handleNewSession();
       }
     },
-    [fetchApi, projectId, userId, loadAgents, selectedAgent, handleNewSession],
+    [fetchApi, projectId, loadAgents, selectedAgent, handleNewSession],
   );
 
   const handleAgentSelect = useCallback(
@@ -1050,8 +1030,8 @@ function ProjectDetailPage() {
         loading={loadingAgents}
         onClose={() => setShowAgentModal(false)}
         onSelect={handleAgentSelect}
-        onCreate={handleAgentCreate}
-        onUpdate={handleAgentUpdate}
+        onCreate={handleAgentUpsert}
+        onUpdate={handleAgentUpsert}
         onDelete={handleAgentDelete}
         onLoadDetail={loadAgentDetail}
       />
