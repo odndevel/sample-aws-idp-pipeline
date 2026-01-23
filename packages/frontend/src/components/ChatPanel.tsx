@@ -55,10 +55,10 @@ const prepareMarkdown = (content: string): string => {
   let result = content
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ');
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&');
 
   // Strip HTML tags (except strong/em which we'll add)
   result = result
