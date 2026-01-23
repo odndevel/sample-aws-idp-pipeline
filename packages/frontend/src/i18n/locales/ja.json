@@ -20,7 +20,9 @@
     "noResults": "結果が見つかりません",
     "language": "言語",
     "yesterday": "昨日",
-    "daysAgo": "{{count}}日前"
+    "daysAgo": "{{count}}日前",
+    "showMore": "もっと見る",
+    "showLess": "折りたたむ"
   },
   "nav": {
     "projects": "プロジェクト",

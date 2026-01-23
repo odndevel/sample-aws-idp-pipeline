@@ -20,7 +20,9 @@
     "noResults": "검색 결과가 없습니다",
     "language": "언어",
     "yesterday": "어제",
-    "daysAgo": "{{count}}일 전"
+    "daysAgo": "{{count}}일 전",
+    "showMore": "더 보기",
+    "showLess": "접기"
   },
   "nav": {
     "projects": "프로젝트",
