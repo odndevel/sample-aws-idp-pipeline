@@ -75,5 +75,6 @@
     "us-west-2b",
     "us-west-2c",
     "us-west-2d"
-  ]
+  ],
+  "ami:account=975050239358:filters.image-type.0=machine:filters.name.0=Deep Learning OSS Nvidia Driver AMI GPU PyTorch 2.5.* (Ubuntu 22.04) *:filters.state.0=available:owners.0=amazon:region=us-east-1": "ami-07f71d5a2b40df1a9"
 }
