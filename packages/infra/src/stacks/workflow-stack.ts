@@ -11,6 +11,7 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as cr from 'aws-cdk-lib/custom-resources';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import { Platform } from 'aws-cdk-lib/aws-ecr-assets';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -84,22 +85,26 @@ export class WorkflowStack extends Stack {
       documentBucketName,
     );
 
-    // PaddleOCR Endpoint Name (from PaddleOcrStack)
-    const paddleOcrEndpointName = ssm.StringParameter.valueForStringParameter(
+    // PaddleOCR EC2 configuration (from PaddleOcrStack)
+    // EC2 lifecycle is now managed by Step Functions directly
+    const paddleOcrEc2InstanceId = ssm.StringParameter.valueForStringParameter(
       this,
-      SSM_KEYS.PADDLEOCR_ENDPOINT_NAME,
+      SSM_KEYS.PADDLEOCR_EC2_INSTANCE_ID,
     );
 
-    // Model Artifacts Bucket (for PaddleOCR async inference output)
-    const modelArtifactsBucketName =
-      ssm.StringParameter.valueForStringParameter(
-        this,
-        SSM_KEYS.MODEL_ARTIFACTS_BUCKET_NAME,
-      );
-    const modelArtifactsBucket = s3.Bucket.fromBucketName(
+    // Get VPC for Lambda to access EC2 (valueFromLookup for concrete value at synth time)
+    const vpcId = ssm.StringParameter.valueFromLookup(this, SSM_KEYS.VPC_ID);
+    const vpc = ec2.Vpc.fromLookup(this, 'Vpc', { vpcId });
+
+    // Security group for PaddleOCR processor Lambda (to access EC2)
+    const paddleOcrLambdaSg = new ec2.SecurityGroup(
       this,
-      'ModelArtifactsBucket',
-      modelArtifactsBucketName,
+      'PaddleOcrProcessorSg',
+      {
+        vpc,
+        description: 'Security group for PaddleOCR processor Lambda',
+        allowAllOutbound: true,
+      },
     );
 
     // Enable EventBridge notifications on existing S3 bucket
@@ -408,21 +413,50 @@ export class WorkflowStack extends Stack {
       },
     });
 
-    const paddleocrProcessor = new lambda.Function(this, 'PaddleOcrProcessor', {
+    // PaddleOCR Prepare Lambda (record step start, get OCR settings)
+    const paddleocrPrepare = new lambda.Function(this, 'PaddleOcrPrepare', {
       ...commonLambdaProps,
-      functionName: 'idp-v2-paddleocr-processor',
+      functionName: 'idp-v2-paddleocr-prepare',
+      handler: 'index.handler',
+      timeout: Duration.seconds(30),
+      memorySize: 256,
+      code: lambda.Code.fromAsset(
+        path.join(__dirname, '../functions/step-functions/paddleocr-prepare'),
+      ),
+      layers: [sharedLayer],
+    });
+
+    // PaddleOCR Execute Lambda (health check, HTTP predict, S3 save)
+    const paddleocrExecute = new lambda.Function(this, 'PaddleOcrExecute', {
+      ...commonLambdaProps,
+      functionName: 'idp-v2-paddleocr-execute',
       handler: 'index.handler',
       timeout: Duration.minutes(10),
       memorySize: 1024,
       code: lambda.Code.fromAsset(
-        path.join(__dirname, '../functions/step-functions/paddleocr-processor'),
+        path.join(__dirname, '../functions/step-functions/paddleocr-execute'),
       ),
       layers: [coreLayer, sharedLayer],
+      vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+      securityGroups: [paddleOcrLambdaSg],
       environment: {
         ...commonLambdaProps.environment,
-        PADDLEOCR_ENDPOINT_NAME: paddleOcrEndpointName,
         DOCUMENT_BUCKET_NAME: this.documentBucket.bucketName,
       },
+    });
+
+    // PaddleOCR Complete Lambda (record step complete)
+    const paddleocrComplete = new lambda.Function(this, 'PaddleOcrComplete', {
+      ...commonLambdaProps,
+      functionName: 'idp-v2-paddleocr-complete',
+      handler: 'index.handler',
+      timeout: Duration.seconds(30),
+      memorySize: 256,
+      code: lambda.Code.fromAsset(
+        path.join(__dirname, '../functions/step-functions/paddleocr-complete'),
+      ),
+      layers: [sharedLayer],
     });
 
     // LanceDB Writer Lambda (consumes from SQS, concurrency=1)
@@ -474,14 +508,196 @@ export class WorkflowStack extends Stack {
       outputPath: '$.Payload',
     });
 
-    const paddleocrProcessorTask = new tasks.LambdaInvoke(
+    // ========================================
+    // PaddleOCR Sub-workflow (EC2 lifecycle + OCR)
+    // ========================================
+
+    // 1. Prepare: record step start, get OCR settings
+    const paddleocrPrepareTask = new tasks.LambdaInvoke(this, 'OcrPrepare', {
+      lambdaFunction: paddleocrPrepare,
+      outputPath: '$.Payload',
+    });
+
+    // 2. EC2 Describe Instances (check state)
+    const ec2DescribeTask = new tasks.CallAwsService(this, 'OcrEc2Describe', {
+      service: 'ec2',
+      action: 'describeInstances',
+      parameters: {
+        InstanceIds: [paddleOcrEc2InstanceId],
+      },
+      iamResources: ['*'],
+      resultSelector: {
+        'state.$': '$.Reservations[0].Instances[0].State.Name',
+        'privateIp.$': '$.Reservations[0].Instances[0].PrivateIpAddress',
+      },
+      resultPath: '$.ec2',
+    });
+
+    // 3. EC2 Start Instances
+    const ec2StartTask = new tasks.CallAwsService(this, 'OcrEc2Start', {
+      service: 'ec2',
+      action: 'startInstances',
+      parameters: {
+        InstanceIds: [paddleOcrEc2InstanceId],
+      },
+      iamResources: ['*'],
+      resultPath: sfn.JsonPath.DISCARD,
+    });
+
+    // Retry on capacity errors
+    ec2StartTask.addRetry({
+      errors: ['Ec2.InsufficientInstanceCapacityException', 'Ec2.Ec2Exception'],
+      interval: Duration.minutes(1),
+      maxAttempts: 5,
+      backoffRate: 2,
+    });
+
+    // Wait states for EC2 lifecycle (each state can only have one next)
+    const waitForEc2Stop = new sfn.Wait(this, 'WaitForEc2Stop', {
+      time: sfn.WaitTime.duration(Duration.seconds(30)),
+    });
+
+    const waitAfterEc2Start = new sfn.Wait(this, 'WaitAfterEc2Start', {
+      time: sfn.WaitTime.duration(Duration.seconds(15)),
+    });
+
+    const waitForEc2Pending = new sfn.Wait(this, 'WaitForEc2Pending', {
+      time: sfn.WaitTime.duration(Duration.seconds(15)),
+    });
+
+    const waitForEc2Boot = new sfn.Wait(this, 'WaitForEc2Boot', {
+      time: sfn.WaitTime.duration(Duration.seconds(30)),
+    });
+
+    // Additional EC2 Describe for polling loops (each describe can only be used once in chain)
+    const ec2DescribeAfterStop = new tasks.CallAwsService(
       this,
-      'ProcessPaddleOcr',
+      'OcrEc2DescribeAfterStop',
       {
-        lambdaFunction: paddleocrProcessor,
-        outputPath: '$.Payload',
+        service: 'ec2',
+        action: 'describeInstances',
+        parameters: {
+          InstanceIds: [paddleOcrEc2InstanceId],
+        },
+        iamResources: ['*'],
+        resultSelector: {
+          'state.$': '$.Reservations[0].Instances[0].State.Name',
+          'privateIp.$': '$.Reservations[0].Instances[0].PrivateIpAddress',
+        },
+        resultPath: '$.ec2',
       },
     );
+
+    const ec2DescribeAfterStart = new tasks.CallAwsService(
+      this,
+      'OcrEc2DescribeAfterStart',
+      {
+        service: 'ec2',
+        action: 'describeInstances',
+        parameters: {
+          InstanceIds: [paddleOcrEc2InstanceId],
+        },
+        iamResources: ['*'],
+        resultSelector: {
+          'state.$': '$.Reservations[0].Instances[0].State.Name',
+          'privateIp.$': '$.Reservations[0].Instances[0].PrivateIpAddress',
+        },
+        resultPath: '$.ec2',
+      },
+    );
+
+    const ec2DescribeAfterPending = new tasks.CallAwsService(
+      this,
+      'OcrEc2DescribeAfterPending',
+      {
+        service: 'ec2',
+        action: 'describeInstances',
+        parameters: {
+          InstanceIds: [paddleOcrEc2InstanceId],
+        },
+        iamResources: ['*'],
+        resultSelector: {
+          'state.$': '$.Reservations[0].Instances[0].State.Name',
+          'privateIp.$': '$.Reservations[0].Instances[0].PrivateIpAddress',
+        },
+        resultPath: '$.ec2',
+      },
+    );
+
+    // Pass state to extract private IP for running state
+    const ec2RunningPass = new sfn.Pass(this, 'Ec2Running', {
+      parameters: {
+        'workflow_id.$': '$.workflow_id',
+        'document_id.$': '$.document_id',
+        'project_id.$': '$.project_id',
+        'file_uri.$': '$.file_uri',
+        'file_name.$': '$.file_name',
+        'file_type.$': '$.file_type',
+        'processing_type.$': '$.processing_type',
+        'language.$': '$.language',
+        'use_bda.$': '$.use_bda',
+        'segment_count.$': '$.segment_count',
+        'ocr_model.$': '$.ocr_model',
+        'ocr_options.$': '$.ocr_options',
+        'ec2_private_ip.$': '$.ec2.privateIp',
+      },
+    });
+
+    // EC2 state choice
+    const ec2StateChoice = new sfn.Choice(this, 'Ec2StateChoice')
+      .when(
+        sfn.Condition.stringEquals('$.ec2.state', 'running'),
+        ec2RunningPass,
+      )
+      .when(
+        sfn.Condition.stringEquals('$.ec2.state', 'stopping'),
+        waitForEc2Stop,
+      )
+      .when(
+        sfn.Condition.stringEquals('$.ec2.state', 'stopped'),
+        ec2StartTask.next(waitAfterEc2Start),
+      )
+      .when(
+        sfn.Condition.stringEquals('$.ec2.state', 'pending'),
+        waitForEc2Pending,
+      )
+      .otherwise(
+        new sfn.Fail(this, 'Ec2UnknownState', {
+          cause: 'EC2 instance in unknown state',
+          error: 'EC2_UNKNOWN_STATE',
+        }),
+      );
+
+    // Chain the polling loops (after choice is defined)
+    waitForEc2Stop.next(ec2DescribeAfterStop);
+    ec2DescribeAfterStop.next(ec2StateChoice);
+
+    waitAfterEc2Start.next(ec2DescribeAfterStart);
+    ec2DescribeAfterStart.next(ec2StateChoice);
+
+    waitForEc2Pending.next(ec2DescribeAfterPending);
+    ec2DescribeAfterPending.next(ec2StateChoice);
+
+    // 4. Execute: health check, HTTP predict, S3 save
+    const paddleocrExecuteTask = new tasks.LambdaInvoke(this, 'OcrExecute', {
+      lambdaFunction: paddleocrExecute,
+      outputPath: '$.Payload',
+    });
+
+    // 5. Complete: record step complete
+    const paddleocrCompleteTask = new tasks.LambdaInvoke(this, 'OcrComplete', {
+      lambdaFunction: paddleocrComplete,
+      outputPath: '$.Payload',
+    });
+
+    // Chain: Prepare → Describe → Choice → (lifecycle) → Boot Wait → Execute → Complete
+    ec2DescribeTask.next(ec2StateChoice);
+    ec2RunningPass.next(waitForEc2Boot);
+    waitForEc2Boot.next(paddleocrExecuteTask);
+    paddleocrExecuteTask.next(paddleocrCompleteTask);
+
+    // Full OCR sub-workflow chain
+    const ocrSubWorkflow = paddleocrPrepareTask.next(ec2DescribeTask);
 
     const segmentBuilderTask = new tasks.LambdaInvoke(this, 'BuildSegments', {
       lambdaFunction: segmentBuilder,
@@ -550,19 +766,19 @@ export class WorkflowStack extends Stack {
     const ocrSupportedChoice = new sfn.Choice(this, 'OcrSupportedChoice')
       .when(
         sfn.Condition.stringEquals('$.file_type', 'application/pdf'),
-        paddleocrProcessorTask,
+        ocrSubWorkflow,
       )
       .when(
         sfn.Condition.stringEquals('$.file_type', 'image/png'),
-        paddleocrProcessorTask,
+        ocrSubWorkflow,
       )
       .when(
         sfn.Condition.stringEquals('$.file_type', 'image/jpeg'),
-        paddleocrProcessorTask,
+        ocrSubWorkflow,
       )
       .when(
         sfn.Condition.stringEquals('$.file_type', 'image/tiff'),
-        paddleocrProcessorTask,
+        ocrSubWorkflow,
       )
       .otherwise(new sfn.Pass(this, 'SkipOcr'));
 
@@ -670,7 +886,9 @@ export class WorkflowStack extends Stack {
       segmentAnalyzer,
       analysisFinalizer,
       documentSummarizer,
-      paddleocrProcessor,
+      paddleocrPrepare,
+      paddleocrExecute,
+      paddleocrComplete,
       triggerFunction,
       lancedbService,
       lancedbWriter,
@@ -684,18 +902,7 @@ export class WorkflowStack extends Stack {
     lancedbWriteQueue.grantSendMessages(analysisFinalizer);
     lancedbWriteQueue.grantConsumeMessages(lancedbWriter);
 
-    // SageMaker permissions for PaddleOCR Processor
-    paddleocrProcessor.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ['sagemaker:InvokeEndpoint', 'sagemaker:InvokeEndpointAsync'],
-        resources: [
-          `arn:aws:sagemaker:${this.region}:${this.account}:endpoint/${paddleOcrEndpointName}`,
-        ],
-      }),
-    );
-
-    // Model Artifacts Bucket permissions for PaddleOCR (async inference output cleanup)
-    modelArtifactsBucket.grantReadWrite(paddleocrProcessor);
+    // EC2 permissions are now handled by Step Functions State Machine (see below)
 
     for (const fn of allFunctions) {
       // S3 permissions (Document bucket)
@@ -754,6 +961,14 @@ export class WorkflowStack extends Stack {
         }),
       );
     }
+
+    // EC2 permissions for Step Functions State Machine (PaddleOCR EC2 lifecycle)
+    this.stateMachine.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ec2:DescribeInstances', 'ec2:StartInstances'],
+        resources: ['*'],
+      }),
+    );
 
     // Step Functions permissions for trigger
     this.stateMachine.grantStartExecution(triggerFunction);

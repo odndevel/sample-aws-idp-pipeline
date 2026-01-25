@@ -1,14 +1,12 @@
-import { Stack, StackProps } from 'aws-cdk-lib';
+import { CfnOutput, Stack, StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { SSM_KEYS } from ':idp-v2/common-constructs';
-import {
-  PaddleOcrModelBuilder,
-  PaddleOcrEndpoint,
-} from '../constructs/index.js';
+import { PaddleOcrEc2 } from '../constructs/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,6 +14,10 @@ const __dirname = path.dirname(__filename);
 export class PaddleOcrStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
+
+    // Get VPC from SSM (valueFromLookup for concrete value at synth time)
+    const vpcId = StringParameter.valueFromLookup(this, SSM_KEYS.VPC_ID);
+    const vpc = ec2.Vpc.fromLookup(this, 'Vpc', { vpcId });
 
     // Get model artifacts bucket from SSM
     const modelArtifactsBucketName = StringParameter.valueForStringParameter(
@@ -41,40 +43,25 @@ export class PaddleOcrStack extends Stack {
       documentBucketName,
     );
 
-    // PaddleOCR Model Builder (CodeBuild + ECR)
-    const paddleOcrModelBuilder = new PaddleOcrModelBuilder(
-      this,
-      'PaddleOcrModelBuilder',
-      {
-        bucket: modelArtifactsBucket as s3.Bucket,
-        triggerLambdaPath: path.join(
-          __dirname,
-          '../functions/paddleocr/model-builder-trigger',
-        ),
-        modelUploaderLambdaPath: path.join(
-          __dirname,
-          '../functions/paddleocr/model-uploader',
-        ),
-        inferenceCodePath: path.join(
-          __dirname,
-          '../functions/paddleocr/code/inference.py',
-        ),
-      },
-    );
-
-    // PaddleOCR SageMaker Endpoint
-    const paddleOcrEndpoint = new PaddleOcrEndpoint(this, 'PaddleOcrEndpoint', {
-      bucket: modelArtifactsBucket as s3.Bucket,
+    // PaddleOCR EC2 Instance (g5.xlarge with GPU, direct installation)
+    const paddleOcrEc2 = new PaddleOcrEc2(this, 'PaddleOcrEc2', {
+      vpc,
+      modelBucket: modelArtifactsBucket as s3.Bucket,
       documentBucket: documentBucket as s3.Bucket,
-      imageUri: paddleOcrModelBuilder.imageUri,
-      modelDataUrl: paddleOcrModelBuilder.modelDataUrl,
-      buildTrigger: paddleOcrModelBuilder.dockerBuildTrigger,
+      serverCodePath: path.join(__dirname, '../functions/paddleocr/ec2-server'),
+      idleTimeoutMinutes: 10,
     });
 
-    // Store endpoint name in SSM for WorkflowStack to reference
-    new StringParameter(this, 'PaddleOcrEndpointNameParam', {
-      parameterName: SSM_KEYS.PADDLEOCR_ENDPOINT_NAME,
-      stringValue: paddleOcrEndpoint.endpointName,
+    // Store EC2 instance ID in SSM for WorkflowStack to reference
+    new StringParameter(this, 'PaddleOcrEc2InstanceIdParam', {
+      parameterName: SSM_KEYS.PADDLEOCR_EC2_INSTANCE_ID,
+      stringValue: paddleOcrEc2.instanceId,
+    });
+
+    // Output for reference
+    new CfnOutput(this, 'Ec2InstanceId', {
+      value: paddleOcrEc2.instanceId,
+      description: 'PaddleOCR EC2 Instance ID',
     });
   }
 }
