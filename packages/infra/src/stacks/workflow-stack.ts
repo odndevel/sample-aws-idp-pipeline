@@ -510,6 +510,7 @@ export class WorkflowStack extends Stack {
           'segment_count.$': '$[0].segment_count',
           'format_parser.$': '$[1].format_parser',
           'is_reanalysis.$': '$$.Execution.Input.is_reanalysis',
+          'use_bda.$': '$$.Execution.Input.use_bda',
         },
       },
     );
