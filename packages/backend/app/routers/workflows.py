@@ -272,3 +272,248 @@ def reanalyze_workflow(document_id: str, workflow_id: str, request: ReanalysisRe
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to start re-analysis: {e}") from e
+
+
+class RegenerateQaRequest(BaseModel):
+    qa_index: int
+    question: str
+    user_instructions: str = ""
+
+
+class RegenerateQaResponse(BaseModel):
+    analysis_query: str
+    content: str
+
+
+@router.post("/{workflow_id}/segments/{segment_index}/regenerate-qa")
+def regenerate_qa(
+    document_id: str,
+    workflow_id: str,
+    segment_index: int,
+    request: RegenerateQaRequest,
+) -> RegenerateQaResponse:
+    """Regenerate a single Q&A item for a segment."""
+    config = get_config()
+
+    wf = get_workflow_item(document_id, workflow_id)
+    if not wf:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    if wf.data.status not in ("completed", "failed"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Workflow must be completed or failed. Current status: {wf.data.status}",
+        )
+
+    function_arn = config.qa_regenerator_function_arn
+    if not function_arn:
+        raise HTTPException(status_code=500, detail="QA regenerator function not configured")
+
+    # Determine language
+    language_map = {"ko": "Korean", "en": "English", "ja": "Japanese"}
+    language = language_map.get(wf.data.language or "en", "English")
+
+    payload = {
+        "file_uri": wf.data.file_uri,
+        "segment_index": segment_index,
+        "qa_index": request.qa_index,
+        "question": request.question,
+        "user_instructions": request.user_instructions,
+        "language": language,
+        "workflow_id": workflow_id,
+        "document_id": document_id,
+        "project_id": wf.data.project_id,
+        "file_type": wf.data.file_type,
+    }
+
+    try:
+        lambda_client = boto3.client("lambda", region_name=config.aws_region)
+        response = lambda_client.invoke(
+            FunctionName=function_arn,
+            InvocationType="RequestResponse",
+            Payload=json.dumps(payload),
+        )
+
+        result_payload = json.loads(response["Payload"].read().decode("utf-8"))
+
+        if "FunctionError" in response:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Lambda error: {result_payload}",
+            )
+
+        if result_payload.get("statusCode", 200) != 200:
+            raise HTTPException(
+                status_code=result_payload.get("statusCode", 500),
+                detail=result_payload.get("error", "Unknown error"),
+            )
+
+        return RegenerateQaResponse(
+            analysis_query=result_payload.get("analysis_query", request.question),
+            content=result_payload.get("content", ""),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to regenerate Q&A: {e}") from e
+
+
+class AddQaRequest(BaseModel):
+    question: str
+    user_instructions: str = ""
+
+
+class AddQaResponse(BaseModel):
+    analysis_query: str
+    content: str
+    qa_index: int
+
+
+@router.post("/{workflow_id}/segments/{segment_index}/add-qa")
+def add_qa(
+    document_id: str,
+    workflow_id: str,
+    segment_index: int,
+    request: AddQaRequest,
+) -> AddQaResponse:
+    """Add a new Q&A item to a segment."""
+    config = get_config()
+
+    wf = get_workflow_item(document_id, workflow_id)
+    if not wf:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    if wf.data.status not in ("completed", "failed"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Workflow must be completed or failed. Current status: {wf.data.status}",
+        )
+
+    function_arn = config.qa_regenerator_function_arn
+    if not function_arn:
+        raise HTTPException(status_code=500, detail="QA regenerator function not configured")
+
+    language_map = {"ko": "Korean", "en": "English", "ja": "Japanese"}
+    language = language_map.get(wf.data.language or "en", "English")
+
+    payload = {
+        "mode": "add",
+        "file_uri": wf.data.file_uri,
+        "segment_index": segment_index,
+        "question": request.question,
+        "user_instructions": request.user_instructions,
+        "language": language,
+        "workflow_id": workflow_id,
+        "document_id": document_id,
+        "project_id": wf.data.project_id,
+        "file_type": wf.data.file_type,
+    }
+
+    try:
+        lambda_client = boto3.client("lambda", region_name=config.aws_region)
+        response = lambda_client.invoke(
+            FunctionName=function_arn,
+            InvocationType="RequestResponse",
+            Payload=json.dumps(payload),
+        )
+
+        result_payload = json.loads(response["Payload"].read().decode("utf-8"))
+
+        if "FunctionError" in response:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Lambda error: {result_payload}",
+            )
+
+        if result_payload.get("statusCode", 200) != 200:
+            raise HTTPException(
+                status_code=result_payload.get("statusCode", 500),
+                detail=result_payload.get("error", "Unknown error"),
+            )
+
+        return AddQaResponse(
+            analysis_query=result_payload.get("analysis_query", request.question),
+            content=result_payload.get("content", ""),
+            qa_index=result_payload.get("qa_index", 0),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to add Q&A: {e}") from e
+
+
+class DeleteQaResponse(BaseModel):
+    deleted: bool
+    deleted_query: str
+    qa_index: int
+
+
+@router.delete("/{workflow_id}/segments/{segment_index}/qa/{qa_index}")
+def delete_qa(
+    document_id: str,
+    workflow_id: str,
+    segment_index: int,
+    qa_index: int,
+) -> DeleteQaResponse:
+    """Delete a Q&A item from a segment."""
+    config = get_config()
+
+    wf = get_workflow_item(document_id, workflow_id)
+    if not wf:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    if wf.data.status not in ("completed", "failed"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Workflow must be completed or failed. Current status: {wf.data.status}",
+        )
+
+    function_arn = config.qa_regenerator_function_arn
+    if not function_arn:
+        raise HTTPException(status_code=500, detail="QA regenerator function not configured")
+
+    payload = {
+        "mode": "delete",
+        "file_uri": wf.data.file_uri,
+        "segment_index": segment_index,
+        "qa_index": qa_index,
+        "workflow_id": workflow_id,
+        "document_id": document_id,
+        "project_id": wf.data.project_id,
+        "file_type": wf.data.file_type,
+    }
+
+    try:
+        lambda_client = boto3.client("lambda", region_name=config.aws_region)
+        response = lambda_client.invoke(
+            FunctionName=function_arn,
+            InvocationType="RequestResponse",
+            Payload=json.dumps(payload),
+        )
+
+        result_payload = json.loads(response["Payload"].read().decode("utf-8"))
+
+        if "FunctionError" in response:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Lambda error: {result_payload}",
+            )
+
+        if result_payload.get("statusCode", 200) != 200:
+            raise HTTPException(
+                status_code=result_payload.get("statusCode", 500),
+                detail=result_payload.get("error", "Unknown error"),
+            )
+
+        return DeleteQaResponse(
+            deleted=result_payload.get("deleted", True),
+            deleted_query=result_payload.get("deleted_query", ""),
+            qa_index=result_payload.get("qa_index", qa_index),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete Q&A: {e}") from e

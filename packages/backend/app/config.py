@@ -16,6 +16,7 @@ class Config(BaseSettings):
     agent_storage_bucket_name: str = ""
     elasticache_endpoint: str = ""
     step_function_arn: str = ""
+    qa_regenerator_function_arn: str = ""
 
 
 @lru_cache

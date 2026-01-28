@@ -818,6 +818,126 @@ function ProjectDetailPage() {
     [fetchApi, selectedWorkflow, showToast, t, loadWorkflows],
   );
 
+  const handleRegenerateQa = useCallback(
+    async (
+      segmentIndex: number,
+      qaIndex: number,
+      question: string,
+      userInstructions: string,
+    ) => {
+      if (!selectedWorkflow) throw new Error('No workflow selected');
+
+      const result = await fetchApi<{
+        analysis_query: string;
+        content: string;
+      }>(
+        `documents/${selectedWorkflow.document_id}/workflows/${selectedWorkflow.workflow_id}/segments/${segmentIndex}/regenerate-qa`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            qa_index: qaIndex,
+            question,
+            user_instructions: userInstructions,
+          }),
+        },
+      );
+
+      // Update the local workflow data
+      setSelectedWorkflow((prev) => {
+        if (!prev) return prev;
+        const segments = [...prev.segments];
+        const seg = { ...segments[segmentIndex] };
+        const analysis = [...seg.ai_analysis];
+        analysis[qaIndex] = {
+          analysis_query: result.analysis_query,
+          content: result.content,
+        };
+        seg.ai_analysis = analysis;
+        segments[segmentIndex] = seg;
+        return { ...prev, segments };
+      });
+
+      return result;
+    },
+    [fetchApi, selectedWorkflow],
+  );
+
+  const handleAddQa = useCallback(
+    async (
+      segmentIndex: number,
+      question: string,
+      userInstructions: string,
+    ) => {
+      if (!selectedWorkflow) throw new Error('No workflow selected');
+
+      const result = await fetchApi<{
+        analysis_query: string;
+        content: string;
+        qa_index: number;
+      }>(
+        `documents/${selectedWorkflow.document_id}/workflows/${selectedWorkflow.workflow_id}/segments/${segmentIndex}/add-qa`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question,
+            user_instructions: userInstructions,
+          }),
+        },
+      );
+
+      // Update the local workflow data
+      setSelectedWorkflow((prev) => {
+        if (!prev) return prev;
+        const segments = [...prev.segments];
+        const seg = { ...segments[segmentIndex] };
+        const analysis = [...seg.ai_analysis];
+        analysis.push({
+          analysis_query: result.analysis_query,
+          content: result.content,
+        });
+        seg.ai_analysis = analysis;
+        segments[segmentIndex] = seg;
+        return { ...prev, segments };
+      });
+
+      return result;
+    },
+    [fetchApi, selectedWorkflow],
+  );
+
+  const handleDeleteQa = useCallback(
+    async (segmentIndex: number, qaIndex: number) => {
+      if (!selectedWorkflow) throw new Error('No workflow selected');
+
+      const result = await fetchApi<{
+        deleted: boolean;
+        deleted_query: string;
+        qa_index: number;
+      }>(
+        `documents/${selectedWorkflow.document_id}/workflows/${selectedWorkflow.workflow_id}/segments/${segmentIndex}/qa/${qaIndex}`,
+        {
+          method: 'DELETE',
+        },
+      );
+
+      // Update the local workflow data
+      setSelectedWorkflow((prev) => {
+        if (!prev) return prev;
+        const segments = [...prev.segments];
+        const seg = { ...segments[segmentIndex] };
+        const analysis = seg.ai_analysis.filter((_, idx) => idx !== qaIndex);
+        seg.ai_analysis = analysis;
+        segments[segmentIndex] = seg;
+        return { ...prev, segments };
+      });
+
+      return result;
+    },
+    [fetchApi, selectedWorkflow],
+  );
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -1486,6 +1606,9 @@ function ProjectDetailPage() {
           onClose={() => setSelectedWorkflow(null)}
           onReanalyze={handleReanalyze}
           reanalyzing={reanalyzing}
+          onRegenerateQa={handleRegenerateQa}
+          onAddQa={handleAddQa}
+          onDeleteQa={handleDeleteQa}
         />
       )}
 
