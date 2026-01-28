@@ -548,7 +548,7 @@ class TestDeleteProject:
 
         mock_delete_s3_prefix.return_value = 0
 
-        response = client.delete("/projects/proj-1")
+        response = client.delete("/projects/proj-1", headers={"x-user-id": "test-user"})
 
         assert response.status_code == 200
         data = response.json()
@@ -560,7 +560,7 @@ class TestDeleteProject:
         mock_table.get_item.return_value = {}
         mock_get_table.return_value = mock_table
 
-        response = client.delete("/projects/nonexistent")
+        response = client.delete("/projects/nonexistent", headers={"x-user-id": "test-user"})
 
         assert response.status_code == 404
         assert response.json()["detail"] == "Project not found"
