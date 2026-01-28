@@ -107,6 +107,10 @@ export class Backend extends Construct {
       this,
       SSM_KEYS.STEP_FUNCTION_ARN,
     );
+    const qaRegeneratorFunctionArn = StringParameter.valueForStringParameter(
+      this,
+      SSM_KEYS.QA_REGENERATOR_FUNCTION_ARN,
+    );
 
     this.service = new ApplicationLoadBalancedFargateService(this, 'Service', {
       cluster,
@@ -128,6 +132,7 @@ export class Backend extends Construct {
           AGENT_STORAGE_BUCKET_NAME: agentStorage.bucketName,
           ELASTICACHE_ENDPOINT: elasticacheEndpoint,
           STEP_FUNCTION_ARN: stepFunctionArn,
+          QA_REGENERATOR_FUNCTION_ARN: qaRegeneratorFunctionArn,
         },
       },
       runtimePlatform: {
@@ -182,6 +187,14 @@ export class Backend extends Construct {
       new PolicyStatement({
         actions: ['states:StartExecution'],
         resources: [stepFunctionArn],
+      }),
+    );
+
+    // Grant Lambda invoke permission for QA regenerator
+    taskRole.addToPrincipalPolicy(
+      new PolicyStatement({
+        actions: ['lambda:InvokeFunction'],
+        resources: [qaRegeneratorFunctionArn],
       }),
     );
 

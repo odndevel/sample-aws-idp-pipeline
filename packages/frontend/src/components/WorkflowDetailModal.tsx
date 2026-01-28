@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { RefreshCw, Loader2 } from 'lucide-react';
+import { RefreshCw, Sparkles, Loader2, Plus, Trash2 } from 'lucide-react';
 import { WorkflowDetail, AnalysisPopup } from '../types/project';
+import ConfirmModal from './ConfirmModal';
 import { LANGUAGES, CARD_COLORS } from './ProjectSettingsModal';
 import OcrDocumentView from './OcrDocumentView';
 
@@ -14,6 +15,21 @@ interface WorkflowDetailModalProps {
   onClose: () => void;
   onReanalyze?: (userInstructions: string) => Promise<void>;
   reanalyzing?: boolean;
+  onRegenerateQa?: (
+    segmentIndex: number,
+    qaIndex: number,
+    question: string,
+    userInstructions: string,
+  ) => Promise<{ analysis_query: string; content: string }>;
+  onAddQa?: (
+    segmentIndex: number,
+    question: string,
+    userInstructions: string,
+  ) => Promise<{ analysis_query: string; content: string; qa_index: number }>;
+  onDeleteQa?: (
+    segmentIndex: number,
+    qaIndex: number,
+  ) => Promise<{ deleted: boolean; qa_index: number }>;
 }
 
 export default function WorkflowDetailModal({
@@ -23,6 +39,9 @@ export default function WorkflowDetailModal({
   onClose,
   onReanalyze,
   reanalyzing = false,
+  onRegenerateQa,
+  onAddQa,
+  onDeleteQa,
 }: WorkflowDetailModalProps) {
   const { t } = useTranslation();
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
@@ -35,7 +54,88 @@ export default function WorkflowDetailModal({
   });
   const [showReanalyzeModal, setShowReanalyzeModal] = useState(false);
   const [reanalyzeInstructions, setReanalyzeInstructions] = useState('');
+  const [regenerateTarget, setRegenerateTarget] = useState<{
+    qaIndex: number;
+    question: string;
+    userInstructions: string;
+  } | null>(null);
+  const [regeneratingIndex, setRegeneratingIndex] = useState<number | null>(
+    null,
+  );
+  const [addQaTarget, setAddQaTarget] = useState<{
+    question: string;
+    userInstructions: string;
+  } | null>(null);
+  const [addingQa, setAddingQa] = useState(false);
+  const [deletingIndex, setDeletingIndex] = useState<number | null>(null);
+  const [deleteConfirmIndex, setDeleteConfirmIndex] = useState<number | null>(
+    null,
+  );
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  const handleRegenerateQa = async () => {
+    if (!regenerateTarget || !onRegenerateQa) return;
+    const { qaIndex, question, userInstructions } = regenerateTarget;
+    setRegeneratingIndex(qaIndex);
+    setRegenerateTarget(null);
+    try {
+      const result = await onRegenerateQa(
+        currentSegmentIndex,
+        qaIndex,
+        question,
+        userInstructions,
+      );
+      setAnalysisPopup((prev) => {
+        const newItems = [...prev.qaItems];
+        newItems[qaIndex] = {
+          question: result.analysis_query,
+          answer: result.content,
+        };
+        return { ...prev, qaItems: newItems };
+      });
+    } finally {
+      setRegeneratingIndex(null);
+    }
+  };
+
+  const handleAddQa = async () => {
+    if (!addQaTarget || !onAddQa) return;
+    const { question, userInstructions } = addQaTarget;
+    setAddingQa(true);
+    setAddQaTarget(null);
+    try {
+      const result = await onAddQa(
+        currentSegmentIndex,
+        question,
+        userInstructions,
+      );
+      setAnalysisPopup((prev) => ({
+        ...prev,
+        qaItems: [
+          ...prev.qaItems,
+          { question: result.analysis_query, answer: result.content },
+        ],
+      }));
+    } finally {
+      setAddingQa(false);
+    }
+  };
+
+  const handleDeleteQa = async () => {
+    if (!onDeleteQa || deleteConfirmIndex === null) return;
+    const qaIndex = deleteConfirmIndex;
+    setDeleteConfirmIndex(null);
+    setDeletingIndex(qaIndex);
+    try {
+      await onDeleteQa(currentSegmentIndex, qaIndex);
+      setAnalysisPopup((prev) => ({
+        ...prev,
+        qaItems: prev.qaItems.filter((_, idx) => idx !== qaIndex),
+      }));
+    } finally {
+      setDeletingIndex(null);
+    }
+  };
 
   const seekVideo = (time: number) => {
     if (videoRef.current) {
@@ -313,6 +413,25 @@ export default function WorkflowDetailModal({
                               Q{idx + 1}
                             </button>
                           ))}
+                          {onAddQa && (
+                            <button
+                              onClick={() =>
+                                setAddQaTarget({
+                                  question: '',
+                                  userInstructions: '',
+                                })
+                              }
+                              disabled={addingQa || regeneratingIndex !== null}
+                              className="w-8 h-8 border-2 border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 text-slate-400 hover:text-blue-500 text-xs font-bold rounded-full flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                              title={t('workflow.addQa')}
+                            >
+                              {addingQa ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Plus className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                          )}
                         </div>
 
                         {/* Q&A Cards */}
@@ -329,31 +448,80 @@ export default function WorkflowDetailModal({
                                   <span className="flex-shrink-0 w-6 h-6 bg-blue-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
                                     Q{idx + 1}
                                   </span>
-                                  <p className="text-sm font-medium text-slate-800">
+                                  <p className="text-sm font-medium text-slate-800 flex-1">
                                     {item.question}
                                   </p>
+                                  {onRegenerateQa && (
+                                    <button
+                                      onClick={() =>
+                                        setRegenerateTarget({
+                                          qaIndex: idx,
+                                          question: item.question,
+                                          userInstructions: '',
+                                        })
+                                      }
+                                      disabled={
+                                        regeneratingIndex !== null ||
+                                        deletingIndex !== null
+                                      }
+                                      className="flex-shrink-0 p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors disabled:opacity-30"
+                                      title={t('workflow.regenerateQa')}
+                                    >
+                                      {regeneratingIndex === idx ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <Sparkles className="h-3.5 w-3.5" />
+                                      )}
+                                    </button>
+                                  )}
+                                  {onDeleteQa && (
+                                    <button
+                                      onClick={() => setDeleteConfirmIndex(idx)}
+                                      disabled={
+                                        regeneratingIndex !== null ||
+                                        deletingIndex !== null
+                                      }
+                                      className="flex-shrink-0 p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-30"
+                                      title={t('workflow.deleteQa')}
+                                    >
+                                      {deletingIndex === idx ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      )}
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                               {/* Answer */}
                               <div className="px-4 py-3">
-                                <div className="prose prose-slate prose-sm max-w-none prose-table:border-collapse prose-th:border prose-th:border-slate-300 prose-th:bg-slate-100 prose-th:p-2 prose-td:border prose-td:border-slate-300 prose-td:p-2">
-                                  <Markdown
-                                    remarkPlugins={[remarkGfm]}
-                                    components={{
-                                      img: ({ src, alt }) => (
-                                        <img
-                                          src={src}
-                                          alt={alt || ''}
-                                          className="max-w-full h-auto rounded-lg shadow-md my-4"
-                                          loading="lazy"
-                                        />
-                                      ),
-                                    }}
-                                    urlTransform={(url) => url}
-                                  >
-                                    {item.answer}
-                                  </Markdown>
-                                </div>
+                                {regeneratingIndex === idx ? (
+                                  <div className="flex items-center justify-center py-8 text-slate-400">
+                                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                                    <span className="text-sm">
+                                      {t('workflow.regeneratingQa')}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <div className="prose prose-slate prose-sm max-w-none prose-table:border-collapse prose-th:border prose-th:border-slate-300 prose-th:bg-slate-100 prose-th:p-2 prose-td:border prose-td:border-slate-300 prose-td:p-2">
+                                    <Markdown
+                                      remarkPlugins={[remarkGfm]}
+                                      components={{
+                                        img: ({ src, alt }) => (
+                                          <img
+                                            src={src}
+                                            alt={alt || ''}
+                                            className="max-w-full h-auto rounded-lg shadow-md my-4"
+                                            loading="lazy"
+                                          />
+                                        ),
+                                      }}
+                                      urlTransform={(url) => url}
+                                    >
+                                      {item.answer}
+                                    </Markdown>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           ))}
@@ -801,6 +969,151 @@ export default function WorkflowDetailModal({
           </div>
         </div>
       </div>
+
+      {/* Regenerate Q&A Modal */}
+      {regenerateTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-xl w-full max-w-lg mx-4 overflow-hidden shadow-xl border border-slate-200 ring-1 ring-slate-900/5">
+            <div className="p-6 border-b border-slate-200">
+              <h3 className="text-lg font-semibold text-slate-800">
+                {t('workflow.regenerateQaTitle')}
+              </h3>
+              <p className="text-sm text-slate-500 mt-1">
+                {t('workflow.regenerateQaDescription')}
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  {t('workflow.regenerateQaQuestion')}
+                </label>
+                <textarea
+                  value={regenerateTarget.question}
+                  onChange={(e) =>
+                    setRegenerateTarget((prev) =>
+                      prev ? { ...prev, question: e.target.value } : null,
+                    )
+                  }
+                  className="w-full h-24 px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  {t('workflow.regenerateQaInstructions')}
+                </label>
+                <textarea
+                  value={regenerateTarget.userInstructions}
+                  onChange={(e) =>
+                    setRegenerateTarget((prev) =>
+                      prev
+                        ? { ...prev, userInstructions: e.target.value }
+                        : null,
+                    )
+                  }
+                  placeholder={t(
+                    'workflow.regenerateQaInstructionsPlaceholder',
+                  )}
+                  className="w-full h-24 px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4 bg-slate-50 border-t border-slate-200">
+              <button
+                onClick={() => setRegenerateTarget(null)}
+                className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 rounded-lg transition-colors"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={handleRegenerateQa}
+                disabled={!regenerateTarget.question.trim()}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Sparkles className="h-4 w-4" />
+                {t('workflow.regenerateQaStart')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Q&A Confirm Modal */}
+      <ConfirmModal
+        isOpen={deleteConfirmIndex !== null}
+        onClose={() => setDeleteConfirmIndex(null)}
+        onConfirm={handleDeleteQa}
+        title={t('workflow.deleteQaTitle')}
+        message={t('workflow.deleteQaConfirm')}
+        confirmText={t('common.delete')}
+        variant="danger"
+        loading={deletingIndex !== null}
+      />
+
+      {/* Add Q&A Modal */}
+      {addQaTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-xl w-full max-w-lg mx-4 overflow-hidden shadow-xl border border-slate-200 ring-1 ring-slate-900/5">
+            <div className="p-6 border-b border-slate-200">
+              <h3 className="text-lg font-semibold text-slate-800">
+                {t('workflow.addQaTitle')}
+              </h3>
+              <p className="text-sm text-slate-500 mt-1">
+                {t('workflow.addQaDescription')}
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  {t('workflow.addQaQuestion')}
+                </label>
+                <textarea
+                  value={addQaTarget.question}
+                  onChange={(e) =>
+                    setAddQaTarget((prev) =>
+                      prev ? { ...prev, question: e.target.value } : null,
+                    )
+                  }
+                  placeholder={t('workflow.addQaQuestionPlaceholder', '')}
+                  className="w-full h-24 px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  {t('workflow.addQaInstructions')}
+                </label>
+                <textarea
+                  value={addQaTarget.userInstructions}
+                  onChange={(e) =>
+                    setAddQaTarget((prev) =>
+                      prev
+                        ? { ...prev, userInstructions: e.target.value }
+                        : null,
+                    )
+                  }
+                  placeholder={t('workflow.addQaInstructionsPlaceholder')}
+                  className="w-full h-24 px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4 bg-slate-50 border-t border-slate-200">
+              <button
+                onClick={() => setAddQaTarget(null)}
+                className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 rounded-lg transition-colors"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={handleAddQa}
+                disabled={!addQaTarget.question.trim()}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Plus className="h-4 w-4" />
+                {t('workflow.addQaStart')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Re-analyze Modal */}
       {showReanalyzeModal && (

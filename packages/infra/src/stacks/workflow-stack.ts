@@ -354,6 +354,27 @@ export class WorkflowStack extends Stack {
       },
     });
 
+    // QA Regenerator Lambda (single Q&A re-generation via Bedrock vision)
+    const qaRegenerator = new lambda.Function(this, 'QaRegenerator', {
+      ...commonLambdaProps,
+      functionName: 'idp-v2-qa-regenerator',
+      handler: 'index.handler',
+      timeout: Duration.minutes(2),
+      memorySize: 256,
+      code: lambda.Code.fromAsset(
+        path.join(__dirname, '../functions/qa-regenerator'),
+      ),
+      layers: [coreLayer, strandsLayer, sharedLayer],
+      environment: {
+        ...commonLambdaProps.environment,
+        BEDROCK_MODEL_ID: 'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
+        LANCEDB_FUNCTION_NAME: lancedbService.functionName,
+      },
+    });
+
+    // Grant LanceDB invoke to QA Regenerator
+    lancedbService.grantInvoke(qaRegenerator);
+
     // SQS trigger for LanceDB Writer
     lancedbWriter.addEventSourceMapping('LanceDBWriteQueueTrigger', {
       eventSourceArn: lancedbWriteQueue.queueArn,
@@ -586,6 +607,7 @@ export class WorkflowStack extends Stack {
       triggerFunction,
       lancedbService,
       lancedbWriter,
+      qaRegenerator,
     ];
 
     // Grant invoke permissions for LanceDB service
@@ -654,6 +676,11 @@ export class WorkflowStack extends Stack {
     new ssm.StringParameter(this, 'StateMachineArn', {
       parameterName: '/idp-v2/stepfunction/arn',
       stringValue: this.stateMachine.stateMachineArn,
+    });
+
+    new ssm.StringParameter(this, 'QaRegeneratorFunctionArn', {
+      parameterName: SSM_KEYS.QA_REGENERATOR_FUNCTION_ARN,
+      stringValue: qaRegenerator.functionArn,
     });
   }
 }
