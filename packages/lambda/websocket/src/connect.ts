@@ -46,11 +46,6 @@ export const connectHandler: APIGatewayProxyHandler = async (event) => {
       await valkey.sadd(KEYS.username(username), connectionId);
     }
 
-    console.log('WebSocket connected', {
-      connectionId,
-      userSub,
-      username,
-    });
   }
 
   return { statusCode: 200, body: 'Connected' };
