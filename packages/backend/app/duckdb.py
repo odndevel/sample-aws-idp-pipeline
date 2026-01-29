@@ -10,6 +10,7 @@ class Session(BaseModel):
     created_at: str
     updated_at: str
     session_name: str | None = None
+    agent_id: str = "default"
 
 
 class AgentListItem(BaseModel):
@@ -42,20 +43,21 @@ def query_sessions(user_id: str, project_id: str) -> list[Session]:
     if not bucket_name:
         return []
 
-    s3_path = f"s3://{bucket_name}/sessions/{user_id}/{project_id}/*/session.json"
+    session_path = f"s3://{bucket_name}/sessions/{user_id}/{project_id}/*/session.json"
 
     conn = get_duckdb_connection()
     try:
         result = conn.execute(f"""
-            SELECT session_id, session_type, created_at, updated_at, session_name
+            SELECT session_id, session_type, created_at, updated_at, session_name, agent_id
             FROM read_json(
-                '{s3_path}',
+                '{session_path}',
                 columns={{
                     session_id: 'VARCHAR',
                     session_type: 'VARCHAR',
                     created_at: 'VARCHAR',
                     updated_at: 'VARCHAR',
-                    session_name: 'VARCHAR'
+                    session_name: 'VARCHAR',
+                    agent_id: 'VARCHAR'
                 }}
             )
             ORDER BY created_at DESC, session_id DESC
@@ -70,6 +72,7 @@ def query_sessions(user_id: str, project_id: str) -> list[Session]:
             created_at=row[2],
             updated_at=row[3],
             session_name=row[4],
+            agent_id=row[5] or "default",
         )
         for row in result
     ]

@@ -135,6 +135,7 @@ You MUST respond in the language corresponding to code: {language_code}.
             tools=tools,
             hooks=hooks,
             session_manager=session_manager,
+            agent_id=agent_id or "default",
         )
 
     if mcp_client:

@@ -39,6 +39,11 @@ export async function handleNameUpdate(
 
   sessionData.session_name = sessionName;
 
+  const agentFolder = keyInfo.agentId;
+  if (agentFolder.startsWith('agent_')) {
+    sessionData.agent_id = agentFolder.slice('agent_'.length);
+  }
+
   await s3Client.send(
     new PutObjectCommand({
       Bucket: bucket,
