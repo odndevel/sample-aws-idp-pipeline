@@ -1,4 +1,4 @@
-import { Stack, StackProps } from 'aws-cdk-lib';
+import { Duration, Stack, StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import {
@@ -15,6 +15,7 @@ import {
 } from 'aws-cdk-lib/aws-dynamodb';
 import { HttpMethods } from 'aws-cdk-lib/aws-s3';
 import { Vpc } from 'aws-cdk-lib/aws-ec2';
+import { Queue } from 'aws-cdk-lib/aws-sqs';
 
 export class StorageStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -165,6 +166,26 @@ export class StorageStack extends Stack {
     new StringParameter(this, 'ElastiCacheEndpointParam', {
       parameterName: SSM_KEYS.ELASTICACHE_ENDPOINT,
       stringValue: elasticache.cache.serverlessCacheEndpointAddress,
+    });
+
+    // WebSocket Message Queue
+    const websocketMessageDlq = new Queue(this, 'WebsocketMessageDLQ', {
+      queueName: 'idp-v2-websocket-message-dlq',
+      retentionPeriod: Duration.days(14),
+    });
+
+    const websocketMessageQueue = new Queue(this, 'WebsocketMessageQueue', {
+      queueName: 'idp-v2-websocket-message-queue',
+      visibilityTimeout: Duration.minutes(5),
+      deadLetterQueue: {
+        queue: websocketMessageDlq,
+        maxReceiveCount: 3,
+      },
+    });
+
+    new StringParameter(this, 'WebsocketMessageQueueUrlParam', {
+      parameterName: SSM_KEYS.WEBSOCKET_MESSAGE_QUEUE_URL,
+      stringValue: websocketMessageQueue.queueUrl,
     });
   }
 }
