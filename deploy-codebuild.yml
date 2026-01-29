@@ -111,10 +111,7 @@ Resources:
                 - git clone $REPO_URL /tmp/project
                 - cd /tmp/project
                 - git checkout $VERSION
-                - |
-                  find /tmp/project -name ".python-version" -delete
-                  PY312=$(pyenv versions --bare | grep '^3\.12' | head -1)
-                  pyenv global "$PY312"
+                - find /tmp/project -name ".python-version" -exec sh -c 'echo "3.12" > "$1"' _ {} \;
                 - pip install uv
                 - pnpm install --frozen-lockfile
             build:
