@@ -112,6 +112,7 @@ Resources:
                 - cd /tmp/project
                 - git checkout $VERSION
                 - find /tmp/project -name ".python-version" -exec sh -c 'echo "3.13" > "$1"' _ {} \;
+                - pip install uv
                 - pnpm install --frozen-lockfile
             build:
               commands:
