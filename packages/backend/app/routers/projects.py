@@ -286,7 +286,7 @@ async def delete_project(project_id: str, user_id: str = Header(alias="x-user-id
 
     # 6. Delete agent files from S3
     if config.agent_storage_bucket_name:
-        agent_prefix = f"{user_id}/{project_id}/"
+        agent_prefix = f"{user_id}/{project_id}/agents/"
         with contextlib.suppress(Exception):
             agent_deleted = delete_s3_prefix(config.agent_storage_bucket_name, agent_prefix)
             deleted_info.agent_objects_deleted = agent_deleted
