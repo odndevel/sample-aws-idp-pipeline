@@ -1407,7 +1407,7 @@ requires-dist = [
 [[package]]
 name = "idp-v2-research-agent"
 version = "0.1.0"
-source = { virtual = "packages/agents/research-agent" }
+source = { editable = "packages/agents/research-agent" }
 dependencies = [
     { name = "aws-opentelemetry-distro" },
     { name = "bedrock-agentcore" },
