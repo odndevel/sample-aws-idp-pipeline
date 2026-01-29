@@ -102,7 +102,7 @@ Resources:
             install:
               runtime-versions:
                 nodejs: 22
-                python: 3.12
+                python: 3.13
               commands:
                 - npm install -g pnpm aws-cdk@latest
                 - docker run --rm --privileged public.ecr.aws/eks-distro-build-tooling/binfmt-misc:qemu-v7.0.0 --install amd64
@@ -111,8 +111,7 @@ Resources:
                 - git clone $REPO_URL /tmp/project
                 - cd /tmp/project
                 - git checkout $VERSION
-                - find /tmp/project -name ".python-version" -exec sh -c 'echo "3.12" > "$1"' _ {} \;
-                - pip install uv
+                - find /tmp/project -name ".python-version" -exec sh -c 'echo "3.13" > "$1"' _ {} \;
                 - pnpm install --frozen-lockfile
             build:
               commands:
