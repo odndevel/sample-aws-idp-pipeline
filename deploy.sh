@@ -15,7 +15,7 @@ echo ""
 REPO_URL="https://github.com/aws-samples/sample-aws-idp-pipeline.git"
 VERSION="main"
 STACK_NAME="sample-aws-idp-pipeline-codebuild"
-TEMPLATE_URL="https://raw.githubusercontent.com/aws-samples/sample-aws-idp-pipeline/main/deploy-codebuild.yml"
+TEMPLATE_URL_BASE="https://raw.githubusercontent.com/aws-samples/sample-aws-idp-pipeline"
 TEMPLATE_FILE="/tmp/deploy-codebuild.yml"
 ADMIN_USER_EMAIL=""
 
@@ -75,8 +75,10 @@ while true; do
 done
 
 # Download CloudFormation template
+TEMPLATE_URL="${TEMPLATE_URL_BASE}/${VERSION}/deploy-codebuild.yml"
 echo ""
 echo "Downloading CloudFormation template..."
+echo "  $TEMPLATE_URL"
 curl -fsSL -o "$TEMPLATE_FILE" "$TEMPLATE_URL"
 if [[ $? -ne 0 ]]; then
     echo "Failed to download template from $TEMPLATE_URL"
