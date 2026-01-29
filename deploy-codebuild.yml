@@ -105,14 +105,19 @@ Resources:
                 python: 3.12
               commands:
                 - npm install -g pnpm aws-cdk@latest
-                - pip install uv
-                - docker run --rm --privileged public.ecr.aws/eks-distro-build-tooling/binfmt-misc:qemu-v7.0.0 --install amd64
+                - docker run --rm --privileged tonistiigi/binfmt --install amd64
             pre_build:
               commands:
                 - git clone $REPO_URL /tmp/project
                 - cd /tmp/project
                 - git checkout $VERSION
-                - pyenv install -s 3.12.0 && pyenv global 3.12.0
+                - |
+                  REQUIRED_PY=$(cat .python-version 2>/dev/null || echo "")
+                  if [ -n "$REQUIRED_PY" ]; then
+                    pyenv install -s "$REQUIRED_PY"
+                    pyenv global "$REQUIRED_PY"
+                  fi
+                - pip install uv
                 - pnpm install --frozen-lockfile
             build:
               commands:
