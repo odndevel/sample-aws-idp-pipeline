@@ -100,7 +100,7 @@ export class McpStack extends Stack {
       }),
     });
 
-    this.gateway.addLambdaTarget('SearchTarget', {
+    const searchTarget = this.gateway.addLambdaTarget('SearchTarget', {
       gatewayTargetName: 'search-documents',
       description:
         'Search documents in a project to find relevant information. Use this tool when the user asks questions about documents, wants to find specific information, or needs context from their uploaded files.',
@@ -112,8 +112,10 @@ export class McpStack extends Stack {
         ),
       ),
     });
+    this.searchMcp.function.grantInvoke(this.gateway.role);
+    searchTarget.node.addDependency(this.gateway.role);
 
-    this.gateway.addLambdaTarget('SaveArtifactTarget', {
+    const saveTarget = this.gateway.addLambdaTarget('SaveArtifactTarget', {
       gatewayTargetName: 'save-artifact',
       description:
         'Save an artifact (file) to a project. Use this tool when you need to save generated content like images, documents, or data files.',
@@ -125,8 +127,10 @@ export class McpStack extends Stack {
         ),
       ),
     });
+    this.artifactMcp.saveFunction.grantInvoke(this.gateway.role);
+    saveTarget.node.addDependency(this.gateway.role);
 
-    this.gateway.addLambdaTarget('LoadArtifactTarget', {
+    const loadTarget = this.gateway.addLambdaTarget('LoadArtifactTarget', {
       gatewayTargetName: 'load-artifact',
       description:
         'Load an artifact (file) from a project. Use this tool when you need to retrieve previously saved content.',
@@ -138,8 +142,10 @@ export class McpStack extends Stack {
         ),
       ),
     });
+    this.artifactMcp.loadFunction.grantInvoke(this.gateway.role);
+    loadTarget.node.addDependency(this.gateway.role);
 
-    this.gateway.addLambdaTarget('EditArtifactTarget', {
+    const editTarget = this.gateway.addLambdaTarget('EditArtifactTarget', {
       gatewayTargetName: 'edit-artifact',
       description:
         'Edit an existing artifact. Use this tool when you need to update the content of a previously saved artifact.',
@@ -151,6 +157,8 @@ export class McpStack extends Stack {
         ),
       ),
     });
+    this.artifactMcp.editFunction.grantInvoke(this.gateway.role);
+    editTarget.node.addDependency(this.gateway.role);
 
     const pdfTarget = this.gateway.addLambdaTarget('PdfMcpTarget', {
       gatewayTargetName: 'pdf',
