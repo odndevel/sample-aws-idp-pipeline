@@ -1,14 +1,14 @@
 import { Stack, StackProps } from 'aws-cdk-lib';
 import { Table } from 'aws-cdk-lib/aws-dynamodb';
-import { Vpc } from 'aws-cdk-lib/aws-ec2';
 import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { Queue } from 'aws-cdk-lib/aws-sqs';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import {
   SearchMcp,
-  ArtifactMcp,
+  MdMcp,
   PdfMcp,
+  DocxMcp,
   SSM_KEYS,
 } from ':idp-v2/common-constructs';
 import * as agentcore from '@aws-cdk/aws-bedrock-agentcore-alpha';
@@ -16,8 +16,9 @@ import * as path from 'path';
 
 export class McpStack extends Stack {
   public readonly searchMcp: SearchMcp;
-  public readonly artifactMcp: ArtifactMcp;
+  public readonly mdMcp: MdMcp;
   public readonly pdfMcp: PdfMcp;
+  public readonly docxMcp: DocxMcp;
   public readonly gateway: agentcore.Gateway;
 
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -43,24 +44,6 @@ export class McpStack extends Stack {
       agentStorageBucketName,
     );
 
-    const vpcId = StringParameter.valueFromLookup(this, SSM_KEYS.VPC_ID);
-    const vpc = Vpc.fromLookup(this, 'Vpc', { vpcId });
-
-    const elasticacheEndpoint = StringParameter.valueForStringParameter(
-      this,
-      SSM_KEYS.ELASTICACHE_ENDPOINT,
-    );
-
-    const websocketCallbackUrl = StringParameter.valueForStringParameter(
-      this,
-      SSM_KEYS.WEBSOCKET_CALLBACK_URL,
-    );
-
-    const websocketApiId = StringParameter.valueForStringParameter(
-      this,
-      SSM_KEYS.WEBSOCKET_API_ID,
-    );
-
     const websocketMessageQueueArn = StringParameter.valueForStringParameter(
       this,
       SSM_KEYS.WEBSOCKET_MESSAGE_QUEUE_ARN,
@@ -72,15 +55,17 @@ export class McpStack extends Stack {
     );
 
     this.searchMcp = new SearchMcp(this, 'SearchMcp');
-    this.artifactMcp = new ArtifactMcp(this, 'ArtifactMcp', {
+    this.mdMcp = new MdMcp(this, 'MdMcp', {
       backendTable,
       storageBucket: agentStorageBucket,
-      vpc,
-      elasticacheEndpoint,
-      websocketCallbackUrl,
-      websocketApiId,
+      websocketMessageQueue,
     });
     this.pdfMcp = new PdfMcp(this, 'PdfMcp', {
+      backendTable,
+      storageBucket: agentStorageBucket,
+      websocketMessageQueue,
+    });
+    this.docxMcp = new DocxMcp(this, 'DocxMcp', {
       backendTable,
       storageBucket: agentStorageBucket,
       websocketMessageQueue,
@@ -115,50 +100,22 @@ export class McpStack extends Stack {
     this.searchMcp.function.grantInvoke(this.gateway.role);
     searchTarget.node.addDependency(this.gateway.role);
 
-    const saveTarget = this.gateway.addLambdaTarget('SaveArtifactTarget', {
-      gatewayTargetName: 'save-artifact',
+    const mdTarget = this.gateway.addLambdaTarget('MdMcpTarget', {
+      gatewayTargetName: 'markdown',
       description:
-        'Save an artifact (file) to a project. Use this tool when you need to save generated content like images, documents, or data files.',
-      lambdaFunction: this.artifactMcp.saveFunction,
+        'Markdown processing tools: save, load, and edit markdown files. Use these tools when working with markdown documents.',
+      lambdaFunction: this.mdMcp.function,
       toolSchema: agentcore.ToolSchema.fromLocalAsset(
         path.resolve(
           process.cwd(),
-          '../../packages/lambda/artifact-mcp/save_artifact.json',
+          '../../packages/lambda/md-mcp/schema.json',
         ),
       ),
     });
-    this.artifactMcp.saveFunction.grantInvoke(this.gateway.role);
-    saveTarget.node.addDependency(this.gateway.role);
 
-    const loadTarget = this.gateway.addLambdaTarget('LoadArtifactTarget', {
-      gatewayTargetName: 'load-artifact',
-      description:
-        'Load an artifact (file) from a project. Use this tool when you need to retrieve previously saved content.',
-      lambdaFunction: this.artifactMcp.loadFunction,
-      toolSchema: agentcore.ToolSchema.fromLocalAsset(
-        path.resolve(
-          process.cwd(),
-          '../../packages/lambda/artifact-mcp/load_artifact.json',
-        ),
-      ),
-    });
-    this.artifactMcp.loadFunction.grantInvoke(this.gateway.role);
-    loadTarget.node.addDependency(this.gateway.role);
-
-    const editTarget = this.gateway.addLambdaTarget('EditArtifactTarget', {
-      gatewayTargetName: 'edit-artifact',
-      description:
-        'Edit an existing artifact. Use this tool when you need to update the content of a previously saved artifact.',
-      lambdaFunction: this.artifactMcp.editFunction,
-      toolSchema: agentcore.ToolSchema.fromLocalAsset(
-        path.resolve(
-          process.cwd(),
-          '../../packages/lambda/artifact-mcp/edit_artifact.json',
-        ),
-      ),
-    });
-    this.artifactMcp.editFunction.grantInvoke(this.gateway.role);
-    editTarget.node.addDependency(this.gateway.role);
+    // Workaround: CDK timing issue - explicitly grant and add dependency
+    this.mdMcp.function.grantInvoke(this.gateway.role);
+    mdTarget.node.addDependency(this.gateway.role);
 
     const pdfTarget = this.gateway.addLambdaTarget('PdfMcpTarget', {
       gatewayTargetName: 'pdf',
@@ -176,5 +133,22 @@ export class McpStack extends Stack {
     // Workaround: CDK timing issue - explicitly grant and add dependency
     this.pdfMcp.function.grantInvoke(this.gateway.role);
     pdfTarget.node.addDependency(this.gateway.role);
+
+    const docxTarget = this.gateway.addLambdaTarget('DocxMcpTarget', {
+      gatewayTargetName: 'docx',
+      description:
+        'DOCX processing tools: extract text, extract tables, and create Word documents. Use these tools when working with DOCX documents.',
+      lambdaFunction: this.docxMcp.function,
+      toolSchema: agentcore.ToolSchema.fromLocalAsset(
+        path.resolve(
+          process.cwd(),
+          '../../packages/lambda/docx-mcp/schema.json',
+        ),
+      ),
+    });
+
+    // Workaround: CDK timing issue - explicitly grant and add dependency
+    this.docxMcp.function.grantInvoke(this.gateway.role);
+    docxTarget.node.addDependency(this.gateway.role);
   }
 }
