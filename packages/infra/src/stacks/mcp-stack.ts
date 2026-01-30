@@ -85,7 +85,7 @@ export class McpStack extends Stack {
       }),
     });
 
-    this.gateway.addLambdaTarget('SearchTarget', {
+    const searchTarget = this.gateway.addLambdaTarget('SearchTarget', {
       gatewayTargetName: 'search-documents',
       description:
         'Search documents in a project to find relevant information. Use this tool when the user asks questions about documents, wants to find specific information, or needs context from their uploaded files.',
@@ -97,6 +97,8 @@ export class McpStack extends Stack {
         ),
       ),
     });
+    this.searchMcp.function.grantInvoke(this.gateway.role);
+    searchTarget.node.addDependency(this.gateway.role);
 
     const mdTarget = this.gateway.addLambdaTarget('MdMcpTarget', {
       gatewayTargetName: 'markdown',

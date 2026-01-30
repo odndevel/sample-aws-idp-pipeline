@@ -1,4 +1,4 @@
-FROM python:3.12-slim AS builder
+FROM public.ecr.aws/docker/library/python:3.12-slim AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
@@ -10,7 +10,7 @@ COPY app ./app
 RUN uv sync --no-dev
 
 
-FROM python:3.12-slim
+FROM public.ecr.aws/docker/library/python:3.12-slim
 
 WORKDIR /app
 

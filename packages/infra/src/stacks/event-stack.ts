@@ -13,7 +13,10 @@ import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
 import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
-import { SSM_KEYS } from ':idp-v2/common-constructs';
+import {
+  SSM_KEYS,
+  PADDLEOCR_ENDPOINT_NAME_VALUE,
+} from ':idp-v2/common-constructs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -54,12 +57,6 @@ export class EventStack extends Stack {
       this,
       'BackendTable',
       backendTableName,
-    );
-
-    // SageMaker endpoint name for direct scale-out trigger
-    const sagemakerEndpointName = ssm.StringParameter.valueForStringParameter(
-      this,
-      SSM_KEYS.PADDLEOCR_ENDPOINT_NAME,
     );
 
     // ========================================
@@ -294,7 +291,7 @@ export class EventStack extends Stack {
         BDA_QUEUE_URL: this.bdaQueue.queueUrl,
         TRANSCRIBE_QUEUE_URL: this.transcribeQueue.queueUrl,
         WORKFLOW_QUEUE_URL: this.workflowQueue.queueUrl,
-        SAGEMAKER_ENDPOINT_NAME: sagemakerEndpointName,
+        SAGEMAKER_ENDPOINT_NAME: PADDLEOCR_ENDPOINT_NAME_VALUE,
       },
     });
 

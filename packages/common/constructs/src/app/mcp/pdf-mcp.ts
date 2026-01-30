@@ -35,6 +35,11 @@ export class PdfMcp extends Construct {
       entry: pdfMcpPath,
       index: 'src/handler.py',
       handler: 'handler',
+      bundling: {
+        buildArgs: {
+          POETRY_VERSION: '2.1.3',
+        },
+      },
       environment: {
         BACKEND_TABLE_NAME: backendTable.tableName,
         AGENT_STORAGE_BUCKET: storageBucket.bucketName,

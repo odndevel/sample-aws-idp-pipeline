@@ -1,4 +1,4 @@
-import { Names, RemovalPolicy } from 'aws-cdk-lib';
+import { RemovalPolicy } from 'aws-cdk-lib';
 import { Bucket, CorsRule, IBucket } from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
 
@@ -18,14 +18,12 @@ export class S3Bucket extends Construct {
     const { bucketPrefix } = props;
 
     this.logBucket = new Bucket(this, `${bucketPrefix}-LogBucket`, {
-      bucketName: `${bucketPrefix}-logs-${Names.uniqueId(this)}`.toLowerCase(),
       removalPolicy: RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
       enforceSSL: true,
     });
 
     this.bucket = new Bucket(this, `${bucketPrefix}-Bucket`, {
-      bucketName: `${bucketPrefix}-${Names.uniqueId(this)}`.toLowerCase(),
       removalPolicy: RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
       enforceSSL: true,
