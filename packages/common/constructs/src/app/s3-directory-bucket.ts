@@ -1,4 +1,4 @@
-import { Names, RemovalPolicy, aws_s3express } from 'aws-cdk-lib';
+import { Names, RemovalPolicy, Stack, aws_s3express } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
 export interface S3DirectoryBucketProps {
@@ -17,7 +17,8 @@ export class S3DirectoryBucket extends Construct {
     const { bucketPrefix, availabilityZoneId } = props;
 
     const hash = Names.uniqueId(this).slice(-8).toLowerCase();
-    this.bucketName = `${bucketPrefix}-${hash}--${availabilityZoneId}--x-s3`;
+    const account = Stack.of(this).account;
+    this.bucketName = `${bucketPrefix}-${account}-${hash}--${availabilityZoneId}--x-s3`;
 
     this.bucket = new aws_s3express.CfnDirectoryBucket(
       this,
