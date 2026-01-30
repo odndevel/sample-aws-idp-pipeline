@@ -13,7 +13,10 @@ import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
 import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
-import { SSM_KEYS, PADDLEOCR_ENDPOINT_NAME_VALUE } from ':idp-v2/common-constructs';
+import {
+  SSM_KEYS,
+  PADDLEOCR_ENDPOINT_NAME_VALUE,
+} from ':idp-v2/common-constructs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
