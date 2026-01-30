@@ -30,10 +30,17 @@ class ToolParameterEnforcerHook(HookProvider):
 
         tool_name = event.selected_tool.tool_name
 
-        if tool_name.endswith("save_artifact") and self.user_id:
+        # MCP 툴인지 확인 (___로 구분)
+        is_mcp_tool = "___" in tool_name
+
+        if not is_mcp_tool:
+            return
+
+        # 모든 MCP 툴에 user_id, project_id 강제 주입
+        if self.user_id:
             event.tool_use["input"]["user_id"] = self.user_id
 
-        if tool_name.endswith(("save_artifact", "search_documents")) and self.project_id:
+        if self.project_id:
             event.tool_use["input"]["project_id"] = self.project_id
 
 
@@ -119,6 +126,12 @@ def get_agent(
 
         system_prompt += f"""
 You MUST respond in the language corresponding to code: {language_code}.
+"""
+
+    system_prompt += """
+## Tool Parameter Notice
+When using MCP tools, `user_id` and `project_id` parameters are automatically injected by the system.
+You MUST NOT specify these parameters in tool calls - they will be overwritten by the system for security.
 """
 
     bedrock_model = BedrockModel(

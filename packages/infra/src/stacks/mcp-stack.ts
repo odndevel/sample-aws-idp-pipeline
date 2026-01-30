@@ -2,15 +2,22 @@ import { Stack, StackProps } from 'aws-cdk-lib';
 import { Table } from 'aws-cdk-lib/aws-dynamodb';
 import { Vpc } from 'aws-cdk-lib/aws-ec2';
 import { Bucket } from 'aws-cdk-lib/aws-s3';
+import { Queue } from 'aws-cdk-lib/aws-sqs';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
-import { SearchMcp, ArtifactMcp, SSM_KEYS } from ':idp-v2/common-constructs';
+import {
+  SearchMcp,
+  ArtifactMcp,
+  PdfMcp,
+  SSM_KEYS,
+} from ':idp-v2/common-constructs';
 import * as agentcore from '@aws-cdk/aws-bedrock-agentcore-alpha';
 import * as path from 'path';
 
 export class McpStack extends Stack {
   public readonly searchMcp: SearchMcp;
   public readonly artifactMcp: ArtifactMcp;
+  public readonly pdfMcp: PdfMcp;
   public readonly gateway: agentcore.Gateway;
 
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -54,6 +61,16 @@ export class McpStack extends Stack {
       SSM_KEYS.WEBSOCKET_API_ID,
     );
 
+    const websocketMessageQueueArn = StringParameter.valueForStringParameter(
+      this,
+      SSM_KEYS.WEBSOCKET_MESSAGE_QUEUE_ARN,
+    );
+    const websocketMessageQueue = Queue.fromQueueArn(
+      this,
+      'WebsocketMessageQueue',
+      websocketMessageQueueArn,
+    );
+
     this.searchMcp = new SearchMcp(this, 'SearchMcp');
     this.artifactMcp = new ArtifactMcp(this, 'ArtifactMcp', {
       backendTable,
@@ -62,6 +79,11 @@ export class McpStack extends Stack {
       elasticacheEndpoint,
       websocketCallbackUrl,
       websocketApiId,
+    });
+    this.pdfMcp = new PdfMcp(this, 'PdfMcp', {
+      backendTable,
+      storageBucket: agentStorageBucket,
+      websocketMessageQueue,
     });
 
     this.gateway = new agentcore.Gateway(this, 'McpGateway', {
@@ -129,5 +151,22 @@ export class McpStack extends Stack {
         ),
       ),
     });
+
+    const pdfTarget = this.gateway.addLambdaTarget('PdfMcpTarget', {
+      gatewayTargetName: 'pdf',
+      description:
+        'PDF processing tools: extract text, extract tables, and create PDFs. Use these tools when working with PDF documents.',
+      lambdaFunction: this.pdfMcp.function,
+      toolSchema: agentcore.ToolSchema.fromLocalAsset(
+        path.resolve(
+          process.cwd(),
+          '../../packages/lambda/pdf-mcp/schema.json',
+        ),
+      ),
+    });
+
+    // Workaround: CDK timing issue - explicitly grant and add dependency
+    this.pdfMcp.function.grantInvoke(this.gateway.role);
+    pdfTarget.node.addDependency(this.gateway.role);
   }
 }
