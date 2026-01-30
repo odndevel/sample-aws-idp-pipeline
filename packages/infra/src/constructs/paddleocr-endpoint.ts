@@ -16,6 +16,7 @@ import { ITopic } from 'aws-cdk-lib/aws-sns';
 import * as appscaling from 'aws-cdk-lib/aws-applicationautoscaling';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import { Construct } from 'constructs';
+import { PADDLEOCR_ENDPOINT_NAME_VALUE } from ':idp-v2/common-constructs';
 
 export interface PaddleOcrEndpointProps {
   /**
@@ -199,7 +200,7 @@ export class PaddleOcrEndpoint extends Construct {
 
     // SageMaker Endpoint
     this.endpoint = new CfnEndpoint(this, 'Endpoint', {
-      endpointName: 'paddleocr-endpoint',
+      endpointName: PADDLEOCR_ENDPOINT_NAME_VALUE,
       endpointConfigName: endpointConfig.attrEndpointConfigName,
     });
 

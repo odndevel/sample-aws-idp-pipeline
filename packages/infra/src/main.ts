@@ -26,14 +26,14 @@ const vpcStack = new VpcStack(app, 'IDP-V2-Vpc', { env });
 const storageStack = new StorageStack(app, 'IDP-V2-Storage', { env });
 storageStack.addDependency(vpcStack);
 
-// Layer 3: OCR (depends on Storage)
-const ocrStack = new OcrStack(app, 'IDP-V2-Ocr', { env });
-ocrStack.addDependency(storageStack);
-
-// Layer 4: Event (depends on Storage, OCR)
+// Layer 3: Event (depends on Storage)
 const eventStack = new EventStack(app, 'IDP-V2-Event', { env });
 eventStack.addDependency(storageStack);
-eventStack.addDependency(ocrStack);
+
+// Layer 4: OCR (depends on Storage, Event)
+const ocrStack = new OcrStack(app, 'IDP-V2-Ocr', { env });
+ocrStack.addDependency(storageStack);
+ocrStack.addDependency(eventStack);
 
 // Layer 5: Preprocessing consumers (depend on Event)
 const bdaStack = new BdaStack(app, 'IDP-V2-Bda', { env });

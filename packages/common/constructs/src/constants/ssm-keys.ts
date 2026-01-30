@@ -1,3 +1,5 @@
+export const PADDLEOCR_ENDPOINT_NAME_VALUE = 'paddleocr-endpoint';
+
 export const SSM_KEYS = {
   LANCEDB_LOCK_TABLE_NAME: '/idp-v2/lancedb/lock/table-name',
   DOCUMENT_STORAGE_BUCKET_NAME: '/idp-v2/document-storage/bucket-name',
