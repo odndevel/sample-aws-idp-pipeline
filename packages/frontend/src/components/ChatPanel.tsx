@@ -1113,7 +1113,8 @@ export default function ChatPanel({
           </div>
         ) : !hasMessages ? (
           /* Welcome Screen */
-          <div className="flex flex-col items-center h-full p-6 pt-[22%]">
+          <div className="flex flex-col items-center h-full p-6">
+            <div className="flex-[3]" />
             <div className="mb-6">
               <Box className="w-10 h-10 text-blue-500" strokeWidth={1.5} />
             </div>
@@ -1129,6 +1130,7 @@ export default function ChatPanel({
                 {t('chat.enterToSend')}
               </p>
             </div>
+            <div className="flex-[5]" />
           </div>
         ) : (
           /* Messages */

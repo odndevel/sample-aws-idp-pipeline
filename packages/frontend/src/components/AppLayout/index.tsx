@@ -1,10 +1,10 @@
 import { useAuth } from 'react-oidc-context';
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import Config from '../../config';
-import { Link, useLocation } from '@tanstack/react-router';
+import { Link, useLocation, useNavigate } from '@tanstack/react-router';
 
 // Navigation icons
 const ProjectsIcon = () => (
@@ -39,7 +39,7 @@ const ArtifactsIcon = () => (
 
 const SettingsIcon = () => (
   <svg
-    className="w-5 h-5"
+    className="w-4 h-4"
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
@@ -54,7 +54,7 @@ const SettingsIcon = () => (
 
 const LogoutIcon = () => (
   <svg
-    className="w-5 h-5"
+    className="w-4 h-4"
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
@@ -98,6 +98,92 @@ const OpenInNewIcon = () => (
   </svg>
 );
 
+const GlobeIcon = () => (
+  <svg
+    className="w-4 h-4"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <circle cx="12" cy="12" r="10" />
+    <line x1="2" y1="12" x2="22" y2="12" />
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+  </svg>
+);
+
+const ChevronRightIcon = () => (
+  <svg
+    className="w-3.5 h-3.5"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M9 18l6-6-6-6" />
+  </svg>
+);
+
+const SunIcon = () => (
+  <svg
+    className="w-4 h-4"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <circle cx="12" cy="12" r="5" />
+    <line x1="12" y1="1" x2="12" y2="3" />
+    <line x1="12" y1="21" x2="12" y2="23" />
+    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+    <line x1="1" y1="12" x2="3" y2="12" />
+    <line x1="21" y1="12" x2="23" y2="12" />
+    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+  </svg>
+);
+
+const MoonIcon = () => (
+  <svg
+    className="w-4 h-4"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+  </svg>
+);
+
+const ChevronUpIcon = () => (
+  <svg
+    className="w-3.5 h-3.5"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M18 15l-6-6-6 6" />
+  </svg>
+);
+
+const LANGUAGES = [
+  { code: 'ko', label: 'Korean' },
+  { code: 'en', label: 'English' },
+  { code: 'ja', label: 'Japanese' },
+];
+
 /**
  * Defines the App layout with sidebar navigation.
  */
@@ -107,10 +193,19 @@ const THEME_KEY = 'idp-theme';
 const AppLayout: React.FC<React.PropsWithChildren> = ({ children }) => {
   const { user, removeUser, signoutRedirect, clearStaleState } = useAuth();
   const { pathname } = useLocation();
-  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { t, i18n } = useTranslation();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
   });
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [langSubOpen, setLangSubOpen] = useState(false);
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    const stored = localStorage.getItem(THEME_KEY);
+    return stored === 'light' ? 'light' : 'dark';
+  });
+
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const toggleSidebar = () => {
     const newValue = !sidebarCollapsed;
@@ -120,11 +215,39 @@ const AppLayout: React.FC<React.PropsWithChildren> = ({ children }) => {
 
   // Apply theme class from localStorage
   useEffect(() => {
-    const stored = localStorage.getItem(THEME_KEY);
-    const theme = stored === 'light' ? 'light' : 'dark';
     document.documentElement.classList.remove('light', 'dark');
     document.documentElement.classList.add(theme);
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+    localStorage.setItem(THEME_KEY, newTheme);
+  }, [theme]);
+
+  const closeMenu = useCallback(() => {
+    setUserMenuOpen(false);
+    setLangSubOpen(false);
   }, []);
+
+  // Click outside to close
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        closeMenu();
+      }
+    };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeMenu();
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [userMenuOpen, closeMenu]);
 
   const navItems = [
     {
@@ -160,6 +283,8 @@ const AppLayout: React.FC<React.PropsWithChildren> = ({ children }) => {
     });
     clearStaleState();
   };
+
+  const username = user?.profile?.['cognito:username'] as string;
 
   return (
     <div className="app-shell">
@@ -208,61 +333,133 @@ const AppLayout: React.FC<React.PropsWithChildren> = ({ children }) => {
         )}
 
         {/* Bottom Section */}
-        <div className="sidebar-footer">
-          {/* Documentation Link */}
-          <a
-            href="https://github.com/aws-samples/sample-aws-idp-pipeline/blob/main/README.md"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="sidebar-doc-link"
-            title={sidebarCollapsed ? t('nav.documentation') : undefined}
-          >
-            <OpenInNewIcon />
-            {!sidebarCollapsed && <span>{t('nav.documentation')}</span>}
-          </a>
+        <div className="sidebar-footer" ref={menuRef}>
+          {/* User Menu Popup */}
+          {userMenuOpen && (
+            <div className="sidebar-user-menu">
+              {/* Header */}
+              <div className="sidebar-user-menu-header">{username}</div>
+              <div className="sidebar-user-menu-separator" />
 
-          {/* Settings Link */}
-          <Link
-            to="/settings"
-            className={`sidebar-doc-link ${pathname === '/settings' || pathname.startsWith('/settings/') ? 'active' : ''}`}
-            title={sidebarCollapsed ? t('nav.settings') : undefined}
-          >
-            <SettingsIcon />
-            {!sidebarCollapsed && <span>{t('nav.settings')}</span>}
-          </Link>
+              {/* Settings */}
+              <button
+                type="button"
+                className="sidebar-user-menu-item"
+                onClick={() => {
+                  navigate({ to: '/settings' });
+                  closeMenu();
+                }}
+              >
+                <SettingsIcon />
+                <span>{t('nav.settings')}</span>
+              </button>
 
-          {/* User Info */}
-          <div className="sidebar-user">
+              {/* Language */}
+              <button
+                type="button"
+                className="sidebar-user-menu-item"
+                onClick={() => setLangSubOpen(!langSubOpen)}
+              >
+                <GlobeIcon />
+                <span>{t('common.language')}</span>
+                <span
+                  className={`sidebar-user-menu-chevron ${langSubOpen ? 'open' : ''}`}
+                >
+                  <ChevronRightIcon />
+                </span>
+              </button>
+              {langSubOpen && (
+                <div className="sidebar-user-menu-lang-options">
+                  {LANGUAGES.map((lang) => (
+                    <button
+                      key={lang.code}
+                      type="button"
+                      className={`sidebar-user-menu-lang-option ${i18n.language === lang.code ? 'active' : ''}`}
+                      onClick={() => {
+                        i18n.changeLanguage(lang.code);
+                        localStorage.setItem('i18nextLng', lang.code);
+                      }}
+                    >
+                      {t(`languages.${lang.code}`)}
+                      {i18n.language === lang.code && (
+                        <span className="sidebar-user-menu-lang-check">
+                          &#10003;
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Theme toggle */}
+              <button
+                type="button"
+                className="sidebar-user-menu-item"
+                onClick={toggleTheme}
+              >
+                {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+                <span>
+                  {theme === 'dark' ? t('nav.lightMode') : t('nav.darkMode')}
+                </span>
+              </button>
+
+              <div className="sidebar-user-menu-separator" />
+
+              {/* Documentation */}
+              <button
+                type="button"
+                className="sidebar-user-menu-item"
+                onClick={() => {
+                  window.open(
+                    'https://github.com/aws-samples/sample-aws-idp-pipeline/blob/main/README.md',
+                    '_blank',
+                    'noopener,noreferrer',
+                  );
+                  closeMenu();
+                }}
+              >
+                <OpenInNewIcon />
+                <span>{t('nav.documentation')}</span>
+              </button>
+
+              <div className="sidebar-user-menu-separator" />
+
+              {/* Logout */}
+              <button
+                type="button"
+                className="sidebar-user-menu-item sidebar-user-menu-item-danger"
+                onClick={handleLogout}
+              >
+                <LogoutIcon />
+                <span>{t('nav.logout')}</span>
+              </button>
+            </div>
+          )}
+
+          {/* User Info (clickable) */}
+          <div
+            className="sidebar-user"
+            onClick={() => setUserMenuOpen(!userMenuOpen)}
+          >
             <div
               className="sidebar-user-info"
-              title={
-                sidebarCollapsed
-                  ? (user?.profile?.['cognito:username'] as string)
-                  : undefined
-              }
+              title={sidebarCollapsed ? username : undefined}
             >
               <div className="sidebar-user-avatar">
-                {(user?.profile?.['cognito:username'] as string)
-                  ?.charAt(0)
-                  .toUpperCase()}
+                {username?.charAt(0).toUpperCase()}
               </div>
               {!sidebarCollapsed && (
                 <div className="sidebar-user-details">
-                  <p className="sidebar-user-name">
-                    {user?.profile?.['cognito:username'] as string}
-                  </p>
+                  <p className="sidebar-user-name">{username}</p>
                 </div>
               )}
             </div>
             {!sidebarCollapsed && (
-              <button
-                type="button"
-                className="sidebar-logout-btn"
-                onClick={handleLogout}
-                title={t('nav.logout')}
+              <span
+                className={`sidebar-user-chevron ${userMenuOpen ? 'open' : ''}`}
               >
-                <LogoutIcon />
-              </button>
+                <ChevronUpIcon />
+              </span>
             )}
           </div>
         </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Info } from 'lucide-react';
+import { Info, Hash, Type, AlignLeft, Globe, Palette } from 'lucide-react';
 
 export interface Project {
   project_id: string;
@@ -206,6 +206,8 @@ interface AdvancedSettings {
   document_prompt: string;
 }
 
+type SectionKey = 'basic' | 'ocr' | 'instructions';
+
 interface ProjectSettingsModalProps {
   project: Project | null;
   isOpen: boolean;
@@ -231,10 +233,7 @@ export default function ProjectSettingsModal({
 }: ProjectSettingsModalProps) {
   const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
-  const [showAdvancedModal, setShowAdvancedModal] = useState(false);
-  const [showOcrAccordion, setShowOcrAccordion] = useState(true);
-  const [showInstructionsAccordion, setShowInstructionsAccordion] =
-    useState(false);
+  const [activeSection, setActiveSection] = useState<SectionKey>('basic');
 
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -287,7 +286,7 @@ export default function ProjectSettingsModal({
         document_prompt: '',
       });
     }
-    setShowAdvancedModal(false);
+    setActiveSection('basic');
   }, [project, isOpen]);
 
   const handleSave = async () => {
@@ -323,418 +322,414 @@ export default function ProjectSettingsModal({
 
   const modalColor = CARD_COLORS[formData.color] || CARD_COLORS[0];
 
+  const menuItems: { key: SectionKey; label: string; icon: React.ReactNode }[] =
+    [
+      {
+        key: 'basic',
+        label: t('projectSettings.basicSettings'),
+        icon: (
+          <svg
+            className="w-4 h-4 flex-shrink-0"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+            />
+          </svg>
+        ),
+      },
+      {
+        key: 'ocr',
+        label: t('projectSettings.ocrSettings'),
+        icon: (
+          <svg
+            className="w-4 h-4 flex-shrink-0"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+            />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+            />
+          </svg>
+        ),
+      },
+      {
+        key: 'instructions',
+        label: t('projectSettings.analysisInstructions'),
+        icon: (
+          <svg
+            className="w-4 h-4 flex-shrink-0"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+            />
+          </svg>
+        ),
+      },
+    ];
+
   return (
     <div className="bento-modal-overlay">
       <div
         className="bento-modal"
         style={
           {
-            width: showAdvancedModal ? '1000px' : '500px',
+            width: '740px',
+            height: '760px',
             '--modal-glow-color': modalColor.border,
           } as React.CSSProperties
         }
       >
-        {/* Main Panel */}
-        <div
-          className={`bento-modal-main ${showAdvancedModal ? 'with-advanced' : ''}`}
-        >
-          <h2 className="bento-modal-title">
-            {isCreating
-              ? t('projects.createProject')
-              : t('projects.editProject')}
-          </h2>
+        {/* Header */}
+        <h2 className="bento-modal-title">
+          {isCreating ? t('projects.createProject') : t('projects.editProject')}
+        </h2>
 
-          <div className="bento-modal-form">
-            {project && !isCreating && (
-              <div className="bento-form-group">
-                <label className="bento-form-label">
-                  {t('projects.projectId')}
-                </label>
-                <div className="bento-form-readonly">{project.project_id}</div>
+        {/* Body: Side Menu + Content */}
+        <div className="bento-settings-body">
+          {/* Left Menu */}
+          <nav className="bento-settings-nav">
+            {menuItems.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setActiveSection(item.key)}
+                className={`bento-settings-nav-item ${
+                  activeSection === item.key ? 'active' : ''
+                }`}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </nav>
+
+          {/* Right Content */}
+          <div className="bento-settings-content">
+            {activeSection === 'basic' && (
+              <div className="bento-modal-form">
+                {project && !isCreating && (
+                  <div className="bento-form-group">
+                    <label className="bento-form-label">
+                      <Hash size={14} />
+                      {t('projects.projectId')}
+                    </label>
+                    <div className="bento-form-readonly">
+                      {project.project_id}
+                    </div>
+                  </div>
+                )}
+
+                <div className="bento-form-group">
+                  <label className="bento-form-label">
+                    <Type size={14} />
+                    {t('projects.projectName')}
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, name: e.target.value })
+                    }
+                    placeholder={t('projects.projectNamePlaceholder')}
+                    className="bento-form-input"
+                  />
+                </div>
+
+                <div className="bento-form-group">
+                  <label className="bento-form-label">
+                    <AlignLeft size={14} />
+                    {t('projects.description')}
+                  </label>
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        description: e.target.value,
+                      })
+                    }
+                    placeholder={t('projects.descriptionPlaceholder')}
+                    rows={3}
+                    className="bento-form-textarea"
+                  />
+                </div>
+
+                <div className="bento-form-group">
+                  <label className="bento-form-label">
+                    <Globe size={14} />
+                    {t('common.language')}
+                    <span className="bento-tooltip-wrapper">
+                      <Info className="bento-tooltip-icon" size={14} />
+                      <span className="bento-tooltip">
+                        {t('projects.languageTooltip')}
+                      </span>
+                    </span>
+                  </label>
+                  <select
+                    value={formData.language}
+                    onChange={(e) =>
+                      setFormData({ ...formData, language: e.target.value })
+                    }
+                    className="bento-form-select"
+                  >
+                    {LANGUAGES.map((lang) => (
+                      <option key={lang.code} value={lang.code}>
+                        {t(`languages.${lang.code}`)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="bento-form-group">
+                  <label className="bento-form-label">
+                    <Palette size={14} />
+                    {t('projects.folderColor')}
+                  </label>
+                  <div className="bento-color-picker">
+                    {CARD_COLORS.map((color, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={() =>
+                          setFormData({ ...formData, color: index })
+                        }
+                        className={`bento-color-option ${
+                          formData.color === index ? 'active' : ''
+                        }`}
+                        style={{ background: color.border }}
+                      />
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 
-            <div className="bento-form-group">
-              <label className="bento-form-label">
-                {t('projects.projectName')}
-              </label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
-                placeholder={t('projects.projectNamePlaceholder')}
-                className="bento-form-input"
-              />
-            </div>
-
-            <div className="bento-form-group">
-              <label className="bento-form-label">
-                {t('projects.description')}
-              </label>
-              <textarea
-                value={formData.description}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    description: e.target.value,
-                  })
-                }
-                placeholder={t('projects.descriptionPlaceholder')}
-                rows={3}
-                className="bento-form-textarea"
-              />
-            </div>
-
-            <div className="bento-form-group">
-              <label className="bento-form-label">
-                {t('common.language')}
-                <span className="bento-tooltip-wrapper">
-                  <Info className="bento-tooltip-icon" size={14} />
-                  <span className="bento-tooltip">
-                    {t('projects.languageTooltip')}
-                  </span>
-                </span>
-              </label>
-              <select
-                value={formData.language}
-                onChange={(e) =>
-                  setFormData({ ...formData, language: e.target.value })
-                }
-                className="bento-form-select"
-              >
-                {LANGUAGES.map((lang) => (
-                  <option key={lang.code} value={lang.code}>
-                    {t(`languages.${lang.code}`)}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="bento-form-group">
-              <label className="bento-form-label">
-                {t('projects.folderColor')}
-              </label>
-              <div className="bento-color-picker">
-                {CARD_COLORS.map((color, index) => (
-                  <button
-                    key={index}
-                    type="button"
-                    onClick={() => setFormData({ ...formData, color: index })}
-                    className={`bento-color-option ${
-                      formData.color === index ? 'active' : ''
-                    }`}
-                    style={{ background: color.border }}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="bento-modal-footer">
-            <button
-              type="button"
-              onClick={() => setShowAdvancedModal(!showAdvancedModal)}
-              className={`bento-btn-advanced ${showAdvancedModal ? 'active' : ''}`}
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                />
-              </svg>
-              {t('projects.advancedSettings')}
-              <svg
-                className={`w-4 h-4 transition-transform ${showAdvancedModal ? 'rotate-180' : ''}`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 5l7 7-7 7"
-                />
-              </svg>
-            </button>
-            <div className="bento-modal-actions">
-              <button onClick={onClose} className="bento-btn-cancel">
-                {t('common.cancel')}
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={!formData.name.trim() || saving}
-                className="bento-btn-save"
-              >
-                {saving
-                  ? t('common.saving')
-                  : isCreating
-                    ? t('common.create')
-                    : t('common.save')}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Advanced Settings Panel */}
-        {showAdvancedModal && (
-          <div className="bento-modal-advanced">
-            <h3 className="bento-modal-advanced-title">
-              {t('projects.advancedSettings')}
-            </h3>
-
-            <div className="bento-accordion">
-              {/* OCR Settings */}
-              <div className="bento-accordion-item">
-                <button
-                  type="button"
-                  onClick={() => setShowOcrAccordion(!showOcrAccordion)}
-                  className="bento-accordion-header"
-                >
-                  <span>{t('ocr.title')}</span>
-                  <svg
-                    className={`w-4 h-4 transition-transform ${showOcrAccordion ? 'rotate-180' : ''}`}
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </button>
-                {showOcrAccordion && (
-                  <div className="bento-accordion-content">
-                    <div className="bento-form-group">
-                      <label className="bento-form-label">
-                        {t('ocr.model')}
-                      </label>
-                      <div className="bento-radio-group">
-                        {OCR_MODELS.map((model) => (
-                          <label
-                            key={model.value}
-                            className={`bento-radio-option ${
-                              advancedSettings.ocr_model === model.value
-                                ? 'active'
-                                : ''
-                            }`}
-                          >
-                            <input
-                              type="radio"
-                              name="ocr_model"
-                              value={model.value}
-                              checked={
-                                advancedSettings.ocr_model === model.value
-                              }
-                              onChange={(e) =>
-                                setAdvancedSettings({
-                                  ...advancedSettings,
-                                  ocr_model: e.target.value,
-                                  ...(e.target.value === 'paddleocr-vl'
-                                    ? {
-                                        ocr_lang: '',
-                                        use_doc_orientation_classify: false,
-                                        use_doc_unwarping: false,
-                                        use_textline_orientation: false,
-                                      }
-                                    : {}),
-                                })
-                              }
-                            />
-                            <div>
-                              <div className="bento-radio-label">
-                                {t(`ocr.models.${model.value}.name`)}
-                              </div>
-                              <div className="bento-radio-desc">
-                                {t(`ocr.models.${model.value}.description`)}
-                              </div>
-                            </div>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    {OCR_MODELS.find(
-                      (m) => m.value === advancedSettings.ocr_model,
-                    )?.hasLangOption && (
-                      <div className="bento-form-group">
-                        <label className="bento-form-label">
-                          {t('ocr.language')}
-                          <span className="bento-tooltip-wrapper">
-                            <Info className="bento-tooltip-icon" size={14} />
-                            <span className="bento-tooltip">
-                              {t('ocr.languageTooltip')}
-                            </span>
-                          </span>
-                        </label>
-                        <select
-                          value={advancedSettings.ocr_lang}
+            {activeSection === 'ocr' && (
+              <div className="bento-modal-form">
+                <div className="bento-form-group">
+                  <label className="bento-form-label">{t('ocr.model')}</label>
+                  <div className="bento-radio-group">
+                    {OCR_MODELS.map((model) => (
+                      <label
+                        key={model.value}
+                        className={`bento-radio-option ${
+                          advancedSettings.ocr_model === model.value
+                            ? 'active'
+                            : ''
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="ocr_model"
+                          value={model.value}
+                          checked={advancedSettings.ocr_model === model.value}
                           onChange={(e) =>
                             setAdvancedSettings({
                               ...advancedSettings,
-                              ocr_lang: e.target.value,
+                              ocr_model: e.target.value,
+                              ...(e.target.value === 'paddleocr-vl'
+                                ? {
+                                    ocr_lang: '',
+                                    use_doc_orientation_classify: false,
+                                    use_doc_unwarping: false,
+                                    use_textline_orientation: false,
+                                  }
+                                : {}),
                             })
                           }
-                          className="bento-form-select"
-                        >
-                          {OCR_LANGUAGES.map((lang) => (
-                            <option key={lang.code} value={lang.code}>
-                              {lang.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    {OCR_MODELS.find(
-                      (m) => m.value === advancedSettings.ocr_model,
-                    )?.hasOptions && (
-                      <div className="bento-form-group">
-                        <label className="bento-form-label">
-                          {t('ocr.processingOptions')}
-                        </label>
-                        <div className="bento-checkbox-group">
-                          <label className="bento-checkbox-option">
-                            <input
-                              type="checkbox"
-                              checked={
-                                advancedSettings.use_doc_orientation_classify
-                              }
-                              onChange={(e) =>
-                                setAdvancedSettings({
-                                  ...advancedSettings,
-                                  use_doc_orientation_classify:
-                                    e.target.checked,
-                                })
-                              }
-                            />
-                            <div>
-                              <div className="bento-checkbox-label">
-                                {t('ocr.documentOrientation')}
-                              </div>
-                              <div className="bento-checkbox-desc">
-                                {t('ocr.documentOrientationDesc')}
-                              </div>
-                            </div>
-                          </label>
-
-                          <label className="bento-checkbox-option">
-                            <input
-                              type="checkbox"
-                              checked={advancedSettings.use_doc_unwarping}
-                              onChange={(e) =>
-                                setAdvancedSettings({
-                                  ...advancedSettings,
-                                  use_doc_unwarping: e.target.checked,
-                                })
-                              }
-                            />
-                            <div>
-                              <div className="bento-checkbox-label">
-                                {t('ocr.documentUnwarping')}
-                              </div>
-                              <div className="bento-checkbox-desc">
-                                {t('ocr.documentUnwarpingDesc')}
-                              </div>
-                            </div>
-                          </label>
-
-                          {advancedSettings.ocr_model === 'pp-ocrv5' && (
-                            <label className="bento-checkbox-option">
-                              <input
-                                type="checkbox"
-                                checked={
-                                  advancedSettings.use_textline_orientation
-                                }
-                                onChange={(e) =>
-                                  setAdvancedSettings({
-                                    ...advancedSettings,
-                                    use_textline_orientation: e.target.checked,
-                                  })
-                                }
-                              />
-                              <div>
-                                <div className="bento-checkbox-label">
-                                  {t('ocr.textlineOrientation')}
-                                </div>
-                                <div className="bento-checkbox-desc">
-                                  {t('ocr.textlineOrientationDesc')}
-                                </div>
-                              </div>
-                            </label>
-                          )}
+                        />
+                        <div>
+                          <div className="bento-radio-label">
+                            {t(`ocr.models.${model.value}.name`)}
+                          </div>
+                          <div className="bento-radio-desc">
+                            {t(`ocr.models.${model.value}.description`)}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      </label>
+                    ))}
                   </div>
-                )}
-              </div>
+                </div>
 
-              {/* Document Analysis Instructions */}
-              <div className="bento-accordion-item">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setShowInstructionsAccordion(!showInstructionsAccordion)
-                  }
-                  className="bento-accordion-header"
-                >
-                  <span>{t('analysis.title')}</span>
-                  <svg
-                    className={`w-4 h-4 transition-transform ${
-                      showInstructionsAccordion ? 'rotate-180' : ''
-                    }`}
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </button>
-                {showInstructionsAccordion && (
-                  <div className="bento-accordion-content">
-                    <textarea
-                      value={advancedSettings.document_prompt}
+                {OCR_MODELS.find((m) => m.value === advancedSettings.ocr_model)
+                  ?.hasLangOption && (
+                  <div className="bento-form-group">
+                    <label className="bento-form-label">
+                      {t('ocr.language')}
+                      <span className="bento-tooltip-wrapper">
+                        <Info className="bento-tooltip-icon" size={14} />
+                        <span className="bento-tooltip">
+                          {t('ocr.languageTooltip')}
+                        </span>
+                      </span>
+                    </label>
+                    <select
+                      value={advancedSettings.ocr_lang}
                       onChange={(e) =>
                         setAdvancedSettings({
                           ...advancedSettings,
-                          document_prompt: e.target.value,
+                          ocr_lang: e.target.value,
                         })
                       }
-                      placeholder={t('analysis.placeholder')}
-                      rows={6}
-                      className="bento-form-textarea"
-                    />
-                    <p className="bento-form-hint">{t('analysis.hint')}</p>
+                      className="bento-form-select"
+                    >
+                      {OCR_LANGUAGES.map((lang) => (
+                        <option key={lang.code} value={lang.code}>
+                          {lang.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {OCR_MODELS.find((m) => m.value === advancedSettings.ocr_model)
+                  ?.hasOptions && (
+                  <div className="bento-form-group">
+                    <label className="bento-form-label">
+                      {t('ocr.processingOptions')}
+                    </label>
+                    <div className="bento-checkbox-group">
+                      <label className="bento-checkbox-option">
+                        <input
+                          type="checkbox"
+                          checked={
+                            advancedSettings.use_doc_orientation_classify
+                          }
+                          onChange={(e) =>
+                            setAdvancedSettings({
+                              ...advancedSettings,
+                              use_doc_orientation_classify: e.target.checked,
+                            })
+                          }
+                        />
+                        <div>
+                          <div className="bento-checkbox-label">
+                            {t('ocr.documentOrientation')}
+                          </div>
+                          <div className="bento-checkbox-desc">
+                            {t('ocr.documentOrientationDesc')}
+                          </div>
+                        </div>
+                      </label>
+
+                      <label className="bento-checkbox-option">
+                        <input
+                          type="checkbox"
+                          checked={advancedSettings.use_doc_unwarping}
+                          onChange={(e) =>
+                            setAdvancedSettings({
+                              ...advancedSettings,
+                              use_doc_unwarping: e.target.checked,
+                            })
+                          }
+                        />
+                        <div>
+                          <div className="bento-checkbox-label">
+                            {t('ocr.documentUnwarping')}
+                          </div>
+                          <div className="bento-checkbox-desc">
+                            {t('ocr.documentUnwarpingDesc')}
+                          </div>
+                        </div>
+                      </label>
+
+                      {advancedSettings.ocr_model === 'pp-ocrv5' && (
+                        <label className="bento-checkbox-option">
+                          <input
+                            type="checkbox"
+                            checked={advancedSettings.use_textline_orientation}
+                            onChange={(e) =>
+                              setAdvancedSettings({
+                                ...advancedSettings,
+                                use_textline_orientation: e.target.checked,
+                              })
+                            }
+                          />
+                          <div>
+                            <div className="bento-checkbox-label">
+                              {t('ocr.textlineOrientation')}
+                            </div>
+                            <div className="bento-checkbox-desc">
+                              {t('ocr.textlineOrientationDesc')}
+                            </div>
+                          </div>
+                        </label>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
-            </div>
+            )}
+
+            {activeSection === 'instructions' && (
+              <div className="bento-modal-form">
+                <div className="bento-form-group">
+                  <label className="bento-form-label">
+                    {t('analysis.title')}
+                  </label>
+                  <textarea
+                    value={advancedSettings.document_prompt}
+                    onChange={(e) =>
+                      setAdvancedSettings({
+                        ...advancedSettings,
+                        document_prompt: e.target.value,
+                      })
+                    }
+                    placeholder={t('analysis.placeholder')}
+                    rows={12}
+                    className="bento-form-textarea"
+                  />
+                  <p className="bento-form-hint">{t('analysis.hint')}</p>
+                </div>
+              </div>
+            )}
           </div>
-        )}
+        </div>
+
+        {/* Footer */}
+        <div
+          className="bento-modal-footer"
+          style={{ justifyContent: 'flex-end' }}
+        >
+          <div className="bento-modal-actions">
+            <button onClick={onClose} className="bento-btn-cancel">
+              {t('common.cancel')}
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={!formData.name.trim() || saving}
+              className="bento-btn-save"
+            >
+              {saving
+                ? t('common.saving')
+                : isCreating
+                  ? t('common.create')
+                  : t('common.save')}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

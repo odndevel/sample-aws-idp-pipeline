@@ -87,6 +87,9 @@ function ProjectDetailPage() {
     null,
   );
   const [loadingMoreSessions, setLoadingMoreSessions] = useState(false);
+  const [docsPanelCollapsed, setDocsPanelCollapsed] = useState(false);
+  const [sidePanelCollapsed, setSidePanelCollapsed] = useState(false);
+  const docsPanelSizeBeforeCollapse = useRef<number[]>([28, 47, 25]);
   const [project, setProject] = useState<Project | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
@@ -140,13 +143,28 @@ function ProjectDetailPage() {
     return [28, 47, 25];
   }, []);
 
-  const handlePanelResizeEnd = useCallback((details: { size: number[] }) => {
-    try {
-      localStorage.setItem(panelStorageKey, JSON.stringify(details.size));
-    } catch {
-      // ignore
-    }
-  }, []);
+  // Keep ref in sync with initial saved sizes
+  useEffect(() => {
+    docsPanelSizeBeforeCollapse.current = savedPanelSizes;
+  }, [savedPanelSizes]);
+
+  const handlePanelResizeEnd = useCallback(
+    (details: { size: number[] }) => {
+      try {
+        localStorage.setItem(panelStorageKey, JSON.stringify(details.size));
+        if (
+          !docsPanelCollapsed &&
+          !sidePanelCollapsed &&
+          details.size.length === 3
+        ) {
+          docsPanelSizeBeforeCollapse.current = details.size;
+        }
+      } catch {
+        // ignore
+      }
+    },
+    [docsPanelCollapsed, sidePanelCollapsed],
+  );
 
   // Ctrl+Shift+S keyboard shortcut for system prompt modal
   useEffect(() => {
@@ -322,8 +340,48 @@ function ProjectDetailPage() {
       }
 
       if (data.event === 'status_changed') {
-        // Update progress status when workflow completes or fails
-        if (data.status === 'completed' || data.status === 'failed') {
+        if (data.status === 'in_progress') {
+          // Create/update progress entry when workflow starts
+          setWorkflowProgressMap((prev) => {
+            const existing = prev[data.documentId];
+            return {
+              ...prev,
+              [data.documentId]: {
+                workflowId: data.workflowId,
+                documentId: data.documentId,
+                fileName: existing?.fileName || '',
+                status: 'in_progress',
+                currentStep:
+                  existing?.currentStep ||
+                  t('workflow.starting', 'Starting...'),
+                stepMessage: '',
+                segmentProgress: existing?.segmentProgress || null,
+                error: null,
+                steps: existing?.steps || {},
+              },
+            };
+          });
+
+          // Merge workflow into workflows state
+          setWorkflows((prev) => {
+            if (prev.some((w) => w.workflow_id === data.workflowId))
+              return prev;
+            return [
+              ...prev,
+              {
+                workflow_id: data.workflowId,
+                document_id: data.documentId,
+                status: 'in_progress',
+                file_name: '',
+                file_uri: '',
+                language: null,
+                created_at: data.timestamp,
+                updated_at: data.timestamp,
+              },
+            ];
+          });
+        } else if (data.status === 'completed' || data.status === 'failed') {
+          // Update progress status
           setWorkflowProgressMap((prev) => {
             if (!prev[data.documentId]) return prev;
             return {
@@ -334,14 +392,17 @@ function ProjectDetailPage() {
               },
             };
           });
+
+          // Refresh documents after a delay for DynamoDB eventual consistency
+          setTimeout(() => {
+            loadDocuments();
+          }, 1500);
         }
 
-        // Refresh documents and workflows when status changes
-        loadDocuments();
         loadWorkflows();
       }
     },
-    [projectId, loadDocuments, loadWorkflows],
+    [projectId, loadDocuments, loadWorkflows, t],
   );
 
   useWebSocketMessage('workflow', handleWorkflowMessage);
@@ -366,6 +427,7 @@ function ProjectDetailPage() {
     (data: {
       event: string;
       workflowId: string;
+      documentId: string;
       projectId: string;
       stepName: string;
       status: string;
@@ -379,14 +441,7 @@ function ProjectDetailPage() {
       }
 
       if (data.event === 'step_changed') {
-        // Find the document for this workflow
-        const workflow = workflows.find(
-          (w) => w.workflow_id === data.workflowId,
-        );
-        const document = workflow
-          ? documents.find((d) => d.document_id === workflow.document_id)
-          : null;
-        const documentId = workflow?.document_id || '';
+        const documentId = data.documentId;
         if (!documentId) return;
 
         const stepLabel = stepLabels[data.stepName] || data.stepName;
@@ -396,7 +451,7 @@ function ProjectDetailPage() {
           const newProgress: WorkflowProgress = {
             workflowId: data.workflowId,
             documentId,
-            fileName: document?.name || existing?.fileName || '',
+            fileName: existing?.fileName || '',
             status:
               data.status === 'in_progress'
                 ? 'in_progress'
@@ -422,7 +477,7 @@ function ProjectDetailPage() {
         });
       }
     },
-    [projectId, workflows, documents, stepLabels],
+    [projectId, stepLabels],
   );
 
   useWebSocketMessage('step', handleStepMessage);
@@ -1138,6 +1193,7 @@ function ProjectDetailPage() {
 
     if (completedDocIds.length === 0) return;
 
+    loadDocuments();
     loadWorkflows();
     const timeout = setTimeout(() => {
       setWorkflowProgressMap((prev) => {
@@ -1149,7 +1205,7 @@ function ProjectDetailPage() {
       });
     }, 5000);
     return () => clearTimeout(timeout);
-  }, [workflowProgressMap, loadWorkflows]);
+  }, [workflowProgressMap, loadDocuments, loadWorkflows]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -1281,162 +1337,6 @@ function ProjectDetailPage() {
         );
       }
       await loadDocuments();
-
-      // Initialize progress state for uploaded files
-      if (uploadedDocuments.length > 0) {
-        // Set initial progress for all uploaded documents
-        setWorkflowProgressMap((prev) => {
-          const newMap = { ...prev };
-          for (const uploaded of uploadedDocuments) {
-            newMap[uploaded.documentId] = {
-              workflowId: '',
-              documentId: uploaded.documentId,
-              fileName: uploaded.fileName,
-              status: 'pending',
-              currentStep: t('workflow.preparing', 'Preparing...'),
-              stepMessage: '',
-              segmentProgress: null,
-              error: null,
-            };
-          }
-          return newMap;
-        });
-
-        // Poll for new workflows after upload
-        const pollForWorkflows = async (retries = 10) => {
-          for (let i = 0; i < retries; i++) {
-            await new Promise((resolve) => setTimeout(resolve, 2000));
-            // Fetch workflows for uploaded documents
-            const allWorkflows: Workflow[] = [];
-            for (const uploaded of uploadedDocuments) {
-              try {
-                const docWorkflows = await fetchApi<
-                  Omit<Workflow, 'document_id'>[]
-                >(`documents/${uploaded.documentId}/workflows`);
-                allWorkflows.push(
-                  ...docWorkflows.map((wf) => ({
-                    ...wf,
-                    document_id: uploaded.documentId,
-                  })),
-                );
-              } catch {
-                // Skip documents with no workflows yet
-              }
-            }
-
-            // Update progress for each document that has a workflow
-            const foundWorkflows = allWorkflows.filter(
-              (w) => w.status === 'pending' || w.status === 'in_progress',
-            );
-
-            if (foundWorkflows.length > 0) {
-              setWorkflowProgressMap((prev) => {
-                const newMap = { ...prev };
-                for (const wf of foundWorkflows) {
-                  if (newMap[wf.document_id]) {
-                    newMap[wf.document_id] = {
-                      ...newMap[wf.document_id],
-                      workflowId: wf.workflow_id,
-                      status: 'in_progress',
-                      currentStep: t('workflow.starting', 'Starting...'),
-                    };
-                  }
-                }
-                return newMap;
-              });
-
-              setWorkflows((prevWorkflows) => {
-                const existingIds = new Set(
-                  prevWorkflows.map((w) => w.workflow_id),
-                );
-                const newWorkflows = allWorkflows.filter(
-                  (w) => !existingIds.has(w.workflow_id),
-                );
-                return [...prevWorkflows, ...newWorkflows];
-              });
-
-              // Fetch step progress (with retry) to get skipped/actual status
-              const fetchUploadProgress = async (retries = 5) => {
-                for (let j = 0; j < retries; j++) {
-                  await new Promise((r) => setTimeout(r, 3000));
-                  try {
-                    const progressData = await fetchApi<
-                      {
-                        document_id: string;
-                        workflow_id: string;
-                        status: string;
-                        current_step: string;
-                        steps: Record<
-                          string,
-                          { status: string; label: string }
-                        >;
-                      }[]
-                    >(`projects/${projectId}/documents/progress`);
-
-                    const hasSteps = progressData.some(
-                      (p) =>
-                        foundWorkflows.some(
-                          (fw) => fw.document_id === p.document_id,
-                        ) && Object.keys(p.steps).length > 0,
-                    );
-                    if (!hasSteps && j < retries - 1) continue;
-
-                    setWorkflowProgressMap((prev) => {
-                      const newMap = { ...prev };
-                      for (const wf of foundWorkflows) {
-                        const progress = progressData.find(
-                          (p) => p.document_id === wf.document_id,
-                        );
-                        if (!progress || !newMap[wf.document_id]) continue;
-
-                        const steps: Record<string, StepStatus> = {};
-                        for (const [key, val] of Object.entries(
-                          progress.steps,
-                        )) {
-                          steps[key] = {
-                            status: val.status as StepStatus['status'],
-                            label: stepLabels[key] || val.label,
-                          };
-                        }
-
-                        const currentStepLabel = progress.current_step
-                          ? stepLabels[progress.current_step] ||
-                            progress.current_step
-                          : newMap[wf.document_id].currentStep;
-
-                        newMap[wf.document_id] = {
-                          ...newMap[wf.document_id],
-                          currentStep: currentStepLabel,
-                          steps: {
-                            ...newMap[wf.document_id].steps,
-                            ...steps,
-                          },
-                        };
-                      }
-                      return newMap;
-                    });
-                    return;
-                  } catch {
-                    // retry
-                  }
-                }
-              };
-              fetchUploadProgress();
-
-              return;
-            }
-          }
-          // If no workflow found after retries, clear progress for uploaded docs
-          setWorkflowProgressMap((prev) => {
-            const newMap = { ...prev };
-            for (const uploaded of uploadedDocuments) {
-              delete newMap[uploaded.documentId];
-            }
-            return newMap;
-          });
-        };
-        pollForWorkflows();
-      }
     } catch (error) {
       console.error('Failed to upload document:', error);
     }
@@ -1727,48 +1627,144 @@ function ProjectDetailPage() {
       {/* Navigation Bar */}
       <ProjectNavBar
         project={project}
-        documentCount={documents.length}
         onSettingsClick={() => setShowProjectSettings(true)}
       />
 
       {/* Main Content - 3 Column Resizable Layout */}
-      <div className="flex-1 min-h-0">
-        <ResizablePanelGroup
-          orientation="horizontal"
-          defaultSize={savedPanelSizes}
-          onResizeEnd={handlePanelResizeEnd}
-          panels={[
-            { id: 'documents', minSize: 15, maxSize: 35, collapsible: true },
-            { id: 'chat', minSize: 25, maxSize: 70 },
-            { id: 'side', minSize: 15, maxSize: 35, collapsible: true },
-          ]}
-          className="h-full"
-        >
-          {/* Left - Documents Panel */}
-          <ResizablePanel id="documents">
-            <div className="h-full pr-1">
-              <DocumentsPanel
-                documents={documents}
-                workflows={workflows}
-                workflowProgressMap={workflowProgressMap}
-                uploading={uploading}
-                showUploadArea={showUploadArea}
-                isDragging={isDragging}
-                onToggleUploadArea={() => setShowUploadModal(true)}
-                onRefresh={loadDocuments}
-                onFileUpload={handleFileUpload}
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                onDragEnter={handleDragEnter}
-                onDragLeave={handleDragLeave}
-                onCloseUploadArea={() => setShowUploadArea(false)}
-                onViewWorkflow={loadWorkflowDetail}
-                onDeleteDocument={handleDeleteDocument}
-              />
+      <div className="flex-1 min-h-0 flex">
+        {/* Collapsed Documents Bar */}
+        {docsPanelCollapsed && (
+          <div
+            className="docs-collapsed-bar"
+            onClick={() => {
+              setDocsPanelCollapsed(false);
+              localStorage.setItem(
+                panelStorageKey,
+                JSON.stringify(docsPanelSizeBeforeCollapse.current),
+              );
+            }}
+            title={t('nav.expand')}
+          >
+            <div className="docs-collapsed-badge">
+              <svg
+                className="w-4 h-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </svg>
+              <span>{documents.length}</span>
             </div>
-          </ResizablePanel>
+            <span className="docs-collapsed-label">{t('documents.title')}</span>
+            <div className="docs-collapsed-expand">
+              <svg
+                className="w-3.5 h-3.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M13 17l5-5-5-5" />
+                <path d="M6 17l5-5-5-5" />
+              </svg>
+            </div>
+          </div>
+        )}
 
-          <ResizableHandle id="documents:chat" />
+        <ResizablePanelGroup
+          key={`${docsPanelCollapsed ? 'dl' : 'de'}-${sidePanelCollapsed ? 'sl' : 'se'}`}
+          orientation="horizontal"
+          defaultSize={(() => {
+            const sizes = docsPanelSizeBeforeCollapse.current;
+            if (docsPanelCollapsed && sidePanelCollapsed) {
+              return [sizes[0] + sizes[1] + sizes[2]];
+            }
+            if (docsPanelCollapsed) {
+              return [sizes[0] + sizes[1], sizes[2]];
+            }
+            if (sidePanelCollapsed) {
+              return [sizes[0], sizes[1] + sizes[2]];
+            }
+            return sizes;
+          })()}
+          onResizeEnd={handlePanelResizeEnd}
+          onCollapse={(details: { panelId: string }) => {
+            if (details.panelId === 'documents') {
+              setDocsPanelCollapsed(true);
+            }
+            if (details.panelId === 'side') {
+              setSidePanelCollapsed(true);
+            }
+          }}
+          panels={(() => {
+            const panels: {
+              id: string;
+              minSize: number;
+              maxSize: number;
+              collapsible?: boolean;
+            }[] = [];
+            if (!docsPanelCollapsed) {
+              panels.push({
+                id: 'documents',
+                minSize: 15,
+                maxSize: 35,
+                collapsible: true,
+              });
+            }
+            panels.push({
+              id: 'chat',
+              minSize: 25,
+              maxSize:
+                docsPanelCollapsed || sidePanelCollapsed ? 100 : 70,
+            });
+            if (!sidePanelCollapsed) {
+              panels.push({
+                id: 'side',
+                minSize: 15,
+                maxSize: 35,
+                collapsible: true,
+              });
+            }
+            return panels;
+          })()}
+          className="h-full flex-1 min-w-0"
+        >
+          {!docsPanelCollapsed && (
+            <>
+              <ResizablePanel id="documents">
+                <div className="h-full pr-1">
+                  <DocumentsPanel
+                    documents={documents}
+                    workflows={workflows}
+                    workflowProgressMap={workflowProgressMap}
+                    uploading={uploading}
+                    showUploadArea={showUploadArea}
+                    isDragging={isDragging}
+                    onToggleUploadArea={() => setShowUploadModal(true)}
+                    onRefresh={loadDocuments}
+                    onFileUpload={handleFileUpload}
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOver}
+                    onDragEnter={handleDragEnter}
+                    onDragLeave={handleDragLeave}
+                    onCloseUploadArea={() => setShowUploadArea(false)}
+                    onViewWorkflow={loadWorkflowDetail}
+                    onDeleteDocument={handleDeleteDocument}
+                    onCollapse={() => setDocsPanelCollapsed(true)}
+                  />
+                </div>
+              </ResizablePanel>
+
+              <ResizableHandle id="documents:chat" />
+            </>
+          )}
 
           {/* Center - Chat Panel */}
           <ResizablePanel id="chat">
@@ -1792,38 +1788,109 @@ function ProjectDetailPage() {
             </div>
           </ResizablePanel>
 
-          <ResizableHandle id="chat:side" />
+          {!sidePanelCollapsed && (
+            <>
+              <ResizableHandle id="chat:side" />
 
-          {/* Right - History & Artifacts */}
-          <ResizablePanel id="side">
-            <div className="h-full pl-1 relative">
-              <SidePanel
-                sessions={sessions}
-                currentSessionId={currentSessionId}
-                onSessionSelect={handleSessionSelect}
-                onSessionRename={handleSessionRename}
-                onSessionDelete={handleSessionDelete}
-                hasMoreSessions={!!sessionsNextCursor}
-                loadingMoreSessions={loadingMoreSessions}
-                onLoadMoreSessions={loadMoreSessions}
-                artifacts={artifacts}
-                currentArtifactId={selectedArtifact?.artifact_id}
-                onArtifactSelect={handleArtifactSelect}
-                onArtifactDownload={handleArtifactDownload}
-                onArtifactDelete={handleArtifactDelete}
-              />
-              {/* Artifact Viewer - overlays SidePanel */}
-              {selectedArtifact && (
-                <ArtifactViewer
-                  artifact={selectedArtifact}
-                  onClose={() => setSelectedArtifact(null)}
-                  onDownload={handleArtifactDownload}
-                  getPresignedUrl={getPresignedDownloadUrl}
-                />
-              )}
-            </div>
-          </ResizablePanel>
+              {/* Right - History & Artifacts */}
+              <ResizablePanel id="side">
+                <div className="h-full pl-1 relative">
+                  <SidePanel
+                    sessions={sessions}
+                    currentSessionId={currentSessionId}
+                    onSessionSelect={handleSessionSelect}
+                    onSessionRename={handleSessionRename}
+                    onSessionDelete={handleSessionDelete}
+                    hasMoreSessions={!!sessionsNextCursor}
+                    loadingMoreSessions={loadingMoreSessions}
+                    onLoadMoreSessions={loadMoreSessions}
+                    artifacts={artifacts}
+                    currentArtifactId={selectedArtifact?.artifact_id}
+                    onArtifactSelect={handleArtifactSelect}
+                    onArtifactDownload={handleArtifactDownload}
+                    onArtifactDelete={handleArtifactDelete}
+                    onCollapse={() => setSidePanelCollapsed(true)}
+                  />
+                  {/* Artifact Viewer - overlays SidePanel */}
+                  {selectedArtifact && (
+                    <ArtifactViewer
+                      artifact={selectedArtifact}
+                      onClose={() => setSelectedArtifact(null)}
+                      onDownload={handleArtifactDownload}
+                      getPresignedUrl={getPresignedDownloadUrl}
+                    />
+                  )}
+                </div>
+              </ResizablePanel>
+            </>
+          )}
         </ResizablePanelGroup>
+
+        {/* Collapsed Side Bar */}
+        {sidePanelCollapsed && (
+          <div
+            className="side-collapsed-bar"
+            onClick={() => {
+              setSidePanelCollapsed(false);
+              localStorage.setItem(
+                panelStorageKey,
+                JSON.stringify(docsPanelSizeBeforeCollapse.current),
+              );
+            }}
+            title={t('nav.expand')}
+          >
+            <div className="docs-collapsed-badge">
+              <svg
+                className="w-4 h-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+              <span>{sessions.length}</span>
+            </div>
+            <span className="docs-collapsed-label">
+              {t('sidePanel.history')}
+            </span>
+            <div className="docs-collapsed-badge">
+              <svg
+                className="w-4 h-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" />
+                <path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" />
+                <path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" />
+              </svg>
+              <span>{artifacts.length}</span>
+            </div>
+            <span className="docs-collapsed-label">
+              {t('sidePanel.artifacts')}
+            </span>
+            <div className="docs-collapsed-expand">
+              <svg
+                className="w-3.5 h-3.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M11 17l-5-5 5-5" />
+                <path d="M18 17l-5-5 5-5" />
+              </svg>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Workflow Detail Modal */}

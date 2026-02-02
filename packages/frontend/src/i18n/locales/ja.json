@@ -157,8 +157,8 @@
       "segmentPrep": "セグメント準備",
       "bdaProcessing": "BDA分析",
       "formatParsing": "フォーマット解析",
-      "paddleocrProcessing": "PaddleOCR処理",
-      "paddleocrHint": "エンドポイントが起動中の場合があります",
+      "paddleocrProcessing": "OCR",
+      "paddleocrHint": "初回実行時、エンドポイントの起動に約10分かかる場合があります",
       "transcription": "音声変換",
       "buildingSegments": "セグメント構築",
       "segmentAiAnalysis": "AI分析",
@@ -329,6 +329,11 @@
     "he": "ヘブライ語",
     "mn": "モンゴル語",
     "sw": "スワヒリ語"
+  },
+  "projectSettings": {
+    "basicSettings": "基本設定",
+    "ocrSettings": "OCR設定",
+    "analysisInstructions": "文書分析の指示"
   },
   "settings": {
     "heroTitle": "設定と情報",

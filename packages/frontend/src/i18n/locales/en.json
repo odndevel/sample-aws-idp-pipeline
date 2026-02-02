@@ -157,8 +157,8 @@
       "segmentPrep": "Segment Prep",
       "bdaProcessing": "BDA Processing",
       "formatParsing": "Format Parsing",
-      "paddleocrProcessing": "PaddleOCR Processing",
-      "paddleocrHint": "Endpoint may be scaling up",
+      "paddleocrProcessing": "OCR",
+      "paddleocrHint": "Initial endpoint activation may take ~10 minutes",
       "transcription": "Transcription",
       "buildingSegments": "Building Segments",
       "segmentAiAnalysis": "AI Analysis",
@@ -329,6 +329,11 @@
     "he": "Hebrew",
     "mn": "Mongolian",
     "sw": "Swahili"
+  },
+  "projectSettings": {
+    "basicSettings": "Basic Settings",
+    "ocrSettings": "OCR Settings",
+    "analysisInstructions": "Analysis Instructions"
   },
   "settings": {
     "heroTitle": "Preferences & Info",

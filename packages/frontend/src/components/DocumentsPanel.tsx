@@ -17,6 +17,7 @@ import {
   Check,
   CircleAlert,
   ChevronDown,
+  PanelLeftClose,
 } from 'lucide-react';
 import {
   Document,
@@ -42,6 +43,7 @@ interface DocumentsPanelProps {
   onCloseUploadArea: () => void;
   onViewWorkflow: (documentId: string, workflowId: string) => void;
   onDeleteDocument: (documentId: string) => void;
+  onCollapse?: () => void;
 }
 
 const getFileIcon = (fileType: string) => {
@@ -63,22 +65,21 @@ const getFileIcon = (fileType: string) => {
 const getStatusBadge = (status: string) => {
   const statusColors: Record<string, string> = {
     completed:
-      'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+      'bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-500',
     processing:
-      'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+      'bg-yellow-50 text-yellow-600 dark:bg-yellow-900/20 dark:text-yellow-500',
     in_progress:
-      'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    failed: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+      'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-500',
+    failed: 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-500',
     uploading:
-      'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400',
+      'bg-cyan-50 text-cyan-600 dark:bg-cyan-900/20 dark:text-cyan-500',
     uploaded:
-      'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400',
-    pending:
-      'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400',
+      'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-500',
+    pending: 'bg-slate-50 text-slate-500 dark:bg-slate-800 dark:text-slate-500',
   };
   return (
     statusColors[status] ||
-    'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-400'
+    'bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-500'
   );
 };
 
@@ -261,6 +262,7 @@ export default function DocumentsPanel({
   onCloseUploadArea,
   onViewWorkflow,
   onDeleteDocument,
+  onCollapse,
 }: DocumentsPanelProps) {
   const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -268,11 +270,11 @@ export default function DocumentsPanel({
   return (
     <div className="w-full h-full flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
       {/* Documents Header with Toolbar */}
-      <div className="p-3 border-b border-slate-200">
-        <div className="flex items-center gap-2">
+      <div className="p-3 border-b border-slate-200 flex-shrink-0">
+        <div className="flex items-center gap-1.5 min-w-0">
           <button
             onClick={onToggleUploadArea}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium rounded-lg transition-colors whitespace-nowrap overflow-hidden flex-shrink min-w-0 ${
               showUploadArea
                 ? ''
                 : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -286,21 +288,29 @@ export default function DocumentsPanel({
                 : { color: 'var(--color-text-secondary)' }
             }
           >
-            <Plus className="h-4 w-4" />
-            {t('documents.addDocument')}
+            <Plus className="h-4 w-4 flex-shrink-0" />
+            <span className="truncate">{t('documents.addDocument')}</span>
           </button>
           <button
             onClick={onRefresh}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-slate-100 dark:bg-slate-800 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors active:scale-95 [&:active_svg]:animate-spin"
+            className="flex items-center justify-center p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors active:scale-95 flex-shrink-0"
             style={{ color: 'var(--color-text-secondary)' }}
             title={t('documents.refresh')}
           >
             <RefreshCw className="h-4 w-4" />
-            {t('documents.refresh')}
           </button>
-          <span className="ml-auto text-xs text-slate-500">
+          <span className="ml-auto text-xs text-slate-500 whitespace-nowrap flex-shrink-0">
             {documents.length} {t('documents.files')}
           </span>
+          {onCollapse && (
+            <button
+              onClick={onCollapse}
+              className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors flex-shrink-0"
+              title={t('nav.collapse')}
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -400,7 +410,7 @@ export default function DocumentsPanel({
                   }`}
                 >
                   {/* Document Info Row */}
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
                     <div
                       className={`flex-shrink-0 p-2 rounded-lg doc-icon-bg ${
                         isProcessing ? 'processing' : ''
@@ -415,20 +425,20 @@ export default function DocumentsPanel({
                       >
                         {doc.name}
                       </p>
-                      <div className="flex items-center gap-2 mt-0.5">
+                      <div className="flex items-center gap-2 mt-0.5 min-w-0">
                         <span
-                          className={`text-xs px-1.5 py-0.5 rounded font-medium ${getStatusBadge(doc.status)}`}
+                          className={`text-xs px-1.5 py-0.5 rounded font-medium truncate ${getStatusBadge(doc.status)}`}
                         >
                           {t(`documents.${doc.status}`, doc.status)}
                         </span>
-                        <span className="text-xs text-slate-400">
+                        <span className="text-xs text-slate-400 whitespace-nowrap flex-shrink-0">
                           {(doc.file_size / 1024).toFixed(1)} KB
                         </span>
                       </div>
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                       {workflow && (
                         <button
                           onClick={() =>
@@ -437,11 +447,10 @@ export default function DocumentsPanel({
                               workflow.workflow_id,
                             )
                           }
-                          className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-900 bg-blue-400 hover:bg-blue-100 hover:text-blue-700 hover:scale-105 hover:shadow-md dark:text-blue-300 dark:bg-blue-800 dark:hover:bg-blue-500 dark:hover:text-white rounded-lg transition-all"
-                          title="View analysis"
+                          className="p-1.5 text-blue-900 bg-blue-400 hover:bg-blue-100 hover:text-blue-700 hover:scale-105 hover:shadow-md dark:text-blue-300 dark:bg-blue-800 dark:hover:bg-blue-500 dark:hover:text-white rounded-lg transition-all"
+                          title={t('documents.view')}
                         >
-                          <Eye className="h-3.5 w-3.5" />
-                          {t('documents.view')}
+                          <Eye className="h-4 w-4" />
                         </button>
                       )}
                       {!isProcessing && (

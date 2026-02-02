@@ -291,7 +291,7 @@ export class WorkflowStack extends Stack {
       functionName: 'idp-v2-segment-analyzer',
       handler: 'index.handler',
       timeout: Duration.minutes(15),
-      memorySize: 256,
+      memorySize: 1024,
       code: lambda.Code.fromAsset(
         path.join(__dirname, '../functions/step-functions/segment-analyzer'),
       ),

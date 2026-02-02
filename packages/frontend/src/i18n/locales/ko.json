@@ -157,8 +157,8 @@
       "segmentPrep": "세그먼트 준비",
       "bdaProcessing": "BDA 분석",
       "formatParsing": "포맷 파싱",
-      "paddleocrProcessing": "PaddleOCR 처리",
-      "paddleocrHint": "엔드포인트 활성화 중일 수 있습니다",
+      "paddleocrProcessing": "OCR",
+      "paddleocrHint": "최초 실행 시 엔드포인트 활성화에 약 10분 소요될 수 있습니다",
       "transcription": "음성 변환",
       "buildingSegments": "세그먼트 구성",
       "segmentAiAnalysis": "AI 분석",
@@ -329,6 +329,11 @@
     "he": "히브리어",
     "mn": "몽골어",
     "sw": "스와힐리어"
+  },
+  "projectSettings": {
+    "basicSettings": "기본 설정",
+    "ocrSettings": "OCR 설정",
+    "analysisInstructions": "문서 분석 지침"
   },
   "settings": {
     "heroTitle": "환경설정 및 정보",
