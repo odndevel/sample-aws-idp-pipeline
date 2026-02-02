@@ -1,18 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
 });
-
-const UI_LANGUAGES = [
-  { code: 'ko', name: '한국어', flag: '🇰🇷' },
-  { code: 'en', name: 'English', flag: '🇺🇸' },
-  { code: 'ja', name: '日本語', flag: '🇯🇵' },
-];
-
-const THEME_KEY = 'idp-theme';
 
 const AMAZON_SOFTWARE_LICENSE = `Amazon Software License
 
@@ -54,57 +46,18 @@ EXCEPT AS PROHIBITED BY APPLICABLE LAW, IN NO EVENT AND UNDER NO LEGAL THEORY, W
 
 Effective Date - April 18, 2008 (c) 2008 Amazon.com, Inc. or its affiliates. All rights reserved.`;
 
-type SettingsSection = 'display' | 'license';
+type SettingsSection = 'license';
 
 function SettingsPage() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [activeSection, setActiveSection] =
-    useState<SettingsSection>('display');
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    const stored = localStorage.getItem(THEME_KEY);
-    if (stored === 'dark' || stored === 'light') return stored;
-    return 'dark';
-  });
-
-  const toggleTheme = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
-    localStorage.setItem(THEME_KEY, newTheme);
-  };
-
-  useEffect(() => {
-    document.documentElement.classList.remove('light', 'dark');
-    document.documentElement.classList.add(theme);
-  }, [theme]);
-
-  const handleLanguageChange = (langCode: string) => {
-    i18n.changeLanguage(langCode);
-  };
+    useState<SettingsSection>('license');
 
   const menuItems: {
     key: SettingsSection;
     label: string;
     icon: React.ReactNode;
   }[] = [
-    {
-      key: 'display',
-      label: t('settings.display'),
-      icon: (
-        <svg
-          className="w-5 h-5"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-          <line x1="8" y1="21" x2="16" y2="21" />
-          <line x1="12" y1="17" x2="12" y2="21" />
-        </svg>
-      ),
-    },
     {
       key: 'license',
       label: t('settings.license'),
@@ -166,117 +119,6 @@ function SettingsPage() {
 
         {/* Content */}
         <div className="flex-1 pt-1">
-          {activeSection === 'display' && (
-            <div className="flex flex-col gap-8">
-              {/* Language */}
-              <section>
-                <h3
-                  className="text-base font-semibold mb-1"
-                  style={{ color: 'var(--color-text-primary)' }}
-                >
-                  {t('settings.language')}
-                </h3>
-                <p
-                  className="text-sm mb-3"
-                  style={{ color: 'var(--color-text-muted)' }}
-                >
-                  {t('settings.selectLanguage')}
-                </p>
-                <select
-                  value={i18n.language}
-                  onChange={(e) => handleLanguageChange(e.target.value)}
-                  className="px-4 py-2.5 rounded-lg border text-sm font-medium transition-all w-64"
-                  style={{
-                    background: 'var(--color-bg-secondary)',
-                    borderColor: 'var(--color-border)',
-                    color: 'var(--color-text-primary)',
-                  }}
-                >
-                  {UI_LANGUAGES.map((lang) => (
-                    <option key={lang.code} value={lang.code}>
-                      {lang.flag} {lang.name}
-                    </option>
-                  ))}
-                </select>
-              </section>
-
-              {/* Theme */}
-              <section>
-                <h3
-                  className="text-base font-semibold mb-1"
-                  style={{ color: 'var(--color-text-primary)' }}
-                >
-                  {t('settings.theme')}
-                </h3>
-                <div className="flex gap-3 mt-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (theme !== 'light') toggleTheme();
-                    }}
-                    className={`flex items-center gap-3 px-5 py-3 rounded-lg border text-sm font-medium transition-all ${
-                      theme === 'light'
-                        ? 'border-[var(--color-accent)] bg-[var(--color-accent-light)] text-[var(--color-accent)]'
-                        : 'border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:border-[var(--color-text-muted)]'
-                    }`}
-                  >
-                    <svg
-                      className="w-5 h-5"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <circle cx="12" cy="12" r="5" />
-                      <line x1="12" y1="1" x2="12" y2="3" />
-                      <line x1="12" y1="21" x2="12" y2="23" />
-                      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-                      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-                      <line x1="1" y1="12" x2="3" y2="12" />
-                      <line x1="21" y1="12" x2="23" y2="12" />
-                      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-                      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-                    </svg>
-                    <span>{t('settings.lightMode')}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (theme !== 'dark') toggleTheme();
-                    }}
-                    className={`flex items-center gap-3 px-5 py-3 rounded-lg border text-sm font-medium transition-all ${
-                      theme === 'dark'
-                        ? 'border-[var(--color-accent)] bg-[var(--color-accent-light)] text-[var(--color-accent)]'
-                        : 'border-[var(--color-border)] bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] hover:border-[var(--color-text-muted)]'
-                    }`}
-                  >
-                    <svg
-                      className="w-5 h-5"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-                    </svg>
-                    <span>{t('settings.darkMode')}</span>
-                  </button>
-                </div>
-              </section>
-
-              <p
-                className="text-xs"
-                style={{ color: 'var(--color-text-muted)' }}
-              >
-                {t('settings.storedInBrowser')}
-              </p>
-            </div>
-          )}
-
           {activeSection === 'license' && (
             <div>
               <h3

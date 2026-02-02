@@ -16,6 +16,7 @@ import {
   File,
   Copy,
   Download,
+  PanelRightClose,
 } from 'lucide-react';
 import {
   ResizablePanelGroup,
@@ -70,6 +71,7 @@ interface SidePanelProps {
   onArtifactCopy?: (artifact: Artifact) => void;
   onArtifactDownload?: (artifact: Artifact) => void;
   onArtifactDelete?: (artifactId: string) => Promise<void>;
+  onCollapse?: () => void;
 }
 
 export default function SidePanel({
@@ -87,6 +89,7 @@ export default function SidePanel({
   onArtifactCopy,
   onArtifactDownload,
   onArtifactDelete,
+  onCollapse,
 }: SidePanelProps) {
   const { t } = useTranslation();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -234,9 +237,18 @@ export default function SidePanel({
             <div className="h-full flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
               <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-200 dark:border-slate-700">
                 <MessageSquare className="w-4 h-4 text-slate-500" />
-                <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 flex-1">
                   {t('chat.history')}
                 </h3>
+                {onCollapse && (
+                  <button
+                    onClick={onCollapse}
+                    className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors flex-shrink-0"
+                    title={t('nav.collapse')}
+                  >
+                    <PanelRightClose className="h-4 w-4" />
+                  </button>
+                )}
               </div>
               <div className="flex-1 overflow-y-auto">
                 {sessions.length === 0 ? (

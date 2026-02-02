@@ -191,6 +191,7 @@ async function processStepRecord(record: DynamoDBRecord): Promise<void> {
       data: {
         event: 'step_changed',
         workflowId: newInfo.workflowId,
+        documentId: newInfo.documentId,
         projectId: newInfo.projectId,
         stepName: change.stepName,
         status: change.newStatus,

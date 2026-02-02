@@ -22,6 +22,7 @@ export interface StepMessage {
   data: {
     event: 'step_changed';
     workflowId: string;
+    documentId: string;
     projectId: string;
     stepName: string;
     status: string;

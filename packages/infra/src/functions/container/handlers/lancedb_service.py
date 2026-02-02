@@ -202,7 +202,7 @@ def action_add_record(params: dict) -> dict:
         'document_id': params.get('document_id', ''),
         'segment_id': segment_id,
         'segment_index': segment_index,
-        'content': content[:10000],
+        'content': content,
         'keywords': keywords,
         'file_uri': params.get('file_uri', ''),
         'file_type': params.get('file_type', ''),

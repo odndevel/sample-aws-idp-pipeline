@@ -1,10 +1,25 @@
 import json
 import os
+import re
 from typing import Any, List
 
 import boto3
 from lancedb.embeddings import TextEmbeddingFunction, register
 from pydantic import PrivateAttr
+
+
+_HTML_TAG_RE = re.compile(r'<[^>]+>')
+_MD_HEADER_RE = re.compile(r'^#{1,6}\s+', re.MULTILINE)
+_WHITESPACE_RE = re.compile(r'\n{3,}')
+
+
+def strip_markup(text: str) -> str:
+    """Strip HTML tags and markdown headers for cleaner embedding input."""
+    text = _HTML_TAG_RE.sub(' ', text)
+    text = _MD_HEADER_RE.sub('', text)
+    text = text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&nbsp;', ' ')
+    text = _WHITESPACE_RE.sub('\n\n', text)
+    return text.strip()
 
 
 EMBEDDING_MODEL_ID = os.environ.get('EMBEDDING_MODEL_ID', 'amazon.nova-2-multimodal-embeddings-v1:0')
@@ -33,6 +48,7 @@ class BedrockEmbeddingFunction(TextEmbeddingFunction):
         embeddings = []
         for text in texts:
             try:
+                clean_text = strip_markup(text)
                 response = self._client.invoke_model(
                     modelId=self.model_id,
                     body=json.dumps({
@@ -40,7 +56,7 @@ class BedrockEmbeddingFunction(TextEmbeddingFunction):
                         'singleEmbeddingParams': {
                             'embeddingPurpose': 'GENERIC_INDEX',
                             'embeddingDimension': 1024,
-                            'text': {'truncationMode': 'END', 'value': text[:10000]}
+                            'text': {'truncationMode': 'END', 'value': clean_text}
                         }
                     }),
                     contentType='application/json'
@@ -63,6 +79,7 @@ def generate_single_embedding(text: str, client=None) -> List[float]:
         )
 
     try:
+        clean_text = strip_markup(text)
         response = client.invoke_model(
             modelId=EMBEDDING_MODEL_ID,
             body=json.dumps({
@@ -70,7 +87,7 @@ def generate_single_embedding(text: str, client=None) -> List[float]:
                 'singleEmbeddingParams': {
                     'embeddingPurpose': 'GENERIC_INDEX',
                     'embeddingDimension': 1024,
-                    'text': {'truncationMode': 'END', 'value': text[:10000]}
+                    'text': {'truncationMode': 'END', 'value': clean_text}
                 }
             }),
             contentType='application/json'
