@@ -141,10 +141,10 @@ export class WorkflowStack extends Stack {
 
     const coreLayer = new lambda.LayerVersion(this, 'CoreLibsLayer', {
       layerVersionName: 'idp-v2-core-libs',
-      description: 'boto3, pillow, PyMuPDF, pypdf',
+      description: 'boto3, pillow, pypdfium2, pypdf',
       compatibleRuntimes: [lambda.Runtime.PYTHON_3_14],
       compatibleArchitectures: [lambda.Architecture.X86_64],
-      code: createLayerCode('boto3 pillow pymupdf pypdf', 'core'),
+      code: createLayerCode('boto3 pillow pypdfium2 pypdf', 'core'),
     });
 
     const strandsLayer = new lambda.LayerVersion(this, 'StrandsLayer', {
@@ -234,7 +234,7 @@ export class WorkflowStack extends Stack {
       functionName: 'idp-v2-format-parser',
       handler: 'index.handler',
       timeout: Duration.minutes(10),
-      memorySize: 256,
+      memorySize: 1024,
       code: lambda.Code.fromAsset(
         path.join(__dirname, '../functions/step-functions/format-parser'),
       ),
