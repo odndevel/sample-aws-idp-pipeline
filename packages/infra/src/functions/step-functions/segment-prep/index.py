@@ -12,12 +12,13 @@ Output structure:
     metadata.json - segment info
     page_0000.png - page images (for PDF)
 """
+import io
 import json
 import os
 import tempfile
 from urllib.parse import urlparse
 
-import fitz  # PyMuPDF
+import pypdfium2 as pdfium
 from PIL import Image
 
 from shared.ddb_client import (
@@ -107,25 +108,26 @@ def save_metadata_to_s3(bucket: str, base_path: str, metadata: dict):
 def process_pdf(file_uri: str, bucket: str, base_path: str) -> list[dict]:
     """Process PDF file: render each page as PNG image."""
     segments = []
+    scale = PDF_DPI / 72  # 72 is default PDF DPI
 
     with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
         tmp_path = tmp.name
 
     try:
         download_file_from_s3(file_uri, tmp_path)
-        doc = fitz.open(tmp_path)
+        doc = pdfium.PdfDocument(tmp_path)
         page_count = len(doc)
         print(f'PDF has {page_count} pages')
 
         for page_num in range(page_count):
             page = doc[page_num]
-
-            # Render page to image at specified DPI
-            mat = fitz.Matrix(PDF_DPI / 72, PDF_DPI / 72)  # 72 is default PDF DPI
-            pix = page.get_pixmap(matrix=mat)
+            bitmap = page.render(scale=scale)
+            img = bitmap.to_pil()
 
             # Convert to PNG bytes
-            png_bytes = pix.tobytes('png')
+            buf = io.BytesIO()
+            img.save(buf, format='PNG')
+            png_bytes = buf.getvalue()
 
             # Upload to S3
             image_key = f'{base_path}/preprocessed/page_{page_num:04d}.png'
@@ -136,10 +138,15 @@ def process_pdf(file_uri: str, bucket: str, base_path: str) -> list[dict]:
                 'segment_index': page_num,
                 'segment_type': 'PAGE',
                 'image_uri': image_uri,
-                'width': pix.width,
-                'height': pix.height
+                'width': img.width,
+                'height': img.height
             })
-            print(f'Rendered page {page_num} to {image_uri}')
+
+            bitmap.close()
+            page.close()
+
+            if (page_num + 1) % 100 == 0:
+                print(f'Rendered {page_num + 1}/{page_count} pages')
 
         doc.close()
     finally:
