@@ -12,7 +12,7 @@ echo "==========================================================================
 echo ""
 
 # Default parameters
-REPO_URL="https://github.com/aws-samples/sample-aws-idp-pipeline.git"
+REPO_URL="https://github.com/odndevel/sample-aws-idp-pipeline.git"
 VERSION="main"
 STACK_NAME="sample-aws-idp-pipeline-destroy-codebuild"
 TEMPLATE_URL_BASE="https://raw.githubusercontent.com/aws-samples/sample-aws-idp-pipeline"
