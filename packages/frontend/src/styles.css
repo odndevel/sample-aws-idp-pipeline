@@ -1117,6 +1117,11 @@ a {
   );
 }
 
+/* Hide gradient when fullbleed card is active */
+.app-main:has(.card-fullbleed)::before {
+  display: none;
+}
+
 .card {
   flex: 1;
   display: flex;
@@ -1129,6 +1134,16 @@ a {
 
 :root.dark .card {
   background: rgba(30, 41, 59, 0.5);
+}
+
+/* Full-bleed layout for project detail pages */
+.card.card-fullbleed {
+  padding: 0;
+  background: var(--color-bg-primary);
+}
+
+:root.dark .card.card-fullbleed {
+  background: var(--color-bg-primary);
 }
 
 .app-footer {
@@ -2710,11 +2725,9 @@ a {
   width: 42px;
   flex-shrink: 0;
   height: 100%;
-  margin-left: 0.5rem;
   padding: 0.75rem 0;
   background: var(--color-bg-primary);
-  border: 1px solid var(--color-border);
-  border-radius: 0.75rem;
+  border-left: 1px solid var(--color-border);
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
@@ -2756,6 +2769,163 @@ a {
 .side-collapsed-bar:hover .docs-collapsed-expand {
   background: var(--color-accent-light);
   color: var(--color-accent);
+}
+
+/* ===== Section Header (Cybernetic Glow) ===== */
+.section-header {
+  --accent: 148 80% 40%;
+  position: relative;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-primary);
+  overflow: hidden;
+}
+
+/* Animated gradient border at bottom */
+.section-header::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    hsl(var(--accent) / 0.6) 30%,
+    hsl(var(--accent) / 0.2) 70%,
+    transparent 100%
+  );
+}
+
+/* Mouse-tracking glow */
+.section-header::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    200px circle at var(--glow-x, -200px) var(--glow-y, -200px),
+    hsl(var(--accent) / 0.06) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+  transition: opacity 0.3s;
+  opacity: 0;
+}
+
+.section-header:hover::after {
+  opacity: 1;
+}
+
+/* Accent variants */
+.section-header--teal {
+  --accent: 168 70% 42%;
+}
+
+.section-header--violet {
+  --accent: 263 70% 58%;
+}
+
+/* Icon */
+.section-header__icon {
+  color: hsl(var(--accent) / 0.7);
+  flex-shrink: 0;
+  transition: color 0.2s;
+}
+
+.section-header:hover .section-header__icon {
+  color: hsl(var(--accent) / 1);
+}
+
+/* Label */
+.section-header__label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+  transition: color 0.2s;
+}
+
+.section-header:hover .section-header__label {
+  color: var(--color-text-primary);
+}
+
+/* ===== Splitter Handle ===== */
+.splitter-handle {
+  position: relative;
+  outline: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.splitter-handle.horizontal {
+  width: 8px;
+  cursor: col-resize;
+}
+
+.splitter-handle.vertical {
+  height: 8px;
+  width: 100%;
+  cursor: row-resize;
+}
+
+/* The visible line */
+.splitter-handle::before {
+  content: '';
+  position: absolute;
+  border-radius: 9999px;
+  background: var(--color-border);
+  transition: all 0.2s ease;
+}
+
+.splitter-handle.horizontal::before {
+  width: 3px;
+  height: 32px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.splitter-handle.vertical::before {
+  height: 3px;
+  width: 32px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Hover state */
+.splitter-handle:hover::before {
+  background: var(--color-accent);
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.4);
+}
+
+.splitter-handle.horizontal:hover::before {
+  height: 48px;
+}
+
+.splitter-handle.vertical:hover::before {
+  width: 48px;
+}
+
+/* Active/dragging state */
+.splitter-handle:active::before,
+.splitter-handle[data-state='dragging']::before {
+  background: var(--color-accent);
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.6);
+}
+
+.splitter-handle.horizontal:active::before,
+.splitter-handle.horizontal[data-state='dragging']::before {
+  height: 100%;
+  width: 2px;
+}
+
+.splitter-handle.vertical:active::before,
+.splitter-handle.vertical[data-state='dragging']::before {
+  width: 100%;
+  height: 2px;
 }
 
 /* Tool use loading card shimmer animation */

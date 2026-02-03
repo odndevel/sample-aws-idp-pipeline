@@ -99,7 +99,13 @@
     "deleteConfirm": "이 문서를 삭제하시겠습니까?",
     "view": "보기",
     "useBda": "BDA 분석 사용",
-    "useBdaDescription": "Bedrock Document Analysis를 사용하여 고급 문서 분석을 수행합니다. 표, 차트, 다단 레이아웃이 포함된 복잡한 문서에 권장됩니다."
+    "useBdaDescription": "Bedrock Document Analysis를 사용하여 고급 문서 분석을 수행합니다. 표, 차트, 다단 레이아웃이 포함된 복잡한 문서에 권장됩니다.",
+    "searchPlaceholder": "문서 검색...",
+    "filterAll": "전체",
+    "filterCompleted": "완료",
+    "filterProcessing": "처리중",
+    "filterFailed": "실패",
+    "noMatchingDocuments": "일치하는 문서가 없습니다"
   },
   "workflow": {
     "title": "워크플로우",
@@ -306,6 +312,7 @@
     "searchPlaceholder": "아티팩트 검색...",
     "noArtifacts": "아티팩트가 없습니다",
     "noArtifactsDescription": "채팅 대화 중에 생성된 아티팩트가 여기에 표시됩니다.",
+    "noMatchingArtifacts": "일치하는 아티팩트가 없습니다",
     "items": "개",
     "goToProject": "프로젝트로 이동",
     "unsupportedType": "이 파일 형식은 미리보기를 지원하지 않습니다",

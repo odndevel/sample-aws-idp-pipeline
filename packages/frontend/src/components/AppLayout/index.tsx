@@ -473,7 +473,11 @@ const AppLayout: React.FC<React.PropsWithChildren> = ({ children }) => {
 
       {/* Main Content */}
       <main className="app-main">
-        <section className="card">{children}</section>
+        <section
+          className={`card${pathname.match(/^\/projects\/[^/]+/) ? ' card-fullbleed' : ''}`}
+        >
+          {children}
+        </section>
         {/* Hide footer on project detail pages */}
         {!pathname.match(/^\/projects\/[^/]+/) && (
           <footer className="app-footer">

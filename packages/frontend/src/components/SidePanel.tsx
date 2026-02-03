@@ -1,4 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+  type RefObject,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Layers,
@@ -21,6 +28,8 @@ import {
   CircleAlert,
   ChevronDown,
   FileX,
+  Search,
+  X,
 } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 import {
@@ -316,6 +325,46 @@ function useVerticalResize(
   return { topRatio, onMouseDown };
 }
 
+function useMouseGlow(ref: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onMove = (e: MouseEvent) => {
+      const rect = el.getBoundingClientRect();
+      el.style.setProperty('--glow-x', `${e.clientX - rect.left}px`);
+      el.style.setProperty('--glow-y', `${e.clientY - rect.top}px`);
+    };
+    el.addEventListener('mousemove', onMove);
+    return () => el.removeEventListener('mousemove', onMove);
+  }, [ref]);
+}
+
+function SectionHeader({
+  accent,
+  icon,
+  label,
+  children,
+}: {
+  accent: 'teal' | 'violet';
+  icon: React.ReactNode;
+  label: string;
+  children?: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useMouseGlow(ref);
+
+  return (
+    <div
+      ref={ref}
+      className={`section-header section-header--${accent} flex items-center gap-1.5 px-4 py-2.5 flex-shrink-0 min-w-0 overflow-hidden`}
+    >
+      <span className="section-header__icon">{icon}</span>
+      <span className="section-header__label">{label}</span>
+      {children}
+    </div>
+  );
+}
+
 interface SidePanelProps {
   artifacts?: Artifact[];
   currentArtifactId?: string;
@@ -362,8 +411,45 @@ export default function SidePanel({
     null,
   );
 
+  // Document search/filter state
+  const [docSearchOpen, setDocSearchOpen] = useState(false);
+  const [docSearchQuery, setDocSearchQuery] = useState('');
+  const docInputRef = useRef<HTMLInputElement>(null);
+  const docComposing = useRef(false);
+  const [docStatusFilter, setDocStatusFilter] = useState<
+    'all' | 'completed' | 'processing' | 'failed'
+  >('all');
+
+  // Artifact search state
+  const [artSearchOpen, setArtSearchOpen] = useState(false);
+  const [artSearchQuery, setArtSearchQuery] = useState('');
+  const artInputRef = useRef<HTMLInputElement>(null);
+  const artComposing = useRef(false);
+
+  const filteredDocuments = useMemo(() => {
+    let result = documents;
+    if (docSearchQuery) {
+      const q = docSearchQuery.normalize('NFC').toLowerCase();
+      result = result.filter((d) =>
+        d.name.normalize('NFC').toLowerCase().includes(q),
+      );
+    }
+    if (docStatusFilter !== 'all') {
+      result = result.filter((d) => d.status === docStatusFilter);
+    }
+    return result;
+  }, [documents, docSearchQuery, docStatusFilter]);
+
+  const filteredArtifacts = useMemo(() => {
+    if (!artSearchQuery) return artifacts;
+    const q = artSearchQuery.normalize('NFC').toLowerCase();
+    return artifacts.filter((a) =>
+      a.filename.normalize('NFC').toLowerCase().includes(q),
+    );
+  }, [artifacts, artSearchQuery]);
+
   const splitContainerRef = useRef<HTMLDivElement>(null);
-  const { topRatio, onMouseDown } = useVerticalResize(splitContainerRef);
+  const { topRatio, onMouseDown } = useVerticalResize(splitContainerRef, 60);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -427,18 +513,18 @@ export default function SidePanel({
 
   return (
     <>
-      <div ref={splitContainerRef} className="h-full flex flex-col gap-2">
+      <div ref={splitContainerRef} className="h-full flex flex-col gap-0.5 p-1">
         {/* Documents Panel (top) */}
         <div
-          className="flex flex-col min-h-0 overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl"
+          className="flex flex-col min-h-0 overflow-hidden bg-white dark:bg-slate-900 rounded-lg border border-slate-200/80 dark:border-slate-700/60"
           style={{ height: `${topRatio}%` }}
         >
           {/* Documents Header */}
-          <div className="flex items-center gap-1.5 px-4 py-3.5 border-b border-slate-200 dark:border-slate-700 flex-shrink-0 min-w-0 overflow-hidden">
-            <FileText className="w-4 h-4 text-slate-500 flex-shrink-0" />
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-300 flex-shrink-0">
-              {t('documents.title', 'Documents')}
-            </span>
+          <SectionHeader
+            accent="teal"
+            icon={<FileText className="w-4 h-4" />}
+            label={t('documents.title', 'Documents')}
+          >
             {onAddDocument && (
               <button
                 onClick={onAddDocument}
@@ -456,9 +542,29 @@ export default function SidePanel({
                 <RefreshCw className="h-3.5 w-3.5" />
               </button>
             )}
+            <button
+              onClick={() => {
+                setDocSearchOpen((v) => !v);
+                if (docSearchOpen) {
+                  setDocSearchQuery('');
+                  setDocStatusFilter('all');
+                  if (docInputRef.current) docInputRef.current.value = '';
+                }
+              }}
+              className={`p-1 rounded transition-colors flex-shrink-0 ${
+                docSearchOpen
+                  ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/30'
+                  : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
+              title={t('common.search')}
+            >
+              <Search className="h-3.5 w-3.5" />
+            </button>
             <div className="flex-1" />
             <span className="text-xs text-slate-400 flex-shrink-0">
-              {documents.length}
+              {docSearchQuery || docStatusFilter !== 'all'
+                ? `${filteredDocuments.length}/${documents.length}`
+                : documents.length}
             </span>
             {onCollapse && (
               <button
@@ -469,7 +575,65 @@ export default function SidePanel({
                 <PanelRightClose className="h-4 w-4" />
               </button>
             )}
-          </div>
+          </SectionHeader>
+
+          {/* Documents Search Toolbar */}
+          {docSearchOpen && (
+            <div className="px-3 py-2 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200/80 dark:border-slate-700/60 flex-shrink-0 space-y-1.5">
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400" />
+                <input
+                  ref={docInputRef}
+                  type="text"
+                  defaultValue=""
+                  onChange={(e) => {
+                    if (!docComposing.current) {
+                      setDocSearchQuery(e.target.value);
+                    }
+                  }}
+                  onCompositionStart={() => {
+                    docComposing.current = true;
+                  }}
+                  onCompositionEnd={(e) => {
+                    docComposing.current = false;
+                    setDocSearchQuery((e.target as HTMLInputElement).value);
+                  }}
+                  placeholder={t('documents.searchPlaceholder')}
+                  className="w-full h-7 pl-7 pr-7 text-xs rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                />
+                {docSearchQuery && (
+                  <button
+                    onClick={() => {
+                      setDocSearchQuery('');
+                      if (docInputRef.current) docInputRef.current.value = '';
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-1">
+                {(['all', 'completed', 'processing', 'failed'] as const).map(
+                  (status) => (
+                    <button
+                      key={status}
+                      onClick={() => setDocStatusFilter(status)}
+                      className={`text-[11px] px-2 py-0.5 rounded-full transition-colors ${
+                        docStatusFilter === status
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+                      }`}
+                    >
+                      {t(
+                        `documents.filter${status.charAt(0).toUpperCase() + status.slice(1)}`,
+                      )}
+                    </button>
+                  ),
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Documents List */}
           <div className="flex-1 overflow-y-auto min-h-0">
@@ -488,9 +652,16 @@ export default function SidePanel({
                   {t('documents.noDocuments')}
                 </p>
               </div>
+            ) : filteredDocuments.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full px-4">
+                <Search className="h-8 w-8 text-slate-300 dark:text-slate-500 mb-2" />
+                <p className="text-xs text-slate-500">
+                  {t('documents.noMatchingDocuments')}
+                </p>
+              </div>
             ) : (
-              <div className="p-2 space-y-1">
-                {documents.map((doc) => {
+              <div className="p-2 pt-3 space-y-1">
+                {filteredDocuments.map((doc) => {
                   const workflow = workflows.find(
                     (wf) => wf.document_id === doc.document_id,
                   );
@@ -594,27 +765,86 @@ export default function SidePanel({
           </div>
         </div>
 
-        {/* Resize Handle - same style as horizontal splitter */}
+        {/* Resize Handle */}
         <div
-          className="flex-shrink-0 flex items-center justify-center cursor-row-resize select-none"
+          className="splitter-handle vertical flex-shrink-0 select-none"
           onMouseDown={onMouseDown}
-        >
-          <div className="min-h-1.5 mx-4 w-full rounded-full bg-slate-300 dark:bg-slate-600 hover:bg-slate-400 dark:hover:bg-slate-500 active:bg-slate-400 dark:active:bg-slate-500 transition-colors duration-200" />
-        </div>
+        />
 
         {/* Artifacts Panel (bottom) */}
         <div
-          className="flex flex-col min-h-0 overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl"
+          className="flex flex-col min-h-0 overflow-hidden bg-white dark:bg-slate-900 rounded-lg border border-slate-200/80 dark:border-slate-700/60"
           style={{ flex: 1 }}
         >
           {/* Artifacts Header */}
-          <div className="flex items-center gap-2 px-4 py-3.5 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
-            <Layers className="w-4 h-4 text-slate-500 flex-shrink-0" />
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-300 flex-1">
-              {t('chat.artifacts', 'Artifacts')}
+          <SectionHeader
+            accent="violet"
+            icon={<Layers className="w-4 h-4" />}
+            label={t('chat.artifacts', 'Artifacts')}
+          >
+            <button
+              onClick={() => {
+                setArtSearchOpen((v) => !v);
+                if (artSearchOpen) {
+                  setArtSearchQuery('');
+                  if (artInputRef.current) artInputRef.current.value = '';
+                }
+              }}
+              className={`p-1 rounded transition-colors flex-shrink-0 ${
+                artSearchOpen
+                  ? 'text-violet-500 bg-violet-50 dark:bg-violet-900/30'
+                  : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
+              title={t('common.search')}
+            >
+              <Search className="h-3.5 w-3.5" />
+            </button>
+            <div className="flex-1" />
+            <span className="text-xs text-slate-400">
+              {artSearchQuery
+                ? `${filteredArtifacts.length}/${artifacts.length}`
+                : artifacts.length}
             </span>
-            <span className="text-xs text-slate-400">{artifacts.length}</span>
-          </div>
+          </SectionHeader>
+
+          {/* Artifacts Search Toolbar */}
+          {artSearchOpen && (
+            <div className="px-3 py-2 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200/80 dark:border-slate-700/60 flex-shrink-0">
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400" />
+                <input
+                  ref={artInputRef}
+                  type="text"
+                  defaultValue=""
+                  onChange={(e) => {
+                    if (!artComposing.current) {
+                      setArtSearchQuery(e.target.value);
+                    }
+                  }}
+                  onCompositionStart={() => {
+                    artComposing.current = true;
+                  }}
+                  onCompositionEnd={(e) => {
+                    artComposing.current = false;
+                    setArtSearchQuery((e.target as HTMLInputElement).value);
+                  }}
+                  placeholder={t('artifacts.searchPlaceholder')}
+                  className="w-full h-7 pl-7 pr-7 text-xs rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                />
+                {artSearchQuery && (
+                  <button
+                    onClick={() => {
+                      setArtSearchQuery('');
+                      if (artInputRef.current) artInputRef.current.value = '';
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Artifacts List */}
           <div className="flex-1 overflow-y-auto min-h-0">
@@ -625,9 +855,16 @@ export default function SidePanel({
                   {t('chat.noArtifacts', 'No artifacts yet')}
                 </p>
               </div>
+            ) : filteredArtifacts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full px-4">
+                <Search className="w-8 h-8 mb-2 text-slate-300 dark:text-slate-500" />
+                <p className="text-xs text-slate-500">
+                  {t('artifacts.noMatchingArtifacts')}
+                </p>
+              </div>
             ) : (
-              <div className="p-2 space-y-0.5">
-                {artifacts.map((artifact) => {
+              <div className="p-2 pb-3 space-y-0.5">
+                {filteredArtifacts.map((artifact) => {
                   const ArtifactIcon = getArtifactIcon(artifact.content_type);
                   return (
                     <div
