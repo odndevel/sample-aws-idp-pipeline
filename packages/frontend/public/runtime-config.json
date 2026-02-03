@@ -1,7 +1,7 @@
 {
-  "documentStorageBucketName": "idp-v2-document-storage-975050239358",
-  "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-east-1:975050239358:runtime/idp_agent-03lWWQC1QW",
-  "websocketUrl": "wss://mr6cxqidfd.execute-api.us-east-1.amazonaws.com/prod",
+  "documentStorageBucketName": "idp-v2-document-storage-373530768326",
+  "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-east-1:373530768326:runtime/idp_agent-FJ5yHc6auf",
+  "websocketUrl": "wss://9csmjdk671.execute-api.us-east-1.amazonaws.com/prod",
   "cognitoProps": {
     "region": "us-east-1",
     "identityPoolId": "us-east-1:2c978243-44b7-46aa-893c-c2dc08630f5f",
