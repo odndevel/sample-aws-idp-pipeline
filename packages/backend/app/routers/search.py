@@ -108,8 +108,7 @@ def hybrid_search(
 
     table = db.open_table(f"{table_name}")
 
-    keywords = extract_keywords(query)
-    search_query = table.search(query=keywords, query_type="hybrid").limit(limit)
+    search_query = table.search(query=query, query_type="hybrid").limit(limit)
 
     if document_id:
         search_query = search_query.where(f"document_id = '{document_id}'")
@@ -156,9 +155,9 @@ def rerank_search(
 
     table = db.open_table(f"{table_name}")
 
-    # Step 1: 하이브리드 검색으로 후보군 확보
-    keywords = extract_keywords(query)
-    search_query = table.search(query=keywords, query_type="hybrid").limit(candidate_limit)
+    search_query = table.search(query=query, query_type="hybrid").limit(
+        candidate_limit
+    )
 
     if document_id:
         search_query = search_query.where(f"document_id = '{document_id}'")

@@ -261,10 +261,7 @@ def action_search(params: dict) -> dict:
     query = params.get('query', '')
     limit = params.get('limit', 10)
 
-    keywords = extract_keywords(query)
-
-    vector_results = table.search(query=query, query_type='vector').limit(limit).to_list()
-    fts_results = table.search(query=keywords, query_type='fts').limit(limit).to_list()
+    fts_results = table.search(query=query, query_type='fts').limit(limit).to_list()
 
     seen_ids = set()
     combined = []
