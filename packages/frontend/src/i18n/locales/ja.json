@@ -99,7 +99,13 @@
     "deleteConfirm": "このドキュメントを削除しますか？",
     "view": "表示",
     "useBda": "BDA分析を使用",
-    "useBdaDescription": "Bedrock Document Analysisを使用して高度なドキュメント分析を行います。表、チャート、マルチカラムレイアウトを含む複雑なドキュメントに推奨されます。"
+    "useBdaDescription": "Bedrock Document Analysisを使用して高度なドキュメント分析を行います。表、チャート、マルチカラムレイアウトを含む複雑なドキュメントに推奨されます。",
+    "searchPlaceholder": "ドキュメントを検索...",
+    "filterAll": "すべて",
+    "filterCompleted": "完了",
+    "filterProcessing": "処理中",
+    "filterFailed": "失敗",
+    "noMatchingDocuments": "一致するドキュメントがありません"
   },
   "workflow": {
     "title": "ワークフロー",
@@ -306,6 +312,7 @@
     "searchPlaceholder": "アーティファクトを検索...",
     "noArtifacts": "アーティファクトがありません",
     "noArtifactsDescription": "チャット会話中に生成されたアーティファクトがここに表示されます。",
+    "noMatchingArtifacts": "一致するアーティファクトがありません",
     "items": "件",
     "goToProject": "プロジェクトへ移動",
     "unsupportedType": "このファイル形式はプレビューに対応していません",

@@ -17,7 +17,6 @@ import {
   ChevronDown,
   ChevronUp,
   ChevronRight,
-  MessageSquarePlus,
   Download,
   Eye,
   File,
@@ -324,6 +323,9 @@ export default function ChatPanel({
   const [showPlusMenu, setShowPlusMenu] = useState(false);
   const [showAgentSubmenu, setShowAgentSubmenu] = useState(false);
   const [showRemoveAgentConfirm, setShowRemoveAgentConfirm] = useState(false);
+  const [pendingAgentChange, setPendingAgentChange] = useState<
+    string | null | undefined
+  >(undefined);
   const plusMenuRef = useRef<HTMLDivElement>(null);
   // Mention state (artifacts + documents)
   const [showMentionDropdown, setShowMentionDropdown] = useState(false);
@@ -916,7 +918,7 @@ export default function ChatPanel({
   // Input Box - inline JSX to prevent re-mounting on every render
   const inputBox = (
     <div
-      className="relative w-full max-w-2xl mx-auto"
+      className="relative w-full max-w-3xl mx-auto"
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
@@ -1034,18 +1036,14 @@ export default function ChatPanel({
                         <div className="my-1 border-t border-slate-200 dark:border-slate-700" />
                         <button
                           type="button"
-                          disabled={
-                            !!selectedAgent ||
-                            (researchMode && messages.length > 0)
-                          }
+                          disabled={!!selectedAgent || messages.length > 0}
                           onClick={() => {
                             setResearchMode((v) => !v);
                             setShowPlusMenu(false);
                             setShowAgentSubmenu(false);
                           }}
                           className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
-                            selectedAgent ||
-                            (researchMode && messages.length > 0)
+                            selectedAgent || messages.length > 0
                               ? 'opacity-40 cursor-not-allowed'
                               : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'
                           }`}
@@ -1096,7 +1094,15 @@ export default function ChatPanel({
                             <button
                               type="button"
                               onClick={() => {
-                                onAgentSelect(null);
+                                if (
+                                  messages.length > 0 &&
+                                  selectedAgent !== null
+                                ) {
+                                  setPendingAgentChange(null);
+                                  setShowRemoveAgentConfirm(true);
+                                } else {
+                                  onAgentSelect(null);
+                                }
                                 setShowPlusMenu(false);
                                 setShowAgentSubmenu(false);
                               }}
@@ -1128,7 +1134,15 @@ export default function ChatPanel({
                                   key={agent.agent_id}
                                   type="button"
                                   onClick={() => {
-                                    onAgentSelect(agent.name);
+                                    if (
+                                      messages.length > 0 &&
+                                      selectedAgent?.agent_id !== agent.agent_id
+                                    ) {
+                                      setPendingAgentChange(agent.name);
+                                      setShowRemoveAgentConfirm(true);
+                                    } else {
+                                      onAgentSelect(agent.name);
+                                    }
                                     setShowPlusMenu(false);
                                     setShowAgentSubmenu(false);
                                   }}
@@ -1197,6 +1211,7 @@ export default function ChatPanel({
                   type="button"
                   onClick={() => {
                     if (messages.length > 0) {
+                      setPendingAgentChange(null);
                       setShowRemoveAgentConfirm(true);
                     } else {
                       onAgentSelect(null);
@@ -1401,25 +1416,7 @@ export default function ChatPanel({
   );
 
   return (
-    <div className="w-full h-full flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
-        <div className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
-          <Sparkles className="w-4 h-4" />
-          <span className="font-medium">
-            {selectedAgent?.name || t('agent.default')}
-          </span>
-        </div>
-        <button
-          onClick={onNewChat}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-slate-100 dark:bg-slate-800 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-          style={{ color: 'var(--color-text-secondary)' }}
-        >
-          <MessageSquarePlus className="w-4 h-4" />
-          <span>{t('chat.newChat')}</span>
-        </button>
-      </div>
-
+    <div className="w-full h-full flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 overflow-hidden">
       {/* Messages Container */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
         {loadingHistory ? (
@@ -1452,7 +1449,7 @@ export default function ChatPanel({
           </div>
         ) : !hasMessages ? (
           /* Welcome Screen */
-          <div className="flex flex-col items-center h-full p-6 max-w-4xl mx-auto w-full">
+          <div className="flex flex-col items-center h-full p-6 max-w-3xl mx-auto w-full">
             <div className="flex-[3]" />
             <div className="mb-6">
               <Box className="w-10 h-10 text-blue-500" strokeWidth={1.5} />
@@ -1473,7 +1470,7 @@ export default function ChatPanel({
           </div>
         ) : (
           /* Messages */
-          <div className="p-6 space-y-6 max-w-4xl mx-auto w-full">
+          <div className="p-6 space-y-6 max-w-3xl mx-auto w-full">
             {messages.map((message) =>
               message.role === 'user' ? (
                 /* User message - bubble style */
@@ -1988,8 +1985,8 @@ export default function ChatPanel({
 
       {/* Bottom Input */}
       {hasMessages && (
-        <div className="p-4 border-t border-slate-200 dark:border-slate-700">
-          <div className="max-w-4xl mx-auto">{inputBox}</div>
+        <div className="p-4">
+          <div className="max-w-3xl mx-auto">{inputBox}</div>
         </div>
       )}
 
@@ -2003,10 +2000,14 @@ export default function ChatPanel({
       )}
       <ConfirmModal
         isOpen={showRemoveAgentConfirm}
-        onClose={() => setShowRemoveAgentConfirm(false)}
+        onClose={() => {
+          setShowRemoveAgentConfirm(false);
+          setPendingAgentChange(undefined);
+        }}
         onConfirm={() => {
           setShowRemoveAgentConfirm(false);
-          onAgentSelect?.(null);
+          onAgentSelect?.(pendingAgentChange ?? null);
+          setPendingAgentChange(undefined);
         }}
         title={t('chat.useAgent')}
         message={t('chat.removeAgentConfirm')}

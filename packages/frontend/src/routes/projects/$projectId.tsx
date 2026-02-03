@@ -89,6 +89,19 @@ function ProjectDetailPage() {
     // No need to unsubscribe on cleanup - server handles it on disconnect
   }, [projectId, sendMessage, wsStatus]);
 
+  // Reset chat state when project changes
+  useEffect(() => {
+    setCurrentSessionId(nanoid(33));
+    setMessages([]);
+    setInputMessage('');
+    setSending(false);
+    setStreamingBlocks([]);
+    setSelectedAgent(null);
+    setSelectedArtifact(null);
+    pendingMessagesRef.current = [];
+    progressFetchedRef.current = false;
+  }, [projectId]);
+
   // AgentCore requires session ID >= 33 chars
   const [currentSessionId, setCurrentSessionId] = useState(() => nanoid(33));
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -1839,6 +1852,7 @@ function ProjectDetailPage() {
       <ProjectNavBar
         project={project}
         onSettingsClick={() => setShowProjectSettings(true)}
+        onNewChat={handleNewSession}
       />
 
       {/* Main Content - 2 Column Resizable Layout */}
@@ -1885,7 +1899,7 @@ function ProjectDetailPage() {
         >
           {/* Left - Chat Panel */}
           <ResizablePanel id="chat">
-            <div className="h-full px-1">
+            <div className="h-full">
               <ChatPanel
                 messages={messages}
                 inputMessage={inputMessage}
@@ -1918,7 +1932,7 @@ function ProjectDetailPage() {
 
               {/* Right - Documents & Artifacts */}
               <ResizablePanel id="side">
-                <div className="h-full pl-1 relative">
+                <div className="h-full relative">
                   <SidePanel
                     artifacts={artifacts}
                     currentArtifactId={selectedArtifact?.artifact_id}
