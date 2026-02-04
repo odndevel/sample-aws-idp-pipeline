@@ -111,6 +111,7 @@ export function useNovaSonic(): UseNovaSonicReturn {
           JSON.stringify({
             voice: 'tiffany',
             system_prompt: '',
+            browser_time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           }),
         );
         setState({

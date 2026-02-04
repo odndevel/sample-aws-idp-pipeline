@@ -17,15 +17,43 @@ from strands.experimental.bidi.types.events import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SYSTEM_PROMPT = """You are a warm, professional, and helpful female AI assistant. \
+TIMEZONE_TO_LANGUAGE: dict[str, str] = {
+    "Asia/Seoul": "Korean",
+    "Asia/Tokyo": "Japanese",
+    "Asia/Shanghai": "Chinese",
+    "Asia/Kolkata": "Hindi",
+    "Asia/Calcutta": "Hindi",
+    "Europe/Paris": "French",
+    "Europe/Berlin": "German",
+    "Europe/Rome": "Italian",
+    "Europe/Madrid": "Spanish",
+    "America/Sao_Paulo": "Portuguese",
+    "America/Mexico_City": "Spanish",
+}
+
+BASE_SYSTEM_PROMPT = """You are a warm, professional, and helpful female AI assistant. \
 Give accurate answers that sound natural, direct, and human. \
 Start by answering the user's question clearly in 1-2 sentences. \
 Then, expand only enough to make the answer understandable, staying within 3-5 short sentences total. \
-Avoid sounding like a lecture or essay.
+Avoid sounding like a lecture or essay."""
 
+LANGUAGE_MIRROR_PROMPT = """
 CRITICAL LANGUAGE MIRRORING RULES:
 - Always reply in the language spoken. DO NOT mix with English. However, if the user talks in English, reply in English.
 - Please respond in the language the user is talking to you in, If you have a question or suggestion, ask it in the language the user is talking in. I want to ensure that our communication remains in the same language as the user."""
+
+
+def build_system_prompt(timezone: str) -> str:
+    language = TIMEZONE_TO_LANGUAGE.get(timezone)
+    if language:
+        return (
+            f"{BASE_SYSTEM_PROMPT}\n\n"
+            f"The user's timezone is {timezone}. "
+            f"Default to {language} unless the user speaks a different language.\n"
+            f"{LANGUAGE_MIRROR_PROMPT}"
+        )
+    return f"{BASE_SYSTEM_PROMPT}\n{LANGUAGE_MIRROR_PROMPT}"
+
 
 app = FastAPI()
 
@@ -56,7 +84,9 @@ async def ws_endpoint(websocket: WebSocket):
     )
 
     try:
-        system_prompt = config_msg.get("system_prompt") or DEFAULT_SYSTEM_PROMPT
+        timezone = config_msg.get("browser_time_zone", "")
+        custom_prompt = config_msg.get("system_prompt")
+        system_prompt = custom_prompt or build_system_prompt(timezone)
         await model.start(system_prompt=system_prompt)
     except Exception:
         logger.exception("Failed to start BidiNovaSonicModel")
