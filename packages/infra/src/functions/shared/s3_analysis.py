@@ -267,13 +267,13 @@ def get_all_segment_analyses(file_uri: str, segment_count: int) -> list:
     return segments
 
 
-def save_summary(file_uri: str, summary: str) -> str:
+def save_summary(file_uri: str, summary_data: dict) -> str:
     """
     Save document summary to S3.
 
     Args:
         file_uri: Original file URI
-        summary: Summary text
+        summary_data: Full summary dict (document_summary, pages, etc.)
 
     Returns:
         S3 key where summary was saved
@@ -282,19 +282,17 @@ def save_summary(file_uri: str, summary: str) -> str:
     bucket, _ = parse_s3_uri(file_uri)
     s3_key = get_summary_s3_key(file_uri)
 
-    data = {'summary': summary}
-
     client.put_object(
         Bucket=bucket,
         Key=s3_key,
-        Body=json.dumps(data, ensure_ascii=False, indent=2),
+        Body=json.dumps(summary_data, ensure_ascii=False, indent=2),
         ContentType='application/json'
     )
 
     return s3_key
 
 
-def get_summary(file_uri: str) -> Optional[str]:
+def get_summary(file_uri: str) -> Optional[dict]:
     """
     Get document summary from S3.
 
@@ -302,7 +300,7 @@ def get_summary(file_uri: str) -> Optional[str]:
         file_uri: Original file URI
 
     Returns:
-        Summary text or None if not found
+        Summary dict or None if not found
     """
     client = get_s3_client()
     bucket, _ = parse_s3_uri(file_uri)
@@ -310,8 +308,7 @@ def get_summary(file_uri: str) -> Optional[str]:
 
     try:
         response = client.get_object(Bucket=bucket, Key=s3_key)
-        data = json.loads(response['Body'].read().decode('utf-8'))
-        return data.get('summary', '')
+        return json.loads(response['Body'].read().decode('utf-8'))
     except client.exceptions.NoSuchKey:
         return None
     except Exception as e:

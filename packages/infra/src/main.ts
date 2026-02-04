@@ -19,68 +19,82 @@ const env = {
   region: process.env.CDK_DEFAULT_REGION,
 };
 
-// Layer 1: VPC
-const vpcStack = new VpcStack(app, 'IDP-V2-Vpc', { env });
-
-// Layer 2: Storage (depends on VPC)
-const storageStack = new StorageStack(app, 'IDP-V2-Storage', { env });
+// ============================================================
+// [With Dependencies] - uncomment this block for production
+// ============================================================
+// const vpcStack = new VpcStack(app, 'IDP-V2-Vpc', { env });
+//
+// const storageStack = new StorageStack(app, 'IDP-V2-Storage', { env });
 // storageStack.addDependency(vpcStack);
-
-// Layer 3: Event (depends on Storage)
-const eventStack = new EventStack(app, 'IDP-V2-Event', { env });
+//
+// const eventStack = new EventStack(app, 'IDP-V2-Event', { env });
 // eventStack.addDependency(storageStack);
-
-// Layer 4: OCR (depends on Storage, Event)
-const ocrStack = new OcrStack(app, 'IDP-V2-Ocr', { env });
+//
+// const ocrStack = new OcrStack(app, 'IDP-V2-Ocr', { env });
 // ocrStack.addDependency(storageStack);
 // ocrStack.addDependency(eventStack);
-
-// Layer 5: Preprocessing consumers (depend on Event)
-const bdaStack = new BdaStack(app, 'IDP-V2-Bda', { env });
+//
+// const bdaStack = new BdaStack(app, 'IDP-V2-Bda', { env });
 // bdaStack.addDependency(eventStack);
-
-const transcribeStack = new TranscribeStack(app, 'IDP-V2-Transcribe', { env });
+//
+// const transcribeStack = new TranscribeStack(app, 'IDP-V2-Transcribe', { env });
 // transcribeStack.addDependency(eventStack);
-
-// Layer 5: Workflow (depends on Storage, Event)
-const workflowStack = new WorkflowStack(app, 'IDP-V2-Workflow', { env });
+//
+// const workflowStack = new WorkflowStack(app, 'IDP-V2-Workflow', { env });
 // workflowStack.addDependency(storageStack);
 // workflowStack.addDependency(eventStack);
-
-// Layer 5: Websocket (depends on Storage, VPC)
-const websocketStack = new WebsocketStack(app, 'IDP-V2-Websocket', { env });
+//
+// const websocketStack = new WebsocketStack(app, 'IDP-V2-Websocket', { env });
 // websocketStack.addDependency(storageStack);
 // websocketStack.addDependency(vpcStack);
-
-// Layer 6: Mcp (depends on Storage, Websocket, VPC)
-const mcpStack = new McpStack(app, 'IDP-V2-Mcp', { env });
+//
+// const mcpStack = new McpStack(app, 'IDP-V2-Mcp', { env });
 // mcpStack.addDependency(storageStack);
 // mcpStack.addDependency(websocketStack);
 // mcpStack.addDependency(vpcStack);
-
-// Layer 6: Worker (depends on Storage, Websocket, VPC)
-const workerStack = new WorkerStack(app, 'IDP-V2-Worker', { env });
+//
+// const workerStack = new WorkerStack(app, 'IDP-V2-Worker', { env });
 // workerStack.addDependency(storageStack);
 // workerStack.addDependency(websocketStack);
 // workerStack.addDependency(vpcStack);
-
-// Layer 7: Agent (depends on Storage, Mcp)
-const agentStack = new AgentStack(app, 'IDP-V2-Agent', {
-  env,
-  gateway: mcpStack.gateway,
-});
+//
+// const agentStack = new AgentStack(app, 'IDP-V2-Agent', {
+//   env,
+//   gateway: mcpStack.gateway,
+// });
 // agentStack.addDependency(storageStack);
 // agentStack.addDependency(mcpStack);
-
-// Layer 8: Application (depends on Agent, Websocket, Mcp, Workflow, VPC)
-const applicationStack = new ApplicationStack(app, 'IDP-V2-Application', {
-  env,
-  crossRegionReferences: true,
-});
+//
+// const applicationStack = new ApplicationStack(app, 'IDP-V2-Application', {
+//   env,
+//   crossRegionReferences: true,
+// });
 // applicationStack.addDependency(agentStack);
 // applicationStack.addDependency(websocketStack);
 // applicationStack.addDependency(mcpStack);
 // applicationStack.addDependency(workflowStack);
 // applicationStack.addDependency(vpcStack);
+
+// ============================================================
+// [Without Dependencies] - for independent stack deployment (dev)
+// ============================================================
+new VpcStack(app, 'IDP-V2-Vpc', { env });
+new StorageStack(app, 'IDP-V2-Storage', { env });
+new EventStack(app, 'IDP-V2-Event', { env });
+new OcrStack(app, 'IDP-V2-Ocr', { env });
+new BdaStack(app, 'IDP-V2-Bda', { env });
+new TranscribeStack(app, 'IDP-V2-Transcribe', { env });
+new WorkflowStack(app, 'IDP-V2-Workflow', { env });
+new WebsocketStack(app, 'IDP-V2-Websocket', { env });
+const mcpStack = new McpStack(app, 'IDP-V2-Mcp', { env });
+new WorkerStack(app, 'IDP-V2-Worker', { env });
+new AgentStack(app, 'IDP-V2-Agent', {
+  env,
+  gateway: mcpStack.gateway,
+});
+new ApplicationStack(app, 'IDP-V2-Application', {
+  env,
+  crossRegionReferences: true,
+});
 
 app.synth();

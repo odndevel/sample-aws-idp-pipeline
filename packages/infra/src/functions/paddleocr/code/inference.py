@@ -494,6 +494,15 @@ def model_fn(model_dir):
     os.makedirs(PADDLEOCR_HOME, exist_ok=True)
     os.makedirs(PADDLEX_HOME, exist_ok=True)
 
+    # GPU/CUDA diagnostics
+    try:
+        import paddle
+        logger.info(f"Paddle device: {paddle.get_device()}")
+        logger.info(f"CUDA available: {paddle.is_compiled_with_cuda()}")
+        logger.info(f"GPU count: {paddle.device.cuda.device_count()}")
+    except Exception as e:
+        logger.warning(f"Failed to check Paddle GPU status: {e}")
+
     s3_client = boto3.client("s3")
     logger.info("OCR service initialized. Models will be loaded on demand with S3 caching.")
     return {"initialized": True, "model_dir": model_dir}
