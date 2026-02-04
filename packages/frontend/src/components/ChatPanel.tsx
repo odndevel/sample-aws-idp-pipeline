@@ -24,7 +24,6 @@ import {
   Loader2,
   FileSpreadsheet,
   FileCode,
-  Paperclip,
   Check,
   Settings2,
   type LucideIcon,
@@ -44,6 +43,7 @@ import { useAwsClient } from '../hooks/useAwsClient';
 import { useToast } from './Toast';
 import ImageModal from './ImageModal';
 import ConfirmModal from './ConfirmModal';
+import BouncingCirclesLoader from './ui/bouncing-circles-loader';
 
 export interface AttachedFile {
   id: string;
@@ -320,13 +320,13 @@ export default function ChatPanel({
     }
     prevLoadingHistory.current = loadingHistory;
   }, [loadingHistory]);
-  const [showPlusMenu, setShowPlusMenu] = useState(false);
+  const [showToolsMenu, setShowToolsMenu] = useState(false);
   const [showAgentSubmenu, setShowAgentSubmenu] = useState(false);
   const [showRemoveAgentConfirm, setShowRemoveAgentConfirm] = useState(false);
   const [pendingAgentChange, setPendingAgentChange] = useState<
     string | null | undefined
   >(undefined);
-  const plusMenuRef = useRef<HTMLDivElement>(null);
+  const toolsMenuRef = useRef<HTMLDivElement>(null);
   // Mention state (artifacts + documents)
   const [showMentionDropdown, setShowMentionDropdown] = useState(false);
   const [mentionSearchQuery, setMentionSearchQuery] = useState('');
@@ -636,10 +636,10 @@ export default function ChatPanel({
         setShowMentionDropdown(false);
       }
       if (
-        plusMenuRef.current &&
-        !plusMenuRef.current.contains(e.target as Node)
+        toolsMenuRef.current &&
+        !toolsMenuRef.current.contains(e.target as Node)
       ) {
-        setShowPlusMenu(false);
+        setShowToolsMenu(false);
         setShowAgentSubmenu(false);
       }
     };
@@ -1006,41 +1006,41 @@ export default function ChatPanel({
           {/* Action Bar */}
           <div className="flex gap-2 w-full items-center">
             <div className="flex-1 flex items-center gap-1">
-              <div className="relative" ref={plusMenuRef}>
-                <button
-                  type="button"
-                  onClick={() => setShowPlusMenu((v) => !v)}
-                  className="inline-flex items-center justify-center h-8 w-8 rounded-lg transition-colors text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95"
-                >
-                  <Plus className="w-5 h-5" />
-                </button>
-                {showPlusMenu && (
-                  <div className="absolute bottom-full left-0 mb-2 w-56 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg z-50 py-1">
-                    {/* Add file or photo */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowPlusMenu(false);
-                        setShowAgentSubmenu(false);
-                        fileInputRef.current?.click();
-                      }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
-                    >
-                      <Paperclip className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                      <span>{t('chat.addFileOrPhoto')}</span>
-                    </button>
+              {/* Attach file button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex items-center justify-center h-8 w-8 rounded-lg transition-colors text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95"
+              >
+                <Plus className="w-5 h-5" />
+              </button>
 
-                    {/* Research toggle */}
-                    {onResearch && (
-                      <>
-                        <div className="my-1 border-t border-slate-200 dark:border-slate-700" />
+              {/* Tools popover */}
+              {(onResearch || onAgentSelect) && (
+                <div className="relative" ref={toolsMenuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setShowToolsMenu((v) => !v)}
+                    className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs font-medium transition-colors ${
+                      showToolsMenu
+                        ? 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+                    } active:scale-95`}
+                  >
+                    <Settings2 className="w-4 h-4" />
+                    <span>{t('chat.tools', 'Tools')}</span>
+                  </button>
+
+                  {showToolsMenu && (
+                    <div className="absolute bottom-full left-0 mb-2 w-56 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg z-50 py-1">
+                      {/* Research toggle */}
+                      {onResearch && (
                         <button
                           type="button"
                           disabled={!!selectedAgent || messages.length > 0}
                           onClick={() => {
                             setResearchMode((v) => !v);
-                            setShowPlusMenu(false);
-                            setShowAgentSubmenu(false);
+                            setShowToolsMenu(false);
                           }}
                           className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
                             selectedAgent || messages.length > 0
@@ -1064,165 +1064,178 @@ export default function ChatPanel({
                             <Check className="w-4 h-4 text-blue-500 ml-auto" />
                           )}
                         </button>
-                      </>
-                    )}
+                      )}
 
-                    {/* Agent submenu */}
-                    {onAgentSelect && (
-                      <div className="relative">
-                        <button
-                          type="button"
-                          disabled={researchMode}
-                          onClick={() => setShowAgentSubmenu((v) => !v)}
-                          className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
-                            researchMode
-                              ? 'opacity-40 cursor-not-allowed'
-                              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'
-                          }`}
-                        >
-                          <Sparkles className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                          <span className="flex-1 text-left">
-                            {t('chat.useAgent')}
-                          </span>
-                          <ChevronRight className="w-4 h-4 text-slate-400" />
-                        </button>
-
-                        {/* Agent submenu panel */}
-                        {showAgentSubmenu && (
-                          <div className="absolute left-full bottom-0 ml-1 w-52 max-h-72 overflow-y-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg z-[60] py-1">
-                            {/* Default agent */}
+                      {/* Agent submenu */}
+                      {onAgentSelect && (
+                        <>
+                          <div className="my-1 border-t border-slate-200 dark:border-slate-700" />
+                          <div className="relative">
                             <button
                               type="button"
-                              onClick={() => {
-                                if (
-                                  messages.length > 0 &&
-                                  selectedAgent !== null
-                                ) {
-                                  setPendingAgentChange(null);
-                                  setShowRemoveAgentConfirm(true);
-                                } else {
-                                  onAgentSelect(null);
-                                }
-                                setShowPlusMenu(false);
-                                setShowAgentSubmenu(false);
-                              }}
-                              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                              disabled={researchMode}
+                              onClick={() => setShowAgentSubmenu((v) => !v)}
+                              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                                researchMode
+                                  ? 'opacity-40 cursor-not-allowed'
+                                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                              }`}
                             >
-                              <Sparkles
-                                className={`w-4 h-4 ${!selectedAgent ? 'text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}
-                              />
-                              <span
-                                className={
-                                  !selectedAgent
-                                    ? 'text-blue-600 dark:text-blue-400'
-                                    : 'text-slate-700 dark:text-slate-300'
-                                }
-                              >
-                                {t('agent.default')}
+                              <Sparkles className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                              <span className="flex-1 text-left">
+                                {t('chat.useAgent')}
                               </span>
-                              {!selectedAgent && (
-                                <Check className="w-4 h-4 text-blue-500 ml-auto" />
-                              )}
+                              <ChevronRight className="w-4 h-4 text-slate-400" />
                             </button>
 
-                            {/* Custom agents */}
-                            {agents.map((agent) => {
-                              const isSelected =
-                                selectedAgent?.agent_id === agent.agent_id;
-                              return (
+                            {/* Agent submenu panel */}
+                            {showAgentSubmenu && (
+                              <div className="absolute left-full bottom-0 ml-1 w-52 max-h-72 overflow-y-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg z-[60] py-1">
+                                {/* Default agent */}
                                 <button
-                                  key={agent.agent_id}
                                   type="button"
                                   onClick={() => {
                                     if (
                                       messages.length > 0 &&
-                                      selectedAgent?.agent_id !== agent.agent_id
+                                      selectedAgent !== null
                                     ) {
-                                      setPendingAgentChange(agent.name);
+                                      setPendingAgentChange(null);
                                       setShowRemoveAgentConfirm(true);
                                     } else {
-                                      onAgentSelect(agent.name);
+                                      onAgentSelect(null);
                                     }
-                                    setShowPlusMenu(false);
+                                    setShowToolsMenu(false);
                                     setShowAgentSubmenu(false);
                                   }}
                                   className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/50"
                                 >
                                   <Sparkles
-                                    className={`w-4 h-4 ${isSelected ? 'text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}
+                                    className={`w-4 h-4 ${!selectedAgent ? 'text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}
                                   />
                                   <span
-                                    className={`flex-1 text-left truncate ${
-                                      isSelected
+                                    className={
+                                      !selectedAgent
                                         ? 'text-blue-600 dark:text-blue-400'
                                         : 'text-slate-700 dark:text-slate-300'
-                                    }`}
+                                    }
                                   >
-                                    {agent.name}
+                                    {t('agent.default')}
                                   </span>
-                                  {isSelected && (
-                                    <Check className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                                  {!selectedAgent && (
+                                    <Check className="w-4 h-4 text-blue-500 ml-auto" />
                                   )}
                                 </button>
-                              );
-                            })}
 
-                            {/* Manage agents */}
-                            <div className="my-1 border-t border-slate-200 dark:border-slate-700" />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setShowPlusMenu(false);
-                                setShowAgentSubmenu(false);
-                                onAgentClick();
-                              }}
-                              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
-                            >
-                              <Settings2 className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-                              <span>{t('chat.manageAgents')}</span>
-                            </button>
+                                {/* Custom agents */}
+                                {agents.map((agent) => {
+                                  const isSelected =
+                                    selectedAgent?.agent_id === agent.agent_id;
+                                  return (
+                                    <button
+                                      key={agent.agent_id}
+                                      type="button"
+                                      onClick={() => {
+                                        if (
+                                          messages.length > 0 &&
+                                          selectedAgent?.agent_id !==
+                                            agent.agent_id
+                                        ) {
+                                          setPendingAgentChange(agent.name);
+                                          setShowRemoveAgentConfirm(true);
+                                        } else {
+                                          onAgentSelect(agent.name);
+                                        }
+                                        setShowToolsMenu(false);
+                                        setShowAgentSubmenu(false);
+                                      }}
+                                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                                    >
+                                      <Sparkles
+                                        className={`w-4 h-4 ${isSelected ? 'text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}
+                                      />
+                                      <span
+                                        className={`flex-1 text-left truncate ${
+                                          isSelected
+                                            ? 'text-blue-600 dark:text-blue-400'
+                                            : 'text-slate-700 dark:text-slate-300'
+                                        }`}
+                                      >
+                                        {agent.name}
+                                      </span>
+                                      {isSelected && (
+                                        <Check className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                                      )}
+                                    </button>
+                                  );
+                                })}
+
+                                {/* Manage agents */}
+                                <div className="my-1 border-t border-slate-200 dark:border-slate-700" />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowToolsMenu(false);
+                                    setShowAgentSubmenu(false);
+                                    onAgentClick();
+                                  }}
+                                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                                >
+                                  <Settings2 className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+                                  <span>{t('chat.manageAgents')}</span>
+                                </button>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              {researchMode && onResearch && (
-                <button
-                  type="button"
-                  onClick={() => setResearchMode(false)}
-                  disabled={messages.length > 0}
-                  className={`inline-flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-lg bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 transition-colors ${
-                    messages.length > 0
-                      ? 'cursor-default'
-                      : 'hover:bg-violet-200 dark:hover:bg-violet-800/40'
-                  }`}
-                >
-                  <Search className="w-3.5 h-3.5" />
-                  {t('chat.research')}
-                  {messages.length === 0 && (
-                    <X className="w-3.5 h-3.5 ml-0.5 opacity-60 hover:opacity-100" />
+                        </>
+                      )}
+                    </div>
                   )}
-                </button>
+                </div>
               )}
-              {selectedAgent && onAgentSelect && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (messages.length > 0) {
-                      setPendingAgentChange(null);
-                      setShowRemoveAgentConfirm(true);
-                    } else {
-                      onAgentSelect(null);
-                    }
-                  }}
-                  className="inline-flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-800/40 transition-colors"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  {selectedAgent.name}
-                  <X className="w-3.5 h-3.5 ml-0.5 opacity-60 hover:opacity-100" />
-                </button>
+
+              {/* Selected tool chips */}
+              {(researchMode || selectedAgent) && (
+                <>
+                  <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-0.5" />
+                  {researchMode && onResearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (messages.length === 0) setResearchMode(false);
+                      }}
+                      disabled={messages.length > 0}
+                      className={`inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-medium rounded-lg bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 transition-colors ${
+                        messages.length > 0
+                          ? 'cursor-default'
+                          : 'hover:bg-violet-200 dark:hover:bg-violet-800/40'
+                      }`}
+                    >
+                      <Search className="w-3.5 h-3.5" />
+                      {t('chat.research')}
+                      {messages.length === 0 && (
+                        <X className="w-3.5 h-3.5 ml-0.5 opacity-60 hover:opacity-100" />
+                      )}
+                    </button>
+                  )}
+                  {selectedAgent && onAgentSelect && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (messages.length > 0) {
+                          setPendingAgentChange(null);
+                          setShowRemoveAgentConfirm(true);
+                        } else {
+                          onAgentSelect(null);
+                        }
+                      }}
+                      className="inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-medium rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-800/40 transition-colors"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      {selectedAgent.name}
+                      <X className="w-3.5 h-3.5 ml-0.5 opacity-60 hover:opacity-100" />
+                    </button>
+                  )}
+                </>
               )}
             </div>
             <button
@@ -1964,17 +1977,13 @@ export default function ChatPanel({
                     );
                   })
                 ) : (
-                  <div className="flex items-center gap-1">
-                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" />
-                    <div
-                      className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"
-                      style={{ animationDelay: '0.1s' }}
-                    />
-                    <div
-                      className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"
-                      style={{ animationDelay: '0.2s' }}
-                    />
-                  </div>
+                  <BouncingCirclesLoader
+                    size={40}
+                    circleSize={8}
+                    circleCount={8}
+                    color="#94a3b8"
+                    speed={1.2}
+                  />
                 )}
               </div>
             )}

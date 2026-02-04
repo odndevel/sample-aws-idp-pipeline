@@ -141,10 +141,10 @@ export class WorkflowStack extends Stack {
 
     const coreLayer = new lambda.LayerVersion(this, 'CoreLibsLayer', {
       layerVersionName: 'idp-v2-core-libs',
-      description: 'boto3, pillow, pypdfium2, pypdf',
+      description: 'boto3, pillow, pypdfium2, pypdf, pyyaml',
       compatibleRuntimes: [lambda.Runtime.PYTHON_3_14],
       compatibleArchitectures: [lambda.Architecture.X86_64],
-      code: createLayerCode('boto3 pillow pypdfium2 pypdf', 'core'),
+      code: createLayerCode('boto3 pillow pypdfium2 pypdf pyyaml', 'core'),
     });
 
     const strandsLayer = new lambda.LayerVersion(this, 'StrandsLayer', {
@@ -335,6 +335,7 @@ export class WorkflowStack extends Stack {
         ...commonLambdaProps.environment,
         LANCEDB_FUNCTION_NAME: lancedbService.functionName,
         SUMMARIZER_MODEL_ID: models.summarizer,
+        SUMMARIZER_LITE_MODEL_ID: models.summarizerLite,
       },
     });
 
@@ -461,6 +462,13 @@ export class WorkflowStack extends Stack {
       {
         lambdaFunction: documentSummarizer,
         outputPath: '$.Payload',
+        payload: sfn.TaskInput.fromObject({
+          'workflow_id': sfn.JsonPath.stringAt('$.workflow_id'),
+          'document_id': sfn.JsonPath.stringAt('$.document_id'),
+          'project_id': sfn.JsonPath.stringAt('$.project_id'),
+          'file_uri': sfn.JsonPath.stringAt('$.file_uri'),
+          'segment_count': sfn.JsonPath.numberAt('$.segment_count'),
+        }),
       },
     );
 
