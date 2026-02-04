@@ -12,3 +12,7 @@ pnpm nx run @idp-v2/infra:deploy $stack --output-style=stream
 [tasks.frontend]
 description = "Run frontend dev server"
 run = "pnpm nx run frontend:serve"
+
+[tasks.docker-prune]
+description = "Prune docker images older than 5 hours"
+run = "docker image prune -a --filter 'until=5h' -f"

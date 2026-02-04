@@ -148,5 +148,20 @@ export class AgentStack extends Stack {
       stringValue: researchAgent.runtime.agentRuntimeArn,
       description: 'ARN of the Research Agent Runtime',
     });
+
+    const bidiAgent = new IdpAgent(this, 'BidiAgent', {
+      agentPath: path.resolve(process.cwd(), '../../packages/agents/bidi-agent'),
+      agentName: 'bidi_agent',
+      sessionStorageBucket,
+      backendTable,
+      gateway,
+      agentStorageBucket,
+    });
+
+    new StringParameter(this, 'BidiAgentRuntimeArnParam', {
+      parameterName: SSM_KEYS.BIDI_AGENT_RUNTIME_ARN,
+      stringValue: bidiAgent.runtime.agentRuntimeArn,
+      description: 'ARN of the Bidi Agent Runtime',
+    });
   }
 }

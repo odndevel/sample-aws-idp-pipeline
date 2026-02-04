@@ -18,6 +18,7 @@ export interface IRuntimeConfig {
   documentStorageBucketName?: string;
   agentRuntimeArn?: string;
   researchAgentRuntimeArn?: string;
+  bidiAgentRuntimeArn?: string;
   websocketUrl?: string;
 }
 
