@@ -19,7 +19,7 @@ async function getUsernameFromSub(
   const { Item } = await ddbClient.send(
     new GetCommand({
       TableName: process.env.BACKEND_TABLE_NAME,
-      Key: { PK: `USRSUB#${userSub}`, SK: 'META' },
+      Key: { PK: `USERSUB#${userSub}`, SK: 'META' },
     }),
   );
 
