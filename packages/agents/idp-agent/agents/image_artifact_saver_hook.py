@@ -1,6 +1,4 @@
-import json
 import re
-from datetime import UTC, datetime
 
 import boto3
 from nanoid import generate as nanoid_generate
@@ -11,8 +9,6 @@ from config import get_config
 
 _config = get_config()
 s3_client = boto3.client("s3", region_name=_config.aws_region)
-sqs_client = boto3.client("sqs", region_name=_config.aws_region)
-dynamodb_resource = boto3.resource("dynamodb", region_name=_config.aws_region)
 
 
 class ImageArtifactSaverHook(HookProvider):
@@ -44,7 +40,7 @@ class ImageArtifactSaverHook(HookProvider):
             return
 
         config = get_config()
-        if not config.agent_storage_bucket_name or not config.backend_table_name:
+        if not config.agent_storage_bucket_name:
             return
 
         # Extract image bytes from result content
@@ -68,9 +64,7 @@ class ImageArtifactSaverHook(HookProvider):
         try:
             content_type = f"image/{image_format}"
             artifact_id = f"art_{nanoid_generate(size=21)}"
-            ext = image_format
-            s3_key = f"{self.user_id}/{self.project_id}/artifacts/{artifact_id}.{ext}"
-            created_at = datetime.now(UTC).isoformat()
+            s3_key = f"{self.user_id}/{self.project_id}/artifacts/{artifact_id}/{filename}"
 
             # Upload to S3
             s3_client.put_object(
@@ -80,52 +74,8 @@ class ImageArtifactSaverHook(HookProvider):
                 ContentType=content_type,
             )
 
-            # Save metadata to DynamoDB
-            table = dynamodb_resource.Table(config.backend_table_name)
-            table.put_item(
-                Item={
-                    "PK": f"ART#{artifact_id}",
-                    "SK": "META",
-                    "GSI1PK": f"USR#{self.user_id}#ART",
-                    "GSI1SK": created_at,
-                    "GSI2PK": f"USR#{self.user_id}#PROJ#{self.project_id}#ART",
-                    "GSI2SK": created_at,
-                    "artifact_id": artifact_id,
-                    "created_at": created_at,
-                    "data": {
-                        "user_id": self.user_id,
-                        "project_id": self.project_id,
-                        "filename": filename,
-                        "content_type": content_type,
-                        "s3_key": s3_key,
-                        "s3_bucket": config.agent_storage_bucket_name,
-                        "file_size": len(image_bytes),
-                    },
-                }
-            )
-
-            # Send websocket notification
-            if config.websocket_message_queue_url:
-                sqs_client.send_message(
-                    QueueUrl=config.websocket_message_queue_url,
-                    MessageBody=json.dumps({
-                        "username": self.user_id,
-                        "message": {
-                            "action": "artifacts",
-                            "data": {
-                                "event": "created",
-                                "artifact_id": artifact_id,
-                                "filename": filename,
-                                "created_at": created_at,
-                            },
-                        },
-                    }),
-                )
-
             # Append artifact info to result content
-            result["content"].append(
-                {"text": f"\n\n[artifact:{artifact_id}]({filename})"}
-            )
+            result["content"].append({"text": f"\n\n[artifact:{artifact_id}]({filename})"})
 
         except Exception:
             pass
