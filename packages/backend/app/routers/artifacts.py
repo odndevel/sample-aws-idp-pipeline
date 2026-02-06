@@ -7,7 +7,7 @@ from app.ddb.artifacts import (
     query_user_artifacts,
     query_user_project_artifacts,
 )
-from app.s3 import get_s3_client
+from app.s3 import delete_s3_prefix
 
 router = APIRouter(prefix="/artifacts", tags=["artifacts"])
 
@@ -69,14 +69,12 @@ def list_artifacts(
     return ListArtifactsResponse(items=items, next_cursor=result.next_cursor)
 
 
-@router.delete("/{artifact_id}")
+@router.delete("/{artifact_id:path}")
 def delete_artifact(
     artifact_id: str,
     user_id: str = Header(alias="x-user-id"),
 ) -> DeleteArtifactResponse:
-    """Delete an artifact and its S3 object."""
-    s3 = get_s3_client()
-
+    """Delete an artifact and its S3 objects."""
     artifact = get_artifact_item(artifact_id)
     if not artifact:
         raise HTTPException(status_code=404, detail="Artifact not found")
@@ -84,8 +82,9 @@ def delete_artifact(
     if artifact.data.user_id != user_id:
         raise HTTPException(status_code=403, detail="Not authorized to delete this artifact")
 
-    # Delete from S3
-    s3.delete_object(Bucket=artifact.data.s3_bucket, Key=artifact.data.s3_key)
+    # s3_key에서 artifact 폴더 prefix 추출
+    prefix = artifact.data.s3_key.rsplit("/", 1)[0] + "/"
+    delete_s3_prefix(artifact.data.s3_bucket, prefix)
 
     # Delete from DynamoDB
     delete_artifact_item(artifact_id)

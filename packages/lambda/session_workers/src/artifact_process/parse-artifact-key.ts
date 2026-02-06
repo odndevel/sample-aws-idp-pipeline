@@ -11,18 +11,31 @@ export interface ArtifactKeyInfo {
  * Example: drskur/proj_xxxxx/artifacts/art_xxxx/파일명.pptx
  */
 export function parseArtifactS3Key(key: string): ArtifactKeyInfo | null {
-  const match = key.match(
-    /^([^/]+)\/(proj_[^/]+)\/artifacts\/(art_[^/]+)\/(.+)$/,
-  );
+  const parts = key.split('/');
 
-  if (!match) {
+  // 최소 5개 파트 필요: userId, projectId, "artifacts", artifactId, filename
+  if (parts.length < 5) {
+    return null;
+  }
+
+  const artifactsIndex = parts.indexOf('artifacts');
+  if (artifactsIndex < 2 || artifactsIndex + 2 >= parts.length) {
+    return null;
+  }
+
+  const userId = parts.slice(0, artifactsIndex - 1).join('/');
+  const projectId = parts[artifactsIndex - 1];
+  const artifactId = parts[artifactsIndex + 1];
+  const filename = parts.slice(artifactsIndex + 2).join('/');
+
+  if (!projectId.startsWith('proj_') || !artifactId.startsWith('art_')) {
     return null;
   }
 
   return {
-    userId: match[1],
-    projectId: match[2],
-    artifactId: match[3],
-    filename: match[4],
+    userId,
+    projectId,
+    artifactId,
+    filename,
   };
 }
