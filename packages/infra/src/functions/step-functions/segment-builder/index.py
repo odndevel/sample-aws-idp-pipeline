@@ -343,6 +343,7 @@ def parse_webcrawler_result(file_uri: str) -> dict:
     - webcrawler_content: markdown content
     - source_url: original URL
     - web_title: page title
+    - instruction: user instruction for crawling
     """
     bucket, base_path = get_document_base_path(file_uri)
 
@@ -359,14 +360,17 @@ def parse_webcrawler_result(file_uri: str) -> dict:
 
     source_url = ''
     web_title = ''
+    instruction = ''
     if metadata:
         source_url = metadata.get('url', '')
         web_title = metadata.get('title', '')
+        instruction = metadata.get('instruction', '')
 
     return {
         'webcrawler_content': content,
         'source_url': source_url,
         'web_title': web_title,
+        'instruction': instruction,
     }
 
 
@@ -574,6 +578,7 @@ def handler(event, _context):
                 segment_data['webcrawler_content'] = webcrawler_data.get('webcrawler_content', '')
                 segment_data['source_url'] = webcrawler_data.get('source_url', '')
                 segment_data['web_title'] = webcrawler_data.get('web_title', '')
+                segment_data['instruction'] = webcrawler_data.get('instruction', '')
             elif is_webreq:
                 if 'webcrawler_content' not in segment_data:
                     segment_data['webcrawler_content'] = ''
@@ -581,6 +586,8 @@ def handler(event, _context):
                     segment_data['source_url'] = ''
                 if 'web_title' not in segment_data:
                     segment_data['web_title'] = ''
+                if 'instruction' not in segment_data:
+                    segment_data['instruction'] = ''
 
             # Save merged segment to S3
             save_segment_analysis(file_uri, i, segment_data)

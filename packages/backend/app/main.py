@@ -10,6 +10,7 @@ from app.routers import (
     health,
     projects,
     prompts,
+    sagemaker,
     search,
     workflows,
 )
@@ -27,6 +28,7 @@ app = FastAPI(
         {"name": "agents", "description": "커스텀 에이전트 관리"},
         {"name": "artifacts", "description": "아티팩트 관리"},
         {"name": "prompts", "description": "프롬프트 관리"},
+        {"name": "sagemaker", "description": "SageMaker 엔드포인트 관리"},
     ]
 )
 
@@ -45,5 +47,6 @@ app.include_router(documents.router)
 app.include_router(health.router)
 app.include_router(projects.router)
 app.include_router(prompts.router)
+app.include_router(sagemaker.router)
 app.include_router(search.router)
 app.include_router(workflows.router)

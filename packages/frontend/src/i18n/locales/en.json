@@ -383,7 +383,16 @@
     "darkMode": "Dark Mode",
     "lightMode": "Light Mode",
     "license": "License",
-    "licenseTitle": "Amazon Software License"
+    "licenseTitle": "Amazon Software License",
+    "sagemaker": "SageMaker",
+    "sagemakerTitle": "OCR Endpoint Management",
+    "currentInstances": "Current Instances",
+    "desiredInstances": "Desired Instances",
+    "startEndpoint": "Start",
+    "stopEndpoint": "Stop",
+    "scaleInSettings": "Auto Scale-in Settings",
+    "scaleInDescription": "Endpoint will automatically stop after this period of inactivity",
+    "minutes": "minutes"
   },
   "systemPrompt": {
     "title": "System Prompt",

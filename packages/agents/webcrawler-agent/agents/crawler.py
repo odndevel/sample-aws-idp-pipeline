@@ -14,6 +14,7 @@ from strands import Agent, tool
 from strands_tools.browser import AgentCoreBrowser
 
 from config import get_config
+from agents.d2snap import D2Snap, estimate_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +198,81 @@ def create_save_screenshot_tool(file_uri: str, browser_tool: AgentCoreBrowser) -
     return save_screenshot
 
 
+def create_get_compressed_html_tool(browser_tool: AgentCoreBrowser) -> Callable:
+    """Create a get_compressed_html tool for efficient HTML analysis."""
+
+    @tool
+    def get_compressed_html(session_name: str, max_tokens: int = 8000) -> str:
+        """Get compressed HTML from the current page for efficient content analysis.
+
+        This tool extracts HTML from the page and compresses it using D2Snap,
+        reducing token usage by 70-90% while preserving important content elements.
+
+        Use this BEFORE extracting content to understand page structure efficiently.
+
+        Args:
+            session_name: The browser session name
+            max_tokens: Maximum token budget for compressed HTML (default 8000)
+
+        Returns:
+            Compressed HTML with content structure preserved, plus compression stats
+        """
+        try:
+            logger.info(f"get_compressed_html called for session: {session_name}")
+
+            # Get raw HTML from browser
+            html_result = browser_tool.browser(
+                browser_input={
+                    "action": {
+                        "type": "get_html",
+                        "session_name": session_name,
+                    }
+                }
+            )
+
+            # Extract HTML string from result
+            raw_html = ""
+            if isinstance(html_result, dict):
+                content = html_result.get("content", [])
+                for item in content:
+                    if isinstance(item, dict):
+                        if "text" in item:
+                            raw_html = item["text"]
+                            break
+                        elif "html" in item:
+                            raw_html = item["html"]
+                            break
+
+            if not raw_html:
+                raw_html = str(html_result)
+
+            original_tokens = estimate_tokens(raw_html)
+            logger.info(f"Raw HTML: ~{original_tokens} tokens")
+
+            # Apply D2Snap compression
+            result = D2Snap.compress(raw_html, max_tokens, 'hybrid')
+
+            compressed_html = result['compressed_html']
+            stats = f"""
+[Compression Stats]
+- Original: ~{result['original_tokens']} tokens
+- Compressed: ~{result['compressed_tokens']} tokens
+- Reduction: {result['reduction_percent']}%
+
+[Compressed HTML]
+{compressed_html}
+"""
+            logger.info(f"Compressed HTML: ~{result['compressed_tokens']} tokens ({result['reduction_percent']}% reduction)")
+
+            return stats
+
+        except Exception as e:
+            logger.exception(f"Failed to get compressed HTML: {e}")
+            return f"Error getting compressed HTML: {e}"
+
+    return get_compressed_html
+
+
 def get_screenshot_result() -> dict:
     """Get the screenshot result captured by the tool."""
     global _screenshot_result
@@ -320,25 +396,41 @@ async def crawl_and_process(
         browser_tool = AgentCoreBrowser(region=config.aws_region)
         logger.info("AgentCoreBrowser initialized")
 
-        # Create save_screenshot tool with context
+        # Create custom tools with context
         save_screenshot_tool = create_save_screenshot_tool(file_uri, browser_tool)
+        get_compressed_html_tool = create_get_compressed_html_tool(browser_tool)
 
-        # Create agent with browser tool and save_screenshot tool
+        # Create agent with browser tool and custom tools
         logger.info(f"Creating agent with model={config.bedrock_model_id}")
         agent = Agent(
             model=config.bedrock_model_id,
-            tools=[browser_tool.browser, save_screenshot_tool],
+            tools=[browser_tool.browser, save_screenshot_tool, get_compressed_html_tool],
             system_prompt=system_prompt,
         )
         logger.info("Agent created successfully")
 
-        # Build the prompt
+        # Build the prompt with hybrid approach (Vision + HTML)
         prompt = f"""Navigate to this URL and extract its content: {url}
 
-Extract the main content as Markdown.
 {f'Additional instructions: {instruction}' if instruction else ''}
 
-IMPORTANT: Before closing the browser, you MUST call save_screenshot with the session_name you used.
+You have access to the following tools:
+1. browser - for navigation, screenshot (you can SEE the page), and interaction
+2. get_compressed_html - get compressed HTML for efficient content analysis
+3. save_screenshot - saves screenshot to S3 for document pipeline
+
+Required workflow:
+1. Initialize browser session and navigate to the URL
+2. Use browser screenshot action to SEE the page visually
+3. Call get_compressed_html(session_name) to get the page structure
+4. Combine visual understanding + HTML structure to extract content as Markdown
+5. MANDATORY: Call save_screenshot(session_name) to save the screenshot to S3
+6. Close the browser
+
+HYBRID APPROACH:
+- browser.screenshot lets you SEE the page (visual understanding)
+- get_compressed_html gives you the HTML structure (80-90% token savings)
+- Use BOTH to understand the page fully
 
 Return the extracted content in Markdown format."""
 
@@ -416,10 +508,11 @@ Return the extracted content in Markdown format."""
         content_uri = f"s3://{bucket}/{content_key}"
         logger.info(f"Saved content: {content_uri}")
 
-        # Save metadata.json for webcrawler (source_url, title)
+        # Save metadata.json for webcrawler (source_url, title, instruction)
         metadata = {
             "url": url,
             "title": title,
+            "instruction": instruction,
             "crawled_at": datetime.now(timezone.utc).isoformat(),
         }
         metadata_key = f"{base_path}/webcrawler/metadata.json"

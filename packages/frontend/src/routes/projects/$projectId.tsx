@@ -188,6 +188,18 @@ function ProjectDetailPage() {
   const handleVoiceModelSelect = useCallback(
     (modelType: BidiModelType) => {
       setSelectedVoiceModel(modelType);
+
+      // For gemini/openai, check if API key exists
+      if (modelType === 'gemini' || modelType === 'openai') {
+        const config = getStoredVoiceModelConfig();
+        const apiKey = config.apiKeys?.[modelType];
+        if (!apiKey) {
+          // No API key, open settings modal to prompt user to enter it
+          setShowVoiceModelSettings(true);
+          return;
+        }
+      }
+
       // If already connected with a different model, disconnect and reconnect
       if (voiceChat.state.status === 'connected') {
         voiceChat.disconnect();

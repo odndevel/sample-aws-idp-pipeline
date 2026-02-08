@@ -383,7 +383,16 @@
     "darkMode": "다크 모드",
     "lightMode": "라이트 모드",
     "license": "라이선스",
-    "licenseTitle": "Amazon Software License"
+    "licenseTitle": "Amazon Software License",
+    "sagemaker": "SageMaker",
+    "sagemakerTitle": "OCR 엔드포인트 관리",
+    "currentInstances": "현재 인스턴스",
+    "desiredInstances": "목표 인스턴스",
+    "startEndpoint": "시작",
+    "stopEndpoint": "종료",
+    "scaleInSettings": "자동 종료 설정",
+    "scaleInDescription": "유휴 상태가 지속되면 엔드포인트가 자동으로 종료됩니다",
+    "minutes": "분"
   },
   "systemPrompt": {
     "title": "System Prompt",
