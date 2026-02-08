@@ -147,13 +147,6 @@ export default function VoiceModelSettingsModal({
   };
 
   const handleSave = () => {
-    const modelOption = MODEL_OPTIONS.find(
-      (m) => m.value === effectiveModelType,
-    );
-    if (modelOption?.requiresApiKey && !apiKey.trim()) {
-      return;
-    }
-
     // Update stored API keys with current key
     const updatedApiKeys = { ...storedApiKeys };
     if (effectiveModelType === 'gemini' || effectiveModelType === 'openai') {
@@ -300,8 +293,7 @@ export default function VoiceModelSettingsModal({
             </button>
             <button
               onClick={handleSave}
-              disabled={requiresApiKey && !apiKey.trim()}
-              className="flex-1 px-5 py-3 text-sm font-medium text-white bg-purple-600 hover:bg-purple-500 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 px-5 py-3 text-sm font-medium text-white bg-purple-600 hover:bg-purple-500 rounded-xl transition-all"
             >
               {t('common.save')}
             </button>

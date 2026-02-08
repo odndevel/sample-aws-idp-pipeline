@@ -198,6 +198,25 @@ export class Backend extends Construct {
       }),
     );
 
+    // Grant SageMaker endpoint management permissions
+    taskRole.addToPrincipalPolicy(
+      new PolicyStatement({
+        actions: [
+          'sagemaker:DescribeEndpoint',
+          'sagemaker:UpdateEndpointWeightsAndCapacities',
+        ],
+        resources: ['*'],
+      }),
+    );
+
+    // Grant CloudWatch alarm management permissions
+    taskRole.addToPrincipalPolicy(
+      new PolicyStatement({
+        actions: ['cloudwatch:DescribeAlarms', 'cloudwatch:PutMetricAlarm'],
+        resources: ['*'],
+      }),
+    );
+
     // Security Group for VPC Link
     const vpcLinkSg = new SecurityGroup(this, 'VpcLinkSg', {
       vpc,

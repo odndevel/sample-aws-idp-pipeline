@@ -1,6 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Power, PowerOff, Clock, RefreshCw, Server } from 'lucide-react';
+import { useAwsClient } from '../hooks/useAwsClient';
 
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
@@ -46,18 +48,115 @@ EXCEPT AS PROHIBITED BY APPLICABLE LAW, IN NO EVENT AND UNDER NO LEGAL THEORY, W
 
 Effective Date - April 18, 2008 (c) 2008 Amazon.com, Inc. or its affiliates. All rights reserved.`;
 
-type SettingsSection = 'license';
+type SettingsSection = 'sagemaker' | 'license';
+
+interface EndpointStatus {
+  endpoint_name: string;
+  status: string;
+  current_instance_count: number;
+  desired_instance_count: number;
+}
+
+interface ScaleInSettings {
+  evaluation_periods: number;
+}
 
 function SettingsPage() {
   const { t } = useTranslation();
+  const { fetchApi } = useAwsClient();
   const [activeSection, setActiveSection] =
-    useState<SettingsSection>('license');
+    useState<SettingsSection>('sagemaker');
+
+  // SageMaker state
+  const [endpointStatus, setEndpointStatus] = useState<EndpointStatus | null>(
+    null,
+  );
+  const [scaleInSettings, setScaleInSettings] =
+    useState<ScaleInSettings | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editingMinutes, setEditingMinutes] = useState<number | null>(null);
+
+  const fetchSageMakerStatus = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [status, settings] = await Promise.all([
+        fetchApi<EndpointStatus>('sagemaker/status'),
+        fetchApi<ScaleInSettings>('sagemaker/settings'),
+      ]);
+      setEndpointStatus(status);
+      setScaleInSettings(settings);
+      setEditingMinutes(settings.evaluation_periods);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch status');
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchApi]);
+
+  useEffect(() => {
+    if (activeSection === 'sagemaker') {
+      fetchSageMakerStatus();
+    }
+  }, [activeSection, fetchSageMakerStatus]);
+
+  const handleStartEndpoint = async () => {
+    setActionLoading(true);
+    try {
+      await fetchApi('sagemaker/start', { method: 'POST' });
+      await fetchSageMakerStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start endpoint');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleStopEndpoint = async () => {
+    setActionLoading(true);
+    try {
+      await fetchApi('sagemaker/stop', { method: 'POST' });
+      await fetchSageMakerStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to stop endpoint');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    if (
+      editingMinutes === null ||
+      editingMinutes === scaleInSettings?.evaluation_periods
+    )
+      return;
+    setActionLoading(true);
+    try {
+      const result = await fetchApi<ScaleInSettings>('sagemaker/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ evaluation_periods: editingMinutes }),
+      });
+      setScaleInSettings(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save settings');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const menuItems: {
     key: SettingsSection;
     label: string;
     icon: React.ReactNode;
   }[] = [
+    {
+      key: 'sagemaker',
+      label: t('settings.sagemaker', 'SageMaker'),
+      icon: <Server className="w-5 h-5" />,
+    },
     {
       key: 'license',
       label: t('settings.license'),
@@ -119,6 +218,219 @@ function SettingsPage() {
 
         {/* Content */}
         <div className="flex-1 pt-1">
+          {activeSection === 'sagemaker' && (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h3
+                  className="text-base font-semibold"
+                  style={{ color: 'var(--color-text-primary)' }}
+                >
+                  {t('settings.sagemakerTitle', 'OCR Endpoint Management')}
+                </h3>
+                <button
+                  onClick={fetchSageMakerStatus}
+                  disabled={loading}
+                  className="bento-btn-cancel flex items-center gap-1.5"
+                  style={{ padding: '0.375rem 0.75rem' }}
+                >
+                  <RefreshCw
+                    className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`}
+                  />
+                  <span>{t('common.refresh', 'Refresh')}</span>
+                </button>
+              </div>
+
+              {error && (
+                <div
+                  className="mb-4 p-3 rounded-lg text-sm"
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    color: '#ef4444',
+                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                  }}
+                >
+                  {error}
+                </div>
+              )}
+
+              {/* Endpoint Status */}
+              <div
+                className="rounded-lg p-5 mb-4"
+                style={{
+                  background: 'var(--color-bg-secondary)',
+                  border: '1px solid var(--color-border)',
+                }}
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`w-2 h-2 rounded-full ${
+                        endpointStatus?.current_instance_count &&
+                        endpointStatus.current_instance_count > 0
+                          ? 'bg-green-500'
+                          : endpointStatus?.status === 'Updating'
+                            ? 'bg-yellow-500 animate-pulse'
+                            : 'bg-slate-400'
+                      }`}
+                    />
+                    <span
+                      className="text-sm"
+                      style={{ color: 'var(--color-text-secondary)' }}
+                    >
+                      {endpointStatus?.endpoint_name || 'Loading...'}
+                    </span>
+                  </div>
+                  <span
+                    className="text-xs px-2 py-0.5 rounded"
+                    style={{
+                      background:
+                        endpointStatus?.status === 'InService'
+                          ? 'var(--color-accent-light)'
+                          : endpointStatus?.status === 'Updating'
+                            ? 'rgba(234, 179, 8, 0.15)'
+                            : 'var(--color-bg-tertiary)',
+                      color:
+                        endpointStatus?.status === 'InService'
+                          ? 'var(--color-accent)'
+                          : endpointStatus?.status === 'Updating'
+                            ? '#ca8a04'
+                            : 'var(--color-text-muted)',
+                    }}
+                  >
+                    {endpointStatus?.status || '-'}
+                  </span>
+                </div>
+
+                <div className="flex gap-3 mb-5">
+                  <div
+                    className="flex-1 p-3 rounded-lg text-center"
+                    style={{ background: 'var(--color-bg-tertiary)' }}
+                  >
+                    <div
+                      className="text-xs mb-1"
+                      style={{ color: 'var(--color-text-muted)' }}
+                    >
+                      {t('settings.currentInstances', 'Current Instances')}
+                    </div>
+                    <div
+                      className="text-xl font-semibold"
+                      style={{ color: 'var(--color-text-primary)' }}
+                    >
+                      {endpointStatus?.current_instance_count ?? '-'}
+                    </div>
+                  </div>
+                  <div
+                    className="flex-1 p-3 rounded-lg text-center"
+                    style={{ background: 'var(--color-bg-tertiary)' }}
+                  >
+                    <div
+                      className="text-xs mb-1"
+                      style={{ color: 'var(--color-text-muted)' }}
+                    >
+                      {t('settings.desiredInstances', 'Desired Instances')}
+                    </div>
+                    <div
+                      className="text-xl font-semibold"
+                      style={{ color: 'var(--color-text-primary)' }}
+                    >
+                      {endpointStatus?.desired_instance_count ?? '-'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleStartEndpoint}
+                    disabled={
+                      actionLoading || endpointStatus?.status === 'Updating'
+                    }
+                    className="bento-btn-save flex-1 flex items-center justify-center gap-1.5"
+                  >
+                    <Power className="w-3.5 h-3.5" />
+                    {t('settings.startEndpoint', 'Start')}
+                  </button>
+                  <button
+                    onClick={handleStopEndpoint}
+                    disabled={
+                      actionLoading || endpointStatus?.status === 'Updating'
+                    }
+                    className="bento-btn-cancel flex-1 flex items-center justify-center gap-1.5"
+                  >
+                    <PowerOff className="w-3.5 h-3.5" />
+                    {t('settings.stopEndpoint', 'Stop')}
+                  </button>
+                </div>
+              </div>
+
+              {/* Scale-in Settings */}
+              <div
+                className="rounded-lg p-5"
+                style={{
+                  background: 'var(--color-bg-secondary)',
+                  border: '1px solid var(--color-border)',
+                }}
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <Clock
+                    className="w-4 h-4"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  />
+                  <h4
+                    className="text-sm font-medium"
+                    style={{ color: 'var(--color-text-primary)' }}
+                  >
+                    {t('settings.scaleInSettings', 'Auto Scale-in Settings')}
+                  </h4>
+                </div>
+
+                <p
+                  className="text-xs mb-4"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  {t(
+                    'settings.scaleInDescription',
+                    'Endpoint will automatically stop after this period of inactivity',
+                  )}
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={editingMinutes ?? ''}
+                    onChange={(e) =>
+                      setEditingMinutes(parseInt(e.target.value) || 1)
+                    }
+                    className="w-16 px-2 py-1.5 rounded text-sm text-center"
+                    style={{
+                      background: 'var(--color-bg-tertiary)',
+                      border: '1px solid var(--color-border)',
+                      color: 'var(--color-text-primary)',
+                    }}
+                  />
+                  <span
+                    className="text-sm"
+                    style={{ color: 'var(--color-text-secondary)' }}
+                  >
+                    {t('settings.minutes', 'minutes')}
+                  </span>
+                  <button
+                    onClick={handleSaveSettings}
+                    disabled={
+                      actionLoading ||
+                      editingMinutes === null ||
+                      editingMinutes === scaleInSettings?.evaluation_periods
+                    }
+                    className="bento-btn-save ml-auto"
+                  >
+                    {t('common.save', 'Save')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeSection === 'license' && (
             <div>
               <h3

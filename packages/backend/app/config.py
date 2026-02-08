@@ -17,6 +17,8 @@ class Config(BaseSettings):
     elasticache_endpoint: str = ""
     step_function_arn: str = ""
     qa_regenerator_function_arn: str = ""
+    paddleocr_endpoint_name: str = "paddleocr-endpoint"
+    paddleocr_scale_in_alarm_name: str = "idp-v2-paddleocr-scale-in"
 
 
 @lru_cache
