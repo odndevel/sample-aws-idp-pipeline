@@ -491,6 +491,100 @@ function ProjectDetailPage() {
     [fetchApi, showToast, t],
   );
 
+  const SEPARATOR = '\n---\n';
+
+  const loadAnalysisDocPrompt = useCallback(async () => {
+    try {
+      const [system, userQuery, image] = await Promise.all([
+        fetchApi<{ content: string }>('prompts/analysis/system'),
+        fetchApi<{ content: string }>('prompts/analysis/user-query'),
+        fetchApi<{ content: string }>('prompts/analysis/image'),
+      ]);
+      return [system.content, userQuery.content, image.content].join(SEPARATOR);
+    } catch {
+      return '';
+    }
+  }, [fetchApi]);
+
+  const saveAnalysisDocPrompt = useCallback(
+    async (content: string) => {
+      const parts = content.split(SEPARATOR);
+      const keys = ['system', 'user-query', 'image'];
+      await Promise.all(
+        keys.map((key, i) =>
+          fetchApi(`prompts/analysis/${key}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: parts[i] || '' }),
+          }),
+        ),
+      );
+      showToast('success', t('systemPrompt.analysisDocSaveSuccess'));
+    },
+    [fetchApi, showToast, t],
+  );
+
+  const loadAnalysisVideoPrompt = useCallback(async () => {
+    try {
+      const [system, userQuery, video] = await Promise.all([
+        fetchApi<{ content: string }>('prompts/analysis/video-system'),
+        fetchApi<{ content: string }>('prompts/analysis/video-user-query'),
+        fetchApi<{ content: string }>('prompts/analysis/video'),
+      ]);
+      return [system.content, userQuery.content, video.content].join(SEPARATOR);
+    } catch {
+      return '';
+    }
+  }, [fetchApi]);
+
+  const saveAnalysisVideoPrompt = useCallback(
+    async (content: string) => {
+      const parts = content.split(SEPARATOR);
+      const keys = ['video-system', 'video-user-query', 'video'];
+      await Promise.all(
+        keys.map((key, i) =>
+          fetchApi(`prompts/analysis/${key}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: parts[i] || '' }),
+          }),
+        ),
+      );
+      showToast('success', t('systemPrompt.analysisVideoSaveSuccess'));
+    },
+    [fetchApi, showToast, t],
+  );
+
+  const loadAnalysisTextPrompt = useCallback(async () => {
+    try {
+      const [system, userQuery] = await Promise.all([
+        fetchApi<{ content: string }>('prompts/analysis/text-system'),
+        fetchApi<{ content: string }>('prompts/analysis/text-user-query'),
+      ]);
+      return [system.content, userQuery.content].join(SEPARATOR);
+    } catch {
+      return '';
+    }
+  }, [fetchApi]);
+
+  const saveAnalysisTextPrompt = useCallback(
+    async (content: string) => {
+      const parts = content.split(SEPARATOR);
+      const keys = ['text-system', 'text-user-query'];
+      await Promise.all(
+        keys.map((key, i) =>
+          fetchApi(`prompts/analysis/${key}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: parts[i] || '' }),
+          }),
+        ),
+      );
+      showToast('success', t('systemPrompt.analysisTextSaveSuccess'));
+    },
+    [fetchApi, showToast, t],
+  );
+
   // Memoize system prompt tabs to avoid infinite loop in SystemPromptModal
   const systemPromptTabs = useMemo(
     () => [
@@ -504,12 +598,33 @@ function ProjectDetailPage() {
         onLoad: loadVoiceSystemPrompt,
         onSave: saveVoiceSystemPrompt,
       },
+      {
+        type: 'analysis-doc' as const,
+        onLoad: loadAnalysisDocPrompt,
+        onSave: saveAnalysisDocPrompt,
+      },
+      {
+        type: 'analysis-video' as const,
+        onLoad: loadAnalysisVideoPrompt,
+        onSave: saveAnalysisVideoPrompt,
+      },
+      {
+        type: 'analysis-text' as const,
+        onLoad: loadAnalysisTextPrompt,
+        onSave: saveAnalysisTextPrompt,
+      },
     ],
     [
       loadSystemPrompt,
       saveSystemPrompt,
       loadVoiceSystemPrompt,
       saveVoiceSystemPrompt,
+      loadAnalysisDocPrompt,
+      saveAnalysisDocPrompt,
+      loadAnalysisVideoPrompt,
+      saveAnalysisVideoPrompt,
+      loadAnalysisTextPrompt,
+      saveAnalysisTextPrompt,
     ],
   );
 

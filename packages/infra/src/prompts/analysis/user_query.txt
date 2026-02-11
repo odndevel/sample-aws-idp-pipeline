@@ -1,0 +1,100 @@
+Analyze document segment (page {segment_index}).
+
+<context_from_previous_processing>
+The following information has been extracted by upstream processors. Use this as reference but verify against the image - the image is the authoritative source.
+
+{context}
+</context_from_previous_processing>
+
+<analysis_workflow>
+Execute this workflow systematically:
+
+**Step 1: Original Text Extraction (CRITICAL - DO THIS FIRST)**
+- Use analyze_image to read ALL text in the document
+- Compare with the extraction results above
+- Correct any OCR errors or garbled text
+- Add any text that was missed by the extractors
+- Output the COMPLETE, verified text preserving original structure
+- Do NOT summarize or paraphrase - preserve original text exactly
+
+**Step 2: Document Assessment**
+- Identify document type and purpose
+- Note the page's role in the overall document (first page, continuation, appendix, etc.)
+- Assess content density and complexity
+
+**Step 3: Detailed Analysis**
+Use analyze_image tool with targeted queries to analyze:
+- Tables and structured data
+- Figures, charts, and diagrams
+- Metadata and annotations
+
+**Step 4: Synthesis and Verification**
+- Compile all extracted information
+- Verify against previous processor context
+- Note any discrepancies
+- Flag items requiring attention
+</analysis_workflow>
+
+<required_output_structure>
+Provide your analysis in this exact format:
+
+## Original Text
+[Complete text from the document, exactly as it appears]
+- Preserve all headings, paragraphs, and structure
+- Use markdown tables for tabular data
+- Include ALL text: titles, captions, labels, annotations
+- Mark illegible sections as [illegible]
+- Do NOT summarize - this must be the full original text
+
+## Document Overview
+- **Type**: [Specific document classification]
+- **Purpose**: [What this document/page is meant to convey]
+- **Page Context**: [Role of this page - standalone, part of series, etc.]
+- **Quality Assessment**: [Image quality, readability issues if any]
+
+## Visual Elements
+[For each figure, chart, diagram, or image:]
+**[Element Type]: [Title/Label if present]**
+- Description: [What it shows]
+- Key data points: [Specific values, trends, or information conveyed]
+- Significance: [Why it matters in context]
+
+## Key Information Extract
+[Bullet list of the most important facts, figures, and findings]
+- Focus on searchable, referenceable data points
+- Include specific values, names, dates, amounts
+
+## Technical Details
+[If applicable:]
+- Specifications and measurements
+- Standards and codes referenced
+- Requirements and constraints
+- Part numbers, model numbers, identifiers
+
+## Entities and References
+- **People**: [Names and roles mentioned]
+- **Organizations**: [Companies, departments, agencies]
+- **Dates**: [All dates with context]
+- **Document References**: [Citations, document numbers, cross-references]
+- **Locations**: [Places, addresses, coordinates]
+
+## Metadata
+- **Document Identifiers**: [Document numbers, revision codes, file references]
+- **Timestamps**: [Creation date, modification date, effective dates]
+- **Authorization**: [Signatures, approvals, stamps]
+- **Classification**: [Confidentiality level, distribution restrictions]
+
+## Analysis Notes
+- **OCR Corrections**: [Errors found and corrected from the extraction results]
+- **Text Added**: [Text that was missing from the extraction results]
+- **Uncertainties**: [Areas where extraction confidence is low]
+- **Illegible Sections**: [Parts that could not be read]
+- **Discrepancies**: [Differences from previous processor output]
+</required_output_structure>
+
+<language_requirement>
+Provide ALL output in {language}.
+- Preserve original document text exactly as written (do not translate)
+- Use {language} for section headers, descriptions, and notes
+- Use appropriate technical terminology for the document's domain
+</language_requirement>

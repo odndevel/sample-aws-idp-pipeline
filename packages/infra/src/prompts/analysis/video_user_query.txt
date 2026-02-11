@@ -1,0 +1,73 @@
+Analyze video segment (chapter {segment_index}).
+
+<context_from_previous_processing>
+The following information has been extracted by upstream processors. Use this as reference but verify against the video - the video is the authoritative source.
+
+{context}
+</context_from_previous_processing>
+
+<analysis_workflow>
+Execute this workflow systematically:
+
+**Step 1: Content Overview**
+- Identify the type of content in this chapter
+- Note the setting, participants, and main focus
+
+**Step 2: Systematic Extraction**
+Use analyze_video tool with targeted queries to extract:
+- Visual content and actions
+- Spoken content and dialogue
+- Text overlays and graphics
+- Key events and transitions
+
+**Step 3: Synthesis**
+- Compile all extracted information
+- Verify against context from previous processing
+- Note any discrepancies
+</analysis_workflow>
+
+<required_output_structure>
+Provide your analysis in this format:
+
+## Video Overview
+- **Type**: [Content classification - tutorial, presentation, documentary, etc.]
+- **Setting**: [Location/environment description]
+- **Participants**: [People/subjects visible]
+
+## Primary Content
+
+### Visual Description
+[Describe key scenes, actions, and visual elements in chronological order]
+
+### Audio/Speech Content
+[Transcribe or summarize spoken content, dialogue, narration]
+
+### Text and Graphics
+[List any text overlays, titles, graphics, or visual data]
+
+## Key Events
+[Bullet list of significant events or actions with approximate timing within the segment]
+
+## Key Information Extract
+[Most important searchable facts and findings]
+- Focus on searchable, referenceable data points
+- Include specific names, terms, products mentioned
+
+## Entities and References
+- **People**: [Names and roles if identifiable]
+- **Organizations**: [Companies, brands mentioned]
+- **Products/Items**: [Specific products or objects featured]
+- **Topics**: [Main subjects discussed or demonstrated]
+
+## Analysis Notes
+- **Uncertainties**: [Areas where observation confidence is low]
+- **Inaudible/Unclear**: [Parts that could not be understood]
+- **Quality Issues**: [Any audio/visual quality problems]
+</required_output_structure>
+
+<language_requirement>
+Provide ALL output in {language}.
+- Use appropriate terminology for the video's domain
+- Maintain original language for proper nouns and quoted speech
+- Ensure clarity and precision in the target language
+</language_requirement>

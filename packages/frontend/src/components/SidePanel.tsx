@@ -443,12 +443,31 @@ export default function SidePanel({
   const [docStatusFilter, setDocStatusFilter] = useState<
     'all' | 'completed' | 'processing' | 'failed'
   >('all');
+  const [docTypeFilter, setDocTypeFilter] = useState<string>('all');
 
   // Artifact search state
   const [artSearchOpen, setArtSearchOpen] = useState(false);
   const [artSearchQuery, setArtSearchQuery] = useState('');
   const artInputRef = useRef<HTMLInputElement>(null);
   const artComposing = useRef(false);
+
+  const getFileTypeCategory = useCallback((fileType: string): string => {
+    if (fileType.includes('pdf')) return 'pdf';
+    if (fileType.startsWith('image/')) return 'image';
+    if (fileType.startsWith('video/') || fileType.startsWith('audio/'))
+      return 'media';
+    if (fileType.includes('webreq')) return 'web';
+    return 'text';
+  }, []);
+
+  const docTypeOptions = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const d of documents) {
+      const cat = getFileTypeCategory(d.file_type);
+      counts[cat] = (counts[cat] || 0) + 1;
+    }
+    return counts;
+  }, [documents, getFileTypeCategory]);
 
   const filteredDocuments = useMemo(() => {
     let result = documents;
@@ -461,8 +480,19 @@ export default function SidePanel({
     if (docStatusFilter !== 'all') {
       result = result.filter((d) => d.status === docStatusFilter);
     }
+    if (docTypeFilter !== 'all') {
+      result = result.filter(
+        (d) => getFileTypeCategory(d.file_type) === docTypeFilter,
+      );
+    }
     return result;
-  }, [documents, docSearchQuery, docStatusFilter]);
+  }, [
+    documents,
+    docSearchQuery,
+    docStatusFilter,
+    docTypeFilter,
+    getFileTypeCategory,
+  ]);
 
   const filteredArtifacts = useMemo(() => {
     if (!artSearchQuery) return artifacts;
@@ -572,6 +602,7 @@ export default function SidePanel({
                 if (docSearchOpen) {
                   setDocSearchQuery('');
                   setDocStatusFilter('all');
+                  setDocTypeFilter('all');
                   if (docInputRef.current) docInputRef.current.value = '';
                 }
               }}
@@ -586,7 +617,9 @@ export default function SidePanel({
             </button>
             <div className="flex-1" />
             <span className="text-xs text-slate-400 flex-shrink-0">
-              {docSearchQuery || docStatusFilter !== 'all'
+              {docSearchQuery ||
+              docStatusFilter !== 'all' ||
+              docTypeFilter !== 'all'
                 ? `${filteredDocuments.length}/${documents.length}`
                 : documents.length}
             </span>
@@ -637,7 +670,7 @@ export default function SidePanel({
                   </button>
                 )}
               </div>
-              <div className="flex gap-1">
+              <div className="flex gap-1 flex-wrap">
                 {(['all', 'completed', 'processing', 'failed'] as const).map(
                   (status) => (
                     <button
@@ -655,6 +688,34 @@ export default function SidePanel({
                     </button>
                   ),
                 )}
+                <span className="w-px h-4 bg-slate-300 dark:bg-slate-600 self-center mx-0.5" />
+                {(
+                  [
+                    { key: 'all', label: 'All' },
+                    { key: 'pdf', label: 'PDF' },
+                    { key: 'image', label: 'Image' },
+                    { key: 'media', label: 'Media' },
+                    { key: 'web', label: 'Web' },
+                    { key: 'text', label: 'Text' },
+                  ] as const
+                )
+                  .filter(
+                    ({ key }) =>
+                      key === 'all' || (docTypeOptions[key] ?? 0) > 0,
+                  )
+                  .map(({ key, label }) => (
+                    <button
+                      key={key}
+                      onClick={() => setDocTypeFilter(key)}
+                      className={`text-[11px] px-2 py-0.5 rounded-full transition-colors ${
+                        docTypeFilter === key
+                          ? 'bg-indigo-500 text-white'
+                          : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
               </div>
             </div>
           )}

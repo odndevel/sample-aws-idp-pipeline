@@ -404,7 +404,14 @@
     "saveHint": "Cmd+Enter to save",
     "saveSuccess": "System prompt saved successfully",
     "tabChat": "Chat",
-    "tabVoice": "Voice"
+    "tabVoice": "Voice",
+    "tabAnalysis": "Analysis",
+    "tabAnalysisDoc": "Document",
+    "tabAnalysisVideo": "Video",
+    "tabAnalysisText": "Text",
+    "analysisDocSaveSuccess": "Document analysis prompts saved successfully",
+    "analysisVideoSaveSuccess": "Video analysis prompts saved successfully",
+    "analysisTextSaveSuccess": "Text analysis prompts saved successfully"
   },
   "voiceSystemPrompt": {
     "saveSuccess": "Voice system prompt saved successfully"

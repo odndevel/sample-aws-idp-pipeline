@@ -395,7 +395,14 @@
     "saveHint": "Cmd+Enterで保存",
     "saveSuccess": "システムプロンプトが保存されました",
     "tabChat": "チャット",
-    "tabVoice": "音声"
+    "tabVoice": "音声",
+    "tabAnalysis": "分析",
+    "tabAnalysisDoc": "ドキュメント",
+    "tabAnalysisVideo": "動画",
+    "tabAnalysisText": "テキスト",
+    "analysisDocSaveSuccess": "ドキュメント分析プロンプトが保存されました",
+    "analysisVideoSaveSuccess": "動画分析プロンプトが保存されました",
+    "analysisTextSaveSuccess": "テキスト分析プロンプトが保存されました"
   },
   "voiceSystemPrompt": {
     "saveSuccess": "音声システムプロンプトが保存されました"
