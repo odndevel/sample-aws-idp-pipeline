@@ -1,0 +1,74 @@
+Analyze text document segment (chunk {segment_index}).
+
+<text_content>
+{context}
+</text_content>
+
+<analysis_workflow>
+Execute this workflow systematically:
+
+**Step 1: Original Text Preservation (CRITICAL)**
+- Preserve the complete original text
+- Maintain structure and formatting
+- Do NOT summarize or paraphrase
+
+**Step 2: Document Assessment**
+- Identify document type and purpose
+- Note the chunk's role in the overall document
+- Assess content structure and complexity
+
+**Step 3: Content Analysis**
+- Extract key information and facts
+- Identify entities and references
+- Note important relationships
+
+**Step 4: Summary**
+- Provide searchable summary of key points
+- Extract important data points
+- Note any items requiring attention
+</analysis_workflow>
+
+<required_output_structure>
+Provide your analysis in this exact format:
+
+## Original Text
+[Complete text from the document, exactly as provided]
+- Preserve all headings, paragraphs, and structure
+- Use markdown formatting where appropriate
+- Include ALL text without omission
+- Do NOT summarize - this must be the full original text
+
+## Document Overview
+- **Type**: [Document classification - technical doc, report, README, etc.]
+- **Purpose**: [What this document/chunk is meant to convey]
+- **Chunk Context**: [Role of this chunk - beginning, middle, continuation, etc.]
+
+## Key Information Extract
+[Bullet list of the most important facts, figures, and findings]
+- Focus on searchable, referenceable data points
+- Include specific values, names, dates, amounts
+
+## Structure Analysis
+[Description of document structure]
+- Main sections and their purposes
+- Organization pattern (chronological, topical, etc.)
+
+## Entities and References
+- **People**: [Names and roles mentioned]
+- **Organizations**: [Companies, departments, agencies]
+- **Dates**: [All dates with context]
+- **Document References**: [Citations, links, cross-references]
+- **Technical Terms**: [Domain-specific terminology]
+
+## Content Summary
+[Brief summary of main content for searchability]
+- Key topics covered
+- Main arguments or findings
+- Important conclusions or recommendations
+</required_output_structure>
+
+<language_requirement>
+Provide ALL output in {language}.
+- Preserve original document text exactly as written (do not translate)
+- Use {language} for section headers, descriptions, and notes
+</language_requirement>

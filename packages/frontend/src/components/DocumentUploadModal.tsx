@@ -126,19 +126,19 @@ export default function DocumentUploadModal({
     e.stopPropagation();
     setIsDragging(false);
 
-    const droppedFiles = e.dataTransfer.files;
-    if (droppedFiles && droppedFiles.length > 0) {
-      setFiles((prev) => [...prev, ...Array.from(droppedFiles)]);
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    if (droppedFiles.length > 0) {
+      setFiles((prev) => [...prev, ...droppedFiles]);
     }
   }, []);
 
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const selectedFiles = e.target.files;
-      if (selectedFiles && selectedFiles.length > 0) {
-        setFiles((prev) => [...prev, ...Array.from(selectedFiles)]);
+      const fileArray = Array.from(e.target.files ?? []);
+      if (fileArray.length > 0) {
+        setFiles((prev) => [...prev, ...fileArray]);
       }
-      // Reset input
+      // Reset input (must happen after files are copied from the live FileList)
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -157,11 +157,23 @@ export default function DocumentUploadModal({
       created_at: new Date().toISOString(),
     });
 
-    // Generate filename from URL
+    // Generate filename: hostname + path hint + timestamp
     let filename = 'webpage';
     try {
       const url = new URL(webUrl);
-      filename = url.hostname.replace(/\./g, '_');
+      const host = url.hostname.replace(/^www\./, '').replace(/\./g, '_');
+      const pathHint = url.pathname
+        .replace(/\.[^/]+$/, '')
+        .split('/')
+        .filter(Boolean)
+        .slice(-2)
+        .join('_');
+      const ts = new Date()
+        .toISOString()
+        .slice(0, 16)
+        .replace(/[-:]/g, '')
+        .replace('T', '_');
+      filename = [host, pathHint, ts].filter(Boolean).join('_');
     } catch {
       // Use default filename if URL parsing fails
     }

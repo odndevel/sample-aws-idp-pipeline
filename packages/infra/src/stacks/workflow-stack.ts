@@ -80,6 +80,17 @@ export class WorkflowStack extends Stack {
       documentBucketName,
     );
 
+    // Agent Storage Bucket (for analysis prompts)
+    const agentStorageBucketName = ssm.StringParameter.valueForStringParameter(
+      this,
+      SSM_KEYS.AGENT_STORAGE_BUCKET_NAME,
+    );
+    const agentStorageBucket = s3.Bucket.fromBucketName(
+      this,
+      'AgentStorageBucket',
+      agentStorageBucketName,
+    );
+
     // Workflow Queue (from EventStack) - Step Functions trigger consumes from this
     const workflowQueueArn = ssm.StringParameter.valueForStringParameter(
       this,
@@ -304,8 +315,12 @@ export class WorkflowStack extends Stack {
         BEDROCK_MODEL_ID: models.analysis,
         BEDROCK_VIDEO_MODEL_ID: models.videoAnalysis,
         BUCKET_OWNER_ACCOUNT_ID: this.account,
+        AGENT_STORAGE_BUCKET_NAME: agentStorageBucketName,
       },
     });
+
+    // Grant segment-analyzer read access to agent storage bucket (for analysis prompts)
+    agentStorageBucket.grantRead(segmentAnalyzer);
 
     const analysisFinalizer = new lambda.Function(this, 'AnalysisFinalizer', {
       ...commonLambdaProps,

@@ -82,7 +82,7 @@ def load_system_prompt() -> str:
 
         response = s3_client.get_object(
             Bucket=bucket,
-            Key="__prompts/webcrawler_system_prompt.txt",
+            Key="__prompts/webcrawler/system_prompt.txt",
         )
         _system_prompt_cache = response["Body"].read().decode("utf-8")
         logger.info("Loaded system prompt from S3")

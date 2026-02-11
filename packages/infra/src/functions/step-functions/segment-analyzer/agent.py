@@ -4,7 +4,6 @@ from typing import Optional
 from urllib.parse import urlparse
 
 import boto3
-import yaml
 from strands import Agent
 from strands.models import BedrockModel, CacheConfig
 
@@ -33,13 +32,16 @@ class VisionReactAgent:
         self.current_end_timecode = ''
 
     def _load_prompt(self, prompt_name: str) -> str:
-        prompt_path = os.path.join(os.path.dirname(__file__), 'prompts', 'vision_react_agent.yaml')
+        bucket = os.environ.get('AGENT_STORAGE_BUCKET_NAME', '')
+        if not bucket:
+            print('AGENT_STORAGE_BUCKET_NAME not set')
+            return ''
+        s3_key = f'__prompts/analysis/{prompt_name}.txt'
         try:
-            with open(prompt_path, 'r', encoding='utf-8') as f:
-                prompts = yaml.safe_load(f)
-                return prompts.get(prompt_name, '')
+            resp = self.s3_client.get_object(Bucket=bucket, Key=s3_key)
+            return resp['Body'].read().decode('utf-8')
         except Exception as e:
-            print(f'Error loading prompt: {e}')
+            print(f'Failed to load prompt from S3 ({s3_key}): {e}')
             return ''
 
     def _download_image(self, image_uri: str) -> Optional[bytes]:

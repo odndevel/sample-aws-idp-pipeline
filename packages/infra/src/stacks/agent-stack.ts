@@ -74,96 +74,98 @@ export class AgentStack extends Stack {
       websocketMessageQueueArn,
     );
 
-    // Initialize default system prompt in S3 on first deployment
-    const systemPromptPath = path.resolve(
-      process.cwd(),
-      'src/prompts/system_prompt.txt',
-    );
-    const systemPromptContent = fs.readFileSync(systemPromptPath, 'utf-8');
-
-    new cr.AwsCustomResource(this, 'InitSystemPrompt', {
-      onCreate: {
-        service: 'S3',
-        action: 'putObject',
-        parameters: {
-          Bucket: agentStorageBucketName,
-          Key: '__prompts/system_prompt.txt',
-          Body: systemPromptContent,
-          ContentType: 'text/plain',
-        },
-        physicalResourceId: cr.PhysicalResourceId.of('system-prompt-init'),
+    // Initialize prompt files in S3 on first deployment
+    const promptSeeds: { id: string; localPath: string; s3Key: string }[] = [
+      {
+        id: 'InitChatSystemPrompt',
+        localPath: 'src/prompts/chat/system_prompt.txt',
+        s3Key: '__prompts/chat/system_prompt.txt',
       },
-      policy: cr.AwsCustomResourcePolicy.fromStatements([
-        new iam.PolicyStatement({
-          actions: ['s3:PutObject'],
-          resources: [`${agentStorageBucket.bucketArn}/__prompts/*`],
-        }),
-      ]),
-    });
-
-    // Initialize voice system prompt in S3 on first deployment
-    const voiceSystemPromptPath = path.resolve(
-      process.cwd(),
-      'src/prompts/voice_system_prompt.txt',
-    );
-    const voiceSystemPromptContent = fs.readFileSync(
-      voiceSystemPromptPath,
-      'utf-8',
-    );
-
-    new cr.AwsCustomResource(this, 'InitVoiceSystemPrompt', {
-      onCreate: {
-        service: 'S3',
-        action: 'putObject',
-        parameters: {
-          Bucket: agentStorageBucketName,
-          Key: '__prompts/voice_system_prompt.txt',
-          Body: voiceSystemPromptContent,
-          ContentType: 'text/plain',
-        },
-        physicalResourceId: cr.PhysicalResourceId.of(
-          'voice-system-prompt-init',
-        ),
+      {
+        id: 'InitVoiceSystemPrompt',
+        localPath: 'src/prompts/voice/system_prompt.txt',
+        s3Key: '__prompts/voice/system_prompt.txt',
       },
-      policy: cr.AwsCustomResourcePolicy.fromStatements([
-        new iam.PolicyStatement({
-          actions: ['s3:PutObject'],
-          resources: [`${agentStorageBucket.bucketArn}/__prompts/*`],
-        }),
-      ]),
-    });
-
-    // Initialize webcrawler system prompt in S3 on first deployment
-    const webcrawlerSystemPromptPath = path.resolve(
-      process.cwd(),
-      'src/prompts/webcrawler_system_prompt.txt',
-    );
-    const webcrawlerSystemPromptContent = fs.readFileSync(
-      webcrawlerSystemPromptPath,
-      'utf-8',
-    );
-
-    new cr.AwsCustomResource(this, 'InitWebCrawlerSystemPrompt', {
-      onCreate: {
-        service: 'S3',
-        action: 'putObject',
-        parameters: {
-          Bucket: agentStorageBucketName,
-          Key: '__prompts/webcrawler_system_prompt.txt',
-          Body: webcrawlerSystemPromptContent,
-          ContentType: 'text/plain',
-        },
-        physicalResourceId: cr.PhysicalResourceId.of(
-          'webcrawler-system-prompt-init',
-        ),
+      {
+        id: 'InitWebCrawlerSystemPrompt',
+        localPath: 'src/prompts/webcrawler/system_prompt.txt',
+        s3Key: '__prompts/webcrawler/system_prompt.txt',
       },
-      policy: cr.AwsCustomResourcePolicy.fromStatements([
-        new iam.PolicyStatement({
-          actions: ['s3:PutObject'],
-          resources: [`${agentStorageBucket.bucketArn}/__prompts/*`],
-        }),
-      ]),
-    });
+    ];
+
+    for (const seed of promptSeeds) {
+      const content = fs.readFileSync(
+        path.resolve(process.cwd(), seed.localPath),
+        'utf-8',
+      );
+      new cr.AwsCustomResource(this, seed.id, {
+        onCreate: {
+          service: 'S3',
+          action: 'putObject',
+          parameters: {
+            Bucket: agentStorageBucketName,
+            Key: seed.s3Key,
+            Body: content,
+            ContentType: 'text/plain',
+          },
+          physicalResourceId: cr.PhysicalResourceId.of(
+            `${seed.id.toLowerCase()}-init`,
+          ),
+        },
+        policy: cr.AwsCustomResourcePolicy.fromStatements([
+          new iam.PolicyStatement({
+            actions: ['s3:PutObject'],
+            resources: [`${agentStorageBucket.bucketArn}/__prompts/*`],
+          }),
+        ]),
+      });
+    }
+
+    // Initialize analysis prompts in S3 on first deployment
+    const analysisPromptFiles = [
+      'system_prompt',
+      'user_query',
+      'image_analysis_prompt',
+      'video_system_prompt',
+      'video_user_query',
+      'video_analysis_prompt',
+      'text_system_prompt',
+      'text_user_query',
+    ];
+
+    for (const promptFile of analysisPromptFiles) {
+      const promptPath = path.resolve(
+        process.cwd(),
+        `src/prompts/analysis/${promptFile}.txt`,
+      );
+      const promptContent = fs.readFileSync(promptPath, 'utf-8');
+      const resourceId = `InitAnalysis${promptFile
+        .split('_')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join('')}`;
+
+      new cr.AwsCustomResource(this, resourceId, {
+        onCreate: {
+          service: 'S3',
+          action: 'putObject',
+          parameters: {
+            Bucket: agentStorageBucketName,
+            Key: `__prompts/analysis/${promptFile}.txt`,
+            Body: promptContent,
+            ContentType: 'text/plain',
+          },
+          physicalResourceId: cr.PhysicalResourceId.of(
+            `analysis-${promptFile}-init`,
+          ),
+        },
+        policy: cr.AwsCustomResourcePolicy.fromStatements([
+          new iam.PolicyStatement({
+            actions: ['s3:PutObject'],
+            resources: [`${agentStorageBucket.bucketArn}/__prompts/*`],
+          }),
+        ]),
+      });
+    }
 
     const idpAgent = new IdpAgent(this, 'IdpAgent', {
       agentPath: path.resolve(process.cwd(), '../../packages/agents/idp-agent'),

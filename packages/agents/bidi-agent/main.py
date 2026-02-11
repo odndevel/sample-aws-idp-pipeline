@@ -206,7 +206,7 @@ def fetch_voice_system_prompt() -> str | None:
         return None
 
     s3 = boto3.client("s3")
-    key = "__prompts/voice_system_prompt.txt"
+    key = "__prompts/voice/system_prompt.txt"
 
     try:
         response = s3.get_object(

@@ -404,7 +404,14 @@
     "saveHint": "Cmd+Enter로 저장",
     "saveSuccess": "시스템 프롬프트가 저장되었습니다",
     "tabChat": "채팅",
-    "tabVoice": "음성"
+    "tabVoice": "음성",
+    "tabAnalysis": "분석",
+    "tabAnalysisDoc": "문서",
+    "tabAnalysisVideo": "영상",
+    "tabAnalysisText": "텍스트",
+    "analysisDocSaveSuccess": "문서 분석 프롬프트가 저장되었습니다",
+    "analysisVideoSaveSuccess": "영상 분석 프롬프트가 저장되었습니다",
+    "analysisTextSaveSuccess": "텍스트 분석 프롬프트가 저장되었습니다"
   },
   "voiceSystemPrompt": {
     "saveSuccess": "음성 시스템 프롬프트가 저장되었습니다"
