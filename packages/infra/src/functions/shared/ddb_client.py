@@ -913,7 +913,7 @@ def get_project_ocr_settings(project_id: str) -> dict:
     )
     item = response.get('Item')
     defaults = {
-        'ocr_model': 'paddleocr-vl',
+        'ocr_model': 'pp-ocrv5',
         'ocr_options': {}
     }
     if item:

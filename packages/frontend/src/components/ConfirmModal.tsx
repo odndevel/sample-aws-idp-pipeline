@@ -85,13 +85,13 @@ export default function ConfirmModal({
       className={`fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200 ${
         transparentBackdrop
           ? ''
-          : 'bg-black/40 dark:bg-black/60 backdrop-blur-sm'
+          : 'bg-black/55 dark:bg-black/65 backdrop-blur-md'
       }`}
       onClick={handleBackdropClick}
     >
       <div
         ref={modalRef}
-        className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl animate-in zoom-in-95 duration-200 overflow-hidden"
+        className="confirm-modal-container relative w-full max-w-md dark:bg-[#1a1d2e] rounded-2xl animate-in zoom-in-95 duration-200 overflow-hidden"
         style={{
           border: `1px solid ${styles.borderColor}`,
           boxShadow: `0 0 40px ${styles.glowColor}, 0 25px 50px -12px rgba(0, 0, 0, 0.15)`,
@@ -132,7 +132,7 @@ export default function ConfirmModal({
             <button
               onClick={onClose}
               disabled={loading}
-              className="flex-1 px-5 py-3 text-sm font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 rounded-xl transition-all disabled:opacity-50"
+              className="flex-1 px-5 py-3 text-sm font-medium text-slate-700 dark:text-slate-300 bg-transparent dark:bg-slate-800 hover:bg-white/30 dark:hover:bg-slate-700 border border-black/10 dark:border-slate-700 hover:border-black/15 dark:hover:border-slate-600 rounded-xl transition-all disabled:opacity-50"
             >
               {cancelText || t('common.cancel')}
             </button>

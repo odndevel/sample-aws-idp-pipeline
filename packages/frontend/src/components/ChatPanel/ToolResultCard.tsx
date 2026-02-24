@@ -74,21 +74,21 @@ export default function ToolResultCard({
   const Icon = entry.icon;
 
   return (
-    <div className="glass-panel relative overflow-hidden rounded-2xl bg-white border border-slate-200 shadow-sm">
-      {/* Decorative background elements - dark mode only */}
-      <div className="hidden dark:block absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-violet-400/10 to-transparent rounded-full -translate-y-1/2 translate-x-1/2" />
-      <div className="hidden dark:block absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-fuchsia-400/10 to-transparent rounded-full translate-y-1/2 -translate-x-1/2" />
+    <div className="tool-result-card glass-panel relative overflow-hidden rounded-2xl border border-black/[0.08] dark:border-white/[0.06] shadow-sm">
+      {/* Decorative background elements */}
+      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-violet-400/[0.06] dark:from-violet-400/10 to-transparent rounded-full -translate-y-1/2 translate-x-1/2" />
+      <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-fuchsia-400/[0.06] dark:from-fuchsia-400/10 to-transparent rounded-full translate-y-1/2 -translate-x-1/2" />
 
       {/* Header */}
-      <div className="tool-result-header relative flex items-center gap-2 px-4 py-2.5 border-b border-slate-200 dark:border-white/[0.06]">
+      <div className="tool-result-header relative flex items-center gap-2 px-4 py-2.5 border-b border-black/[0.06] dark:border-white/[0.06]">
         <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 shadow-sm">
           <Icon className="w-3.5 h-3.5 text-white" />
         </div>
-        <span className="text-xs font-semibold text-slate-600 dark:text-violet-300">
+        <span className="text-xs font-semibold text-[#475569] dark:text-violet-300">
           {t(entry.resultLabel, entry.resultLabel)}
         </span>
         <div className="flex-1" />
-        <Sparkles className="w-4 h-4 text-slate-300 dark:text-violet-400/50" />
+        <Sparkles className="w-4 h-4 text-violet-300 dark:text-violet-400/50" />
       </div>
 
       {/* Content */}
@@ -342,8 +342,8 @@ function CollapsibleSources({
                 disabled={!!loadingSourceKey}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors text-left ${
                   isLoading
-                    ? 'border-blue-300 dark:border-blue-500/60 bg-blue-50 dark:bg-blue-900/30'
-                    : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                    ? 'border-blue-300/60 dark:border-blue-500/60 bg-blue-50/50 dark:bg-blue-900/30'
+                    : 'border-black/[0.08] dark:border-white/[0.06] bg-white/50 dark:bg-slate-800/50 hover:bg-white/70 dark:hover:bg-slate-700/50'
                 } disabled:cursor-wait`}
               >
                 <div className="flex items-center justify-center w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/40 flex-shrink-0">
@@ -424,7 +424,7 @@ function WebSearchSection({
               href={result.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full flex items-start gap-3 px-3 py-2.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left"
+              className="w-full flex items-start gap-3 px-3 py-2.5 rounded-lg border border-black/[0.08] dark:border-white/[0.06] bg-white/50 dark:bg-slate-800/50 hover:bg-white/70 dark:hover:bg-slate-700/50 transition-colors text-left"
             >
               <div className="flex items-center justify-center w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/40 flex-shrink-0 mt-0.5">
                 <Globe className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
@@ -484,7 +484,7 @@ function FetchPreviewSection({
         </span>
       </button>
       {isExpanded && (
-        <div className="mt-2 px-3 py-2.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800/50">
+        <div className="mt-2 px-3 py-2.5 rounded-lg border border-black/[0.08] dark:border-white/[0.06] bg-white/50 dark:bg-slate-800/50">
           <p className="text-xs text-slate-500 dark:text-slate-400 whitespace-pre-wrap">
             {preview.snippet}
           </p>

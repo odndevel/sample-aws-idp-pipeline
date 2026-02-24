@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Info, Hash, Type, AlignLeft, Globe, Palette } from 'lucide-react';
-import OcrSettingsForm, { type OcrSettings } from './OcrSettingsForm';
 import { useModal } from '../hooks/useModal';
 
 export interface Project {
@@ -13,8 +12,6 @@ export interface Project {
   language: string | null;
   color: number | null;
   document_prompt?: string | null;
-  ocr_model?: string | null;
-  ocr_options?: Record<string, unknown> | null;
   started_at?: string;
   created_at?: string;
   updated_at?: string | null;
@@ -126,11 +123,11 @@ interface FormData {
   color: number;
 }
 
-interface AdvancedSettings extends OcrSettings {
+interface AdvancedSettings {
   document_prompt: string;
 }
 
-type SectionKey = 'basic' | 'ocr' | 'instructions';
+type SectionKey = 'basic' | 'instructions';
 
 interface ProjectSettingsModalProps {
   project: Project | null;
@@ -142,8 +139,6 @@ interface ProjectSettingsModalProps {
     language: string;
     color: number;
     document_prompt: string;
-    ocr_model: string;
-    ocr_options: Record<string, unknown>;
   }) => Promise<void>;
   isCreating?: boolean;
 }
@@ -167,11 +162,6 @@ export default function ProjectSettingsModal({
   });
 
   const [advancedSettings, setAdvancedSettings] = useState<AdvancedSettings>({
-    ocr_model: 'paddleocr-vl',
-    ocr_lang: '',
-    use_doc_orientation_classify: false,
-    use_doc_unwarping: false,
-    use_textline_orientation: false,
     document_prompt: '',
   });
 
@@ -183,15 +173,7 @@ export default function ProjectSettingsModal({
         language: project.language || 'en',
         color: project.color ?? 0,
       });
-      const ocrOptions = project.ocr_options || {};
       setAdvancedSettings({
-        ocr_model: project.ocr_model || 'paddleocr-vl',
-        ocr_lang: (ocrOptions.lang as string) || '',
-        use_doc_orientation_classify:
-          (ocrOptions.use_doc_orientation_classify as boolean) || false,
-        use_doc_unwarping: (ocrOptions.use_doc_unwarping as boolean) || false,
-        use_textline_orientation:
-          (ocrOptions.use_textline_orientation as boolean) || false,
         document_prompt: project.document_prompt || '',
       });
     } else {
@@ -202,11 +184,6 @@ export default function ProjectSettingsModal({
         color: 0,
       });
       setAdvancedSettings({
-        ocr_model: 'paddleocr-vl',
-        ocr_lang: '',
-        use_doc_orientation_classify: false,
-        use_doc_unwarping: false,
-        use_textline_orientation: false,
         document_prompt: '',
       });
     }
@@ -224,15 +201,6 @@ export default function ProjectSettingsModal({
         language: formData.language,
         color: formData.color,
         document_prompt: advancedSettings.document_prompt,
-        ocr_model: advancedSettings.ocr_model,
-        ocr_options: {
-          lang: advancedSettings.ocr_lang || undefined,
-          use_doc_orientation_classify:
-            advancedSettings.use_doc_orientation_classify || undefined,
-          use_doc_unwarping: advancedSettings.use_doc_unwarping || undefined,
-          use_textline_orientation:
-            advancedSettings.use_textline_orientation || undefined,
-        },
       });
       onClose();
     } catch (error) {
@@ -270,31 +238,6 @@ export default function ProjectSettingsModal({
         ),
       },
       {
-        key: 'ocr',
-        label: t('projectSettings.ocrSettings'),
-        icon: (
-          <svg
-            className="w-4 h-4 flex-shrink-0"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-            />
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-            />
-          </svg>
-        ),
-      },
-      {
         key: 'instructions',
         label: t('projectSettings.analysisInstructions'),
         icon: (
@@ -322,7 +265,7 @@ export default function ProjectSettingsModal({
         style={
           {
             width: '740px',
-            height: '760px',
+            height: '680px',
             '--modal-glow-color': modalColor.border,
           } as React.CSSProperties
         }
@@ -373,6 +316,7 @@ export default function ProjectSettingsModal({
                     {t('projects.projectName')}
                   </label>
                   <input
+                    data-modal-input
                     type="text"
                     value={formData.name}
                     onChange={(e) =>
@@ -389,6 +333,7 @@ export default function ProjectSettingsModal({
                     {t('projects.description')}
                   </label>
                   <textarea
+                    data-modal-input
                     value={formData.description}
                     onChange={(e) =>
                       setFormData({
@@ -414,6 +359,7 @@ export default function ProjectSettingsModal({
                     </span>
                   </label>
                   <select
+                    data-modal-input
                     value={formData.language}
                     onChange={(e) =>
                       setFormData({ ...formData, language: e.target.value })
@@ -452,21 +398,6 @@ export default function ProjectSettingsModal({
               </div>
             )}
 
-            {activeSection === 'ocr' && (
-              <div className="bento-modal-form">
-                <OcrSettingsForm
-                  settings={advancedSettings}
-                  onChange={(ocrSettings) =>
-                    setAdvancedSettings({
-                      ...advancedSettings,
-                      ...ocrSettings,
-                    })
-                  }
-                  variant="bento"
-                />
-              </div>
-            )}
-
             {activeSection === 'instructions' && (
               <div className="bento-modal-form">
                 <div className="bento-form-group">
@@ -474,6 +405,7 @@ export default function ProjectSettingsModal({
                     {t('analysis.title')}
                   </label>
                   <textarea
+                    data-modal-input
                     value={advancedSettings.document_prompt}
                     onChange={(e) =>
                       setAdvancedSettings({

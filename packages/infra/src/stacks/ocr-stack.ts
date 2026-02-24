@@ -1,4 +1,4 @@
-import { Duration, Stack, StackProps } from 'aws-cdk-lib';
+import { Duration, Size, Stack, StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
@@ -14,6 +14,7 @@ import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
 import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
+import { Platform } from 'aws-cdk-lib/aws-ecr-assets';
 import { SSM_KEYS } from ':idp-v2/common-constructs';
 import {
   PaddleOcrModelBuilder,
@@ -164,7 +165,42 @@ export class OcrStack extends Stack {
     });
 
     // ========================================
-    // OCR Invoker Lambda (just invoke, no polling)
+    // OCR Lambda Processor (pp-ocrv5, pp-structurev3 - CPU-only)
+    // ========================================
+
+    const ocrLambdaProcessor = new lambda.DockerImageFunction(
+      this,
+      'OcrLambdaProcessor',
+      {
+        functionName: 'idp-v2-ocr-lambda-processor',
+        code: lambda.DockerImageCode.fromImageAsset(
+          path.join(__dirname, '../functions'),
+          {
+            file: 'preprocessing/ocr-lambda-processor/Dockerfile',
+            platform: Platform.LINUX_AMD64,
+          },
+        ),
+        memorySize: 10240,
+        timeout: Duration.minutes(15),
+        ephemeralStorageSize: Size.gibibytes(2),
+        environment: {
+          BACKEND_TABLE_NAME: backendTableName,
+          OUTPUT_BUCKET: documentBucketName,
+          MODEL_CACHE_BUCKET: modelArtifactsBucketName,
+          MODEL_CACHE_PREFIX: 'paddleocr/models',
+        },
+      },
+    );
+
+    // Permissions: DDB read/write, S3 read/write for document + model buckets
+    backendTable.grantReadWriteData(ocrLambdaProcessor);
+    documentBucket.grantRead(ocrLambdaProcessor);
+    documentBucket.grantPut(ocrLambdaProcessor);
+    modelArtifactsBucket.grantRead(ocrLambdaProcessor);
+    modelArtifactsBucket.grantPut(ocrLambdaProcessor);
+
+    // ========================================
+    // OCR Invoker Lambda (routes to Lambda or SageMaker)
     // ========================================
 
     const ocrInvoker = new lambda.Function(this, 'OcrInvoker', {
@@ -181,6 +217,7 @@ export class OcrStack extends Stack {
         BACKEND_TABLE_NAME: backendTableName,
         OUTPUT_BUCKET: documentBucketName,
         SAGEMAKER_ENDPOINT_NAME: this.endpointName,
+        OCR_LAMBDA_FUNCTION_NAME: ocrLambdaProcessor.functionName,
       },
     });
 
@@ -188,6 +225,7 @@ export class OcrStack extends Stack {
     backendTable.grantReadWriteData(ocrInvoker);
     documentBucket.grantRead(ocrInvoker);
     documentBucket.grantPut(ocrInvoker);
+    ocrLambdaProcessor.grantInvoke(ocrInvoker);
 
     // SageMaker permissions (for async inference and scale-out)
     ocrInvoker.addToRolePolicy(

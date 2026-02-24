@@ -7,15 +7,8 @@ import {
   Search,
   Settings2,
   Sparkles,
-  X,
 } from 'lucide-react';
 import type { Agent, BidiModelType } from './types';
-
-const VOICE_MODELS: { key: BidiModelType; label: string }[] = [
-  { key: 'nova_sonic', label: 'Nova Sonic' },
-  { key: 'gemini', label: 'Gemini' },
-  { key: 'openai', label: 'OpenAI' },
-];
 
 interface ToolsMenuVoiceChat {
   available?: boolean;
@@ -61,10 +54,9 @@ export default function ToolsMenuPopover({
 }: ToolsMenuPopoverProps) {
   const { t } = useTranslation();
   const [showAgentSubmenu, setShowAgentSubmenu] = useState(false);
-  const [showVoiceModelSubmenu, setShowVoiceModelSubmenu] = useState(false);
 
   return (
-    <div className="glass-panel absolute bottom-full left-0 mb-2 w-56 bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/30 rounded-xl shadow-lg z-50 py-1">
+    <div className="absolute bottom-full left-0 mb-2 w-56 bg-[#e4eaf4] dark:bg-slate-800 border border-white/60 dark:border-white/30 rounded-xl shadow-lg z-50 py-1">
       {/* Research toggle */}
       {research.available && (
         <button
@@ -105,117 +97,60 @@ export default function ToolsMenuPopover({
         </button>
       )}
 
-      {/* Voice Chat submenu */}
+      {/* Voice Chat toggle */}
       {voiceChat.available && voiceChat.onModelSelect && (
-        <div className="relative">
-          <button
-            type="button"
-            disabled={!!selectedAgent || research.mode}
-            onClick={() => {
-              setShowVoiceModelSubmenu((v) => !v);
-              setShowAgentSubmenu(false);
-            }}
-            className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
-              selectedAgent || research.mode
-                ? 'opacity-30 cursor-not-allowed'
-                : 'text-slate-700 dark:text-slate-300 glass-menu-item'
-            }`}
+        <button
+          type="button"
+          disabled={!!selectedAgent || research.mode}
+          onClick={() => {
+            if (voiceChat.mode) {
+              voiceChat.onDisable();
+            } else {
+              if (selectedAgent && onAgentSelect) {
+                onAgentSelect(null);
+              }
+              if (research.mode) {
+                research.setMode(false);
+              }
+              voiceChat.onModelSelect?.('nova_sonic');
+              voiceChat.setMode(true);
+            }
+            onClose();
+          }}
+          className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+            selectedAgent || research.mode
+              ? 'opacity-30 cursor-not-allowed'
+              : 'glass-menu-item'
+          }`}
+        >
+          <Mic
+            className={`w-4 h-4 ${voiceChat.mode ? 'text-purple-500' : 'text-slate-500 dark:text-slate-400'}`}
+          />
+          <span
+            className={
+              voiceChat.mode
+                ? 'text-purple-600 dark:text-purple-400'
+                : 'text-slate-700 dark:text-slate-300'
+            }
           >
-            <Mic
-              className={`w-4 h-4 ${voiceChat.mode ? 'text-purple-500' : 'text-slate-500 dark:text-slate-400'}`}
-            />
-            <span
-              className={`flex-1 text-left ${
-                voiceChat.mode ? 'text-purple-600 dark:text-purple-400' : ''
-              }`}
-            >
-              {t('voiceChat.title')}
-            </span>
-            <ChevronRight className="w-4 h-4 text-slate-400" />
-          </button>
-
-          {/* Voice Model submenu panel */}
-          {showVoiceModelSubmenu && (
-            <div className="glass-panel absolute left-full bottom-0 ml-1 w-52 bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/30 rounded-xl shadow-lg z-[60] py-1">
-              {VOICE_MODELS.map((model) => (
-                <button
-                  key={model.key}
-                  type="button"
-                  onClick={() => {
-                    if (
-                      voiceChat.mode &&
-                      voiceChat.selectedModel === model.key
-                    ) {
-                      voiceChat.onDisable();
-                    } else {
-                      if (selectedAgent && onAgentSelect) {
-                        onAgentSelect(null);
-                      }
-                      if (research.mode) {
-                        research.setMode(false);
-                      }
-                      voiceChat.onModelSelect?.(model.key);
-                      if (!voiceChat.mode) {
-                        voiceChat.setMode(true);
-                      }
-                    }
-                    onClose();
-                    setShowVoiceModelSubmenu(false);
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors glass-menu-item"
-                >
-                  <Mic
-                    className={`w-4 h-4 ${voiceChat.mode && voiceChat.selectedModel === model.key ? 'text-purple-500' : 'text-slate-400 dark:text-slate-500'}`}
-                  />
-                  <span
-                    className={`flex-1 text-left ${
-                      voiceChat.mode && voiceChat.selectedModel === model.key
-                        ? 'text-purple-600 dark:text-purple-400'
-                        : 'text-slate-700 dark:text-slate-300'
-                    }`}
-                  >
-                    {model.label}
-                  </span>
-                  {voiceChat.mode && voiceChat.selectedModel === model.key && (
-                    <Check className="w-4 h-4 text-purple-500 ml-auto" />
-                  )}
-                </button>
-              ))}
-
-              {/* Disable option */}
-              {voiceChat.mode && (
-                <>
-                  <div className="my-1 border-t border-slate-200 dark:border-white/30" />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      voiceChat.onDisable();
-                      onClose();
-                      setShowVoiceModelSubmenu(false);
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 glass-menu-item transition-colors"
-                  >
-                    <X className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-                    <span>{t('voiceChat.disable', 'Disable Voice Chat')}</span>
-                  </button>
-                </>
-              )}
-            </div>
+            {t('voiceChat.title')}
+          </span>
+          {voiceChat.mode && (
+            <Check className="w-4 h-4 text-purple-500 ml-auto" />
           )}
-        </div>
+        </button>
       )}
 
       {/* Agent submenu */}
       {onAgentSelect && (
         <>
-          <div className="my-1 border-t border-slate-200 dark:border-white/30" />
+          <div className="my-1 border-t border-black/[0.06] dark:border-white/30" />
           <div className="relative">
             <button
               type="button"
               disabled={research.mode || voiceChat.mode}
               onClick={() => {
                 setShowAgentSubmenu((v) => !v);
-                setShowVoiceModelSubmenu(false);
               }}
               className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
                 research.mode || voiceChat.mode
@@ -230,7 +165,7 @@ export default function ToolsMenuPopover({
 
             {/* Agent submenu panel */}
             {showAgentSubmenu && (
-              <div className="glass-panel absolute left-full bottom-0 ml-1 w-52 max-h-72 overflow-y-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/30 rounded-xl shadow-lg z-[60] py-1">
+              <div className="absolute left-full bottom-0 ml-1 w-52 max-h-72 overflow-y-auto bg-[#e4eaf4] dark:bg-slate-800 border border-white/60 dark:border-white/30 rounded-xl shadow-lg z-[60] py-1">
                 {/* Default agent */}
                 <button
                   type="button"
@@ -312,7 +247,7 @@ export default function ToolsMenuPopover({
                 })}
 
                 {/* Manage agents */}
-                <div className="my-1 border-t border-slate-200 dark:border-white/30" />
+                <div className="my-1 border-t border-black/[0.06] dark:border-white/30" />
                 <button
                   type="button"
                   onClick={() => {

@@ -513,17 +513,26 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
       case 'tool_use': {
         const toolName = event.name ?? '';
         toolUseNameStackRef.current.push(toolName);
+
+        // Hide internal tools from the UI
+        const HIDDEN_TOOLS = ['file_read', 'file_write', 'file_list'];
+        if (HIDDEN_TOOLS.includes(toolName)) break;
+
         setStreamingBlocks((prev) => {
-          const alreadyExists = prev.some(
-            (b) => b.type === 'tool_use' && b.name === toolName,
-          );
-          if (alreadyExists) return prev;
+          // Skip if same tool already shown as pending (no duplicate indicators)
+          if (prev.some((b) => b.type === 'tool_use' && b.name === toolName))
+            return prev;
           return [...prev, { type: 'tool_use', name: toolName }];
         });
         break;
       }
       case 'tool_result': {
-        const capturedToolName = toolUseNameStackRef.current.pop() || '';
+        // FIFO: first tool_use gets the first tool_result
+        const capturedToolName = toolUseNameStackRef.current.shift() || '';
+
+        // Skip results from hidden internal tools
+        const HIDDEN_RESULT_TOOLS = ['file_read', 'file_write', 'file_list'];
+        if (HIDDEN_RESULT_TOOLS.includes(capturedToolName)) break;
 
         if (!Array.isArray(event.content)) break;
         const contents = event.content as ToolResultContent[];
@@ -609,16 +618,20 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
         }
 
         setStreamingBlocks((prev) => {
-          let lastToolIdx = -1;
-          for (let i = prev.length - 1; i >= 0; i--) {
+          // FIFO: replace the first pending tool_use indicator
+          let firstToolIdx = -1;
+          for (let i = 0; i < prev.length; i++) {
             if (prev[i].type === 'tool_use') {
-              lastToolIdx = i;
+              firstToolIdx = i;
               break;
             }
           }
           const withoutToolUse =
-            lastToolIdx >= 0
-              ? [...prev.slice(0, lastToolIdx), ...prev.slice(lastToolIdx + 1)]
+            firstToolIdx >= 0
+              ? [
+                  ...prev.slice(0, firstToolIdx),
+                  ...prev.slice(firstToolIdx + 1),
+                ]
               : prev;
           return [
             ...withoutToolUse,

@@ -8,6 +8,7 @@ interface UseVoiceChatManagerOptions {
   projectId: string;
   userId: string;
   selectedVoiceModel: BidiModelType;
+  setSelectedVoiceModel: React.Dispatch<React.SetStateAction<BidiModelType>>;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   setStreamingBlocks: React.Dispatch<
     React.SetStateAction<
@@ -21,6 +22,7 @@ export function useVoiceChatManager({
   projectId,
   userId,
   selectedVoiceModel,
+  setSelectedVoiceModel,
   setMessages,
   setStreamingBlocks,
 }: UseVoiceChatManagerOptions) {
@@ -57,6 +59,8 @@ export function useVoiceChatManager({
         }
       }
 
+      setSelectedVoiceModel(modelType);
+
       // If already connected with a different model, disconnect and reconnect
       if (voiceChat.state.status === 'connected') {
         voiceChat.disconnect();
@@ -70,7 +74,7 @@ export function useVoiceChatManager({
         }, 500);
       }
     },
-    [voiceChat],
+    [voiceChat, setSelectedVoiceModel],
   );
 
   // Handle Voice Chat transcripts as chat messages

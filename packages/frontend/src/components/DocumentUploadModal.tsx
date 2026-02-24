@@ -7,12 +7,52 @@ import {
   Loader2,
   Globe,
   FileUp,
-  ChevronDown,
-  ChevronUp,
+  Settings,
+  Layers,
+  BrainCircuit,
+  Link,
+  MessageSquareText,
+  Info,
+  AlertTriangle,
 } from 'lucide-react';
-import OcrSettingsForm, { type OcrSettings } from './OcrSettingsForm';
+import * as pdfjsLib from 'pdfjs-dist';
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import OcrSettingsForm, {
+  type OcrSettings,
+  OCR_MODELS,
+} from './OcrSettingsForm';
 import { LANGUAGES } from './ProjectSettingsModal';
 import { useModal } from '../hooks/useModal';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+
+// ISO 639-1 project language -> PaddleOCR language code
+const PROJECT_LANG_TO_OCR_LANG: Record<string, string> = {
+  ko: 'korean',
+  ja: 'japan',
+  zh: 'ch',
+  'zh-tw': 'chinese_cht',
+  en: 'en',
+  fr: 'french',
+  de: 'german',
+  it: 'it',
+  es: 'es',
+  pt: 'pt',
+  ru: 'ru',
+  ar: 'ar',
+  hi: 'hi',
+  vi: 'vi',
+  th: 'th',
+  ms: 'ms',
+  id: 'id',
+  tr: 'tr',
+  pl: 'pl',
+  nl: 'nl',
+  sv: 'sv',
+  no: 'no',
+  da: 'da',
+  fi: 'fi',
+};
 
 type UploadTab = 'file' | 'web';
 
@@ -30,8 +70,6 @@ interface DocumentUploadModalProps {
   isOpen: boolean;
   uploading: boolean;
   projectLanguage?: string;
-  projectOcrModel?: string;
-  projectOcrOptions?: Record<string, unknown>;
   projectDocumentPrompt?: string;
   onClose: () => void;
   onUpload: (
@@ -44,8 +82,6 @@ export default function DocumentUploadModal({
   isOpen,
   uploading,
   projectLanguage,
-  projectOcrModel,
-  projectOcrOptions,
   projectDocumentPrompt,
   onClose,
   onUpload,
@@ -54,14 +90,67 @@ export default function DocumentUploadModal({
   const [activeTab, setActiveTab] = useState<UploadTab>('file');
   const [files, setFiles] = useState<File[]>([]);
   const [useBda, setUseBda] = useState(false);
-  const [useOcr, setUseOcr] = useState(false);
-  const [useTranscribe, setUseTranscribe] = useState(false);
+  const [useOcr, setUseOcr] = useState(true);
+  const [useTranscribe, setUseTranscribe] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [showBda, setShowBda] = useState(false);
   const [showOcr, setShowOcr] = useState(false);
-  const [showTranscribe, setShowTranscribe] = useState(false);
   const [language, setLanguage] = useState(projectLanguage || 'en');
+
+  const [pdfPageCounts, setPdfPageCounts] = useState<Map<string, number>>(
+    new Map(),
+  );
+
+  // Count pages for PDF files
+  useEffect(() => {
+    const pdfFiles = files.filter((f) => f.type === 'application/pdf');
+
+    // Remove entries for files no longer in the list
+    setPdfPageCounts((prev) => {
+      const currentNames = new Set(pdfFiles.map((f) => f.name));
+      const next = new Map(prev);
+      let changed = false;
+      for (const key of next.keys()) {
+        if (!currentNames.has(key)) {
+          next.delete(key);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+
+    // Count pages for new PDF files
+    let cancelled = false;
+    const countPages = async (file: File) => {
+      try {
+        const data = await file.arrayBuffer();
+        const pdfDoc = await pdfjsLib.getDocument({ data }).promise;
+        if (!cancelled) {
+          setPdfPageCounts((prev) => {
+            const next = new Map(prev);
+            next.set(file.name, pdfDoc.numPages);
+            return next;
+          });
+        }
+        pdfDoc.destroy();
+      } catch {
+        // ignore
+      }
+    };
+    for (const file of pdfFiles) {
+      if (pdfPageCounts.has(file.name)) continue;
+      countPages(file);
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [files]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const maxPdfPages = useMemo(() => {
+    if (pdfPageCounts.size === 0) return 0;
+    return Math.max(...pdfPageCounts.values());
+  }, [pdfPageCounts]);
 
   const hasOcrEligibleFiles = useMemo(
     () =>
@@ -79,38 +168,23 @@ export default function DocumentUploadModal({
       ),
     [files],
   );
-  const [showPrompt, setShowPrompt] = useState(false);
 
-  // OCR settings - initialized from project defaults
+  // OCR settings - default to pp-ocrv5 with language derived from project
   const [ocrSettings, setOcrSettings] = useState<OcrSettings>(() => ({
-    ocr_model: projectOcrModel || 'paddleocr-vl',
-    ocr_lang: (projectOcrOptions?.lang as string) || '',
-    use_doc_orientation_classify:
-      (projectOcrOptions?.use_doc_orientation_classify as boolean) || false,
-    use_doc_unwarping:
-      (projectOcrOptions?.use_doc_unwarping as boolean) || false,
-    use_textline_orientation:
-      (projectOcrOptions?.use_textline_orientation as boolean) || false,
+    ocr_model: 'pp-ocrv5',
+    ocr_lang: PROJECT_LANG_TO_OCR_LANG[projectLanguage || 'en'] || 'en',
+    use_doc_orientation_classify: false,
+    use_doc_unwarping: false,
+    use_textline_orientation: false,
   }));
+
+  const showVlWarning =
+    ocrSettings.ocr_model === 'paddleocr-vl' && useOcr && maxPdfPages >= 20;
 
   // Document prompt - initialized from project default
   const [documentPrompt, setDocumentPrompt] = useState(
     projectDocumentPrompt || '',
   );
-
-  // Sync state when project settings change
-  useEffect(() => {
-    setOcrSettings({
-      ocr_model: projectOcrModel || 'paddleocr-vl',
-      ocr_lang: (projectOcrOptions?.lang as string) || '',
-      use_doc_orientation_classify:
-        (projectOcrOptions?.use_doc_orientation_classify as boolean) || false,
-      use_doc_unwarping:
-        (projectOcrOptions?.use_doc_unwarping as boolean) || false,
-      use_textline_orientation:
-        (projectOcrOptions?.use_textline_orientation as boolean) || false,
-    });
-  }, [projectOcrModel, projectOcrOptions]);
 
   useEffect(() => {
     setDocumentPrompt(projectDocumentPrompt || '');
@@ -213,7 +287,6 @@ export default function DocumentUploadModal({
     };
 
     if (useOcr) {
-      // Build ocr_options from OcrSettings
       const ocrOpts: Record<string, unknown> = {};
       if (ocrSettings.ocr_lang) ocrOpts.lang = ocrSettings.ocr_lang;
       if (ocrSettings.use_doc_orientation_classify)
@@ -237,13 +310,11 @@ export default function DocumentUploadModal({
       if (files.length === 0) return;
       await onUpload(files, buildOptions());
       setFiles([]);
+      setPdfPageCounts(new Map());
       setUseBda(false);
-      setUseOcr(false);
-      setUseTranscribe(false);
-      setShowBda(false);
+      setUseOcr(true);
+      setUseTranscribe(true);
       setShowOcr(false);
-      setShowTranscribe(false);
-      setShowPrompt(false);
     } else {
       if (!webUrl) return;
       const webreqFile = createWebreqFile();
@@ -264,39 +335,28 @@ export default function DocumentUploadModal({
   const handleClose = useCallback(() => {
     if (!uploading) {
       setFiles([]);
+      setPdfPageCounts(new Map());
       setUseBda(false);
-      setUseOcr(false);
-      setUseTranscribe(false);
-      setShowBda(false);
+      setUseOcr(true);
+      setUseTranscribe(true);
       setShowOcr(false);
-      setShowTranscribe(false);
-      setShowPrompt(false);
       setWebUrl('');
       setWebInstruction('');
       setActiveTab('file');
-      // Reset to project defaults
+      const defaultLang =
+        PROJECT_LANG_TO_OCR_LANG[projectLanguage || 'en'] || 'en';
       setOcrSettings({
-        ocr_model: projectOcrModel || 'paddleocr-vl',
-        ocr_lang: (projectOcrOptions?.lang as string) || '',
-        use_doc_orientation_classify:
-          (projectOcrOptions?.use_doc_orientation_classify as boolean) || false,
-        use_doc_unwarping:
-          (projectOcrOptions?.use_doc_unwarping as boolean) || false,
-        use_textline_orientation:
-          (projectOcrOptions?.use_textline_orientation as boolean) || false,
+        ocr_model: 'pp-ocrv5',
+        ocr_lang: defaultLang,
+        use_doc_orientation_classify: false,
+        use_doc_unwarping: false,
+        use_textline_orientation: false,
       });
       setDocumentPrompt(projectDocumentPrompt || '');
       setLanguage(projectLanguage || 'en');
       onClose();
     }
-  }, [
-    uploading,
-    onClose,
-    projectLanguage,
-    projectOcrModel,
-    projectOcrOptions,
-    projectDocumentPrompt,
-  ]);
+  }, [uploading, onClose, projectLanguage, projectDocumentPrompt]);
 
   useModal({ isOpen, onClose: handleClose, disableClose: uploading });
 
@@ -309,42 +369,50 @@ export default function DocumentUploadModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/55 dark:bg-black/65 backdrop-blur-md"
         onClick={handleClose}
       />
 
       {/* Modal */}
-      <div
-        className="relative bg-white dark:bg-slate-900 rounded-2xl w-full max-w-lg mx-4 min-h-[50vh] max-h-[90vh] flex flex-col"
-        style={{
-          border: '1px solid rgba(59, 130, 246, 0.3)',
-          boxShadow:
-            '0 0 40px rgba(59, 130, 246, 0.08), 0 25px 50px -12px rgba(0, 0, 0, 0.15)',
-        }}
-      >
+      <div className="upload-modal-container relative rounded-2xl w-full max-w-lg mx-4 min-h-[50vh] max-h-[90vh] flex flex-col overflow-hidden border border-white/70 dark:border-indigo-500/20 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.15)] dark:shadow-[0_0_80px_rgba(99,102,241,0.08),0_25px_50px_-12px_rgba(0,0,0,0.5)]">
+        {/* Gradient glow (light) */}
+        <div
+          className="dark:hidden absolute inset-0 pointer-events-none rounded-2xl"
+          style={{
+            background:
+              'radial-gradient(ellipse 60% 50% at 80% 0%, rgba(99, 140, 241, 0.1) 0%, transparent 70%)',
+          }}
+        />
+        <div
+          className="hidden dark:block absolute inset-0 pointer-events-none rounded-2xl"
+          style={{
+            background:
+              'radial-gradient(ellipse 60% 50% at 80% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 70%)',
+          }}
+        />
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
-          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+        <div className="flex items-center justify-between p-4 border-b border-black/[0.06] dark:border-[#2a2f45] flex-shrink-0">
+          <h2 className="text-lg font-semibold text-[#1e293b] dark:text-[#f8fafc]">
             {t('documents.uploadDocuments')}
           </h2>
           <button
             onClick={handleClose}
             disabled={uploading}
-            className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-50"
+            className="p-1.5 hover:bg-white/40 dark:hover:bg-[#1e2235] rounded-lg transition-colors disabled:opacity-50"
           >
-            <X className="h-5 w-5 text-slate-500" />
+            <X className="h-5 w-5 text-[#64748b]" />
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
+        <div className="flex border-b border-black/[0.06] dark:border-[#2a2f45] flex-shrink-0">
           <button
             onClick={() => setActiveTab('file')}
             disabled={uploading}
             className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
               activeTab === 'file'
                 ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                : 'text-[#64748b] hover:text-[#334155] dark:hover:text-[#cbd5e1]'
             } disabled:opacity-50`}
           >
             <FileUp className="h-4 w-4" />
@@ -356,7 +424,7 @@ export default function DocumentUploadModal({
             className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
               activeTab === 'web'
                 ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                : 'text-[#64748b] hover:text-[#334155] dark:hover:text-[#cbd5e1]'
             } disabled:opacity-50`}
           >
             <Globe className="h-4 w-4" />
@@ -372,8 +440,8 @@ export default function DocumentUploadModal({
               <div
                 className={`relative border-2 border-dashed rounded-xl transition-colors ${
                   isDragging
-                    ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20'
-                    : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
+                    ? 'border-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                    : 'border-black/10 dark:border-[#3b4264] dark:bg-[#0d1117] hover:border-black/20 dark:hover:border-[#4f5680]'
                 }`}
                 onDragOver={handleDragOver}
                 onDragEnter={handleDragEnter}
@@ -386,7 +454,7 @@ export default function DocumentUploadModal({
                 >
                   <CloudUpload
                     className={`h-12 w-12 mb-3 ${
-                      isDragging ? 'text-blue-500' : 'text-slate-400'
+                      isDragging ? 'text-blue-500' : 'text-[#94a3b8]'
                     }`}
                     strokeWidth={1.5}
                   />
@@ -394,7 +462,7 @@ export default function DocumentUploadModal({
                     className={`text-sm font-medium mb-1 ${
                       isDragging
                         ? 'text-blue-700'
-                        : 'text-slate-700 dark:text-slate-300'
+                        : 'text-[#334155] dark:text-[#cbd5e1]'
                     }`}
                   >
                     {isDragging
@@ -404,7 +472,7 @@ export default function DocumentUploadModal({
                           'Drag & drop files or click to browse',
                         )}
                   </p>
-                  <p className="text-xs text-slate-500 text-center">
+                  <p className="text-xs text-[#64748b] text-center">
                     {t(
                       'documents.supportedFormats',
                       'PDF, Images, Videos (max 500MB)',
@@ -426,7 +494,7 @@ export default function DocumentUploadModal({
               {/* Selected Files */}
               {files.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <p className="text-sm font-medium text-[#334155] dark:text-[#cbd5e1]">
                     {t('documents.selectedFiles', 'Selected Files')} (
                     {files.length})
                   </p>
@@ -434,21 +502,21 @@ export default function DocumentUploadModal({
                     {files.map((file, index) => (
                       <div
                         key={`${file.name}-${index}`}
-                        className="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-800 rounded-lg"
+                        className="flex items-center gap-2 p-2 bg-transparent dark:bg-[#0d1117] rounded-lg"
                       >
-                        <FileText className="h-4 w-4 text-slate-400 flex-shrink-0" />
-                        <span className="text-sm text-slate-600 dark:text-slate-300 truncate flex-1">
+                        <FileText className="h-4 w-4 text-[#94a3b8] flex-shrink-0" />
+                        <span className="text-sm text-[#475569] dark:text-[#cbd5e1] truncate flex-1">
                           {file.name}
                         </span>
-                        <span className="text-xs text-slate-400">
+                        <span className="text-xs text-[#94a3b8]">
                           {(file.size / 1024 / 1024).toFixed(1)} MB
                         </span>
                         <button
                           onClick={() => removeFile(index)}
                           disabled={uploading}
-                          className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors disabled:opacity-50"
+                          className="p-1 hover:bg-white/50 dark:hover:bg-[#1e2235] rounded transition-colors disabled:opacity-50"
                         >
-                          <X className="h-3.5 w-3.5 text-slate-500" />
+                          <X className="h-3.5 w-3.5 text-[#64748b]" />
                         </button>
                       </div>
                     ))}
@@ -456,198 +524,265 @@ export default function DocumentUploadModal({
                 </div>
               )}
 
-              {/* Processing Options */}
-              <div className="space-y-2">
-                {/* Language */}
-                <div className="flex items-center gap-3 px-3 py-2.5 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+              {/* Preprocessing */}
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Layers className="h-3.5 w-3.5 text-violet-500" />
+                  <p className="text-sm font-semibold text-[#334155] dark:text-[#cbd5e1]">
+                    {t('documents.preprocessing', 'Preprocessing')}
+                  </p>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {/* BDA */}
                   <label
-                    htmlFor="upload-language"
-                    className="text-sm font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap"
+                    className={`relative flex flex-col items-center gap-0.5 px-2 py-2 border rounded-lg cursor-pointer transition-colors ${
+                      useBda
+                        ? 'border-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                        : 'border-black/[0.06] dark:border-[#3b4264] hover:border-black/10 dark:hover:border-[#2a2f45] bg-transparent dark:bg-[#0d1117]'
+                    } ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
                   >
-                    {t('common.language')}
+                    <input
+                      type="checkbox"
+                      checked={useBda}
+                      onChange={(e) => setUseBda(e.target.checked)}
+                      disabled={uploading}
+                      className="sr-only"
+                    />
+                    <span className="absolute top-1 right-1 group/bda">
+                      <Info className="h-3 w-3 text-[#94a3b8] dark:text-[#475569] cursor-help" />
+                      <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 hidden group-hover/bda:block w-48 p-2 text-xs text-[#475569] dark:text-[#cbd5e1] bg-white dark:bg-[#1e2235] border border-black/10 dark:border-[#3b4264] rounded-lg shadow-lg z-10">
+                        {t('documents.bdaTooltip')}
+                      </span>
+                    </span>
+                    <span
+                      className={`text-xs font-medium ${useBda ? 'text-blue-700 dark:text-blue-300' : 'text-[#475569] dark:text-[#94a3b8]'}`}
+                    >
+                      {t('documents.bdaAnalysis', 'BDA')}
+                    </span>
+                    <span className="text-[10px] text-[#94a3b8] dark:text-[#64748b] leading-tight text-center">
+                      {t('documents.bdaShort', 'Bedrock Analysis')}
+                    </span>
                   </label>
-                  <select
-                    id="upload-language"
-                    value={language}
-                    onChange={(e) => setLanguage(e.target.value)}
-                    disabled={uploading}
-                    className="flex-1 px-2 py-1.5 text-sm border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+
+                  {/* OCR */}
+                  <div
+                    className={`relative flex flex-col items-center gap-0.5 px-2 py-2 border rounded-lg transition-colors ${
+                      useOcr
+                        ? 'border-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                        : 'border-black/[0.06] dark:border-[#3b4264] hover:border-black/10 dark:hover:border-[#2a2f45] bg-transparent dark:bg-[#0d1117]'
+                    } ${uploading || !hasOcrEligibleFiles ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}
+                    onClick={() => {
+                      if (!uploading && hasOcrEligibleFiles) setUseOcr(!useOcr);
+                    }}
                   >
-                    {LANGUAGES.map((lang) => (
-                      <option key={lang.code} value={lang.code}>
-                        {t(`languages.${lang.code}`)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* BDA */}
-                <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-2.5 bg-slate-50 dark:bg-slate-800/50">
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        checked={useBda}
-                        onChange={(e) => setUseBda(e.target.checked)}
-                        disabled={uploading}
-                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
-                      />
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                        {t('documents.bdaAnalysis', 'BDA Analysis')}
-                      </span>
-                    </div>
+                    <input
+                      type="checkbox"
+                      checked={useOcr}
+                      readOnly
+                      className="sr-only"
+                    />
+                    <span
+                      className={`text-xs font-medium ${useOcr ? 'text-blue-700 dark:text-blue-300' : 'text-[#475569] dark:text-[#94a3b8]'}`}
+                    >
+                      {t('documents.useOcr', 'OCR')}
+                    </span>
+                    <span className="text-[10px] text-[#94a3b8] dark:text-[#64748b] leading-tight text-center line-clamp-2 max-w-full">
+                      {(() => {
+                        const m = OCR_MODELS.find(
+                          (o) => o.value === ocrSettings.ocr_model,
+                        );
+                        return [
+                          t(`ocr.models.${ocrSettings.ocr_model}.name`),
+                          m?.hasLangOption &&
+                            ocrSettings.ocr_lang &&
+                            t(`ocr.languages.${ocrSettings.ocr_lang}`),
+                          m?.hasOptions &&
+                            ocrSettings.use_doc_orientation_classify &&
+                            'Orient.',
+                          m?.hasOptions &&
+                            ocrSettings.use_doc_unwarping &&
+                            'Unwarp',
+                          m?.hasOptions &&
+                            ocrSettings.use_textline_orientation &&
+                            'Textline',
+                        ]
+                          .filter(Boolean)
+                          .join(' · ');
+                      })()}
+                    </span>
                     <button
                       type="button"
-                      onClick={() => setShowBda(!showBda)}
-                      disabled={uploading}
-                      className="p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors disabled:opacity-50"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowOcr(true);
+                      }}
+                      className="absolute top-1 left-1 p-0.5 hover:bg-blue-100 dark:hover:bg-blue-800/40 rounded transition-colors"
                     >
-                      {showBda ? (
-                        <ChevronUp className="h-4 w-4 text-slate-400" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4 text-slate-400" />
-                      )}
+                      <Settings className="h-3 w-3 text-blue-500 dark:text-blue-400" />
                     </button>
+                    <span
+                      className="absolute top-1 right-1 group/ocr"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Info className="h-3 w-3 text-[#94a3b8] dark:text-[#475569] cursor-help" />
+                      <span className="absolute top-full right-0 mt-1 hidden group-hover/ocr:block w-48 p-2 text-xs text-[#475569] dark:text-[#cbd5e1] bg-white dark:bg-[#1e2235] border border-black/10 dark:border-[#3b4264] rounded-lg shadow-lg z-10">
+                        {t('documents.ocrTooltip')}
+                      </span>
+                    </span>
                   </div>
-                  {showBda && (
-                    <div className="px-3 py-3 border-t border-slate-200 dark:border-slate-700">
-                      <p className="text-xs text-slate-500">
-                        {t('documents.useBdaDescription')}
-                      </p>
-                    </div>
-                  )}
-                </div>
 
-                {/* OCR */}
-                <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-2.5 bg-slate-50 dark:bg-slate-800/50">
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        checked={useOcr}
-                        onChange={(e) => setUseOcr(e.target.checked)}
-                        disabled={uploading || !hasOcrEligibleFiles}
-                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
-                      />
-                      <span
-                        className={`text-sm font-medium ${hasOcrEligibleFiles ? 'text-slate-700 dark:text-slate-300' : 'text-slate-400 dark:text-slate-500'}`}
-                      >
+                  {/* Transcribe */}
+                  <label
+                    className={`relative flex flex-col items-center gap-0.5 px-2 py-2 border rounded-lg cursor-pointer transition-colors ${
+                      useTranscribe
+                        ? 'border-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                        : 'border-black/[0.06] dark:border-[#3b4264] hover:border-black/10 dark:hover:border-[#2a2f45] bg-transparent dark:bg-[#0d1117]'
+                    } ${uploading || !hasTranscribeEligibleFiles ? 'opacity-50 pointer-events-none' : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={useTranscribe}
+                      onChange={(e) => setUseTranscribe(e.target.checked)}
+                      disabled={uploading || !hasTranscribeEligibleFiles}
+                      className="sr-only"
+                    />
+                    <span className="absolute top-1 right-1 group/stt">
+                      <Info className="h-3 w-3 text-[#94a3b8] dark:text-[#475569] cursor-help" />
+                      <span className="absolute top-full right-0 mt-1 hidden group-hover/stt:block w-48 p-2 text-xs text-[#475569] dark:text-[#cbd5e1] bg-white dark:bg-[#1e2235] border border-black/10 dark:border-[#3b4264] rounded-lg shadow-lg z-10">
+                        {t('documents.transcribeTooltip')}
+                      </span>
+                    </span>
+                    <span
+                      className={`text-xs font-medium ${useTranscribe ? 'text-blue-700 dark:text-blue-300' : 'text-[#475569] dark:text-[#94a3b8]'}`}
+                    >
+                      {t('documents.transcribe', 'Transcribe')}
+                    </span>
+                    <span className="text-[10px] text-[#94a3b8] dark:text-[#64748b] leading-tight text-center">
+                      {t('documents.transcribeDesc', 'Amazon Transcribe')}
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              {/* paddleocr-vl page count warning */}
+              {showVlWarning && (
+                <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-500/[0.07] border border-amber-200 dark:border-amber-400/20 rounded-lg">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    {t('ocr.vlPageWarning')}
+                  </p>
+                </div>
+              )}
+
+              {/* Analysis */}
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <BrainCircuit className="h-3.5 w-3.5 text-emerald-500" />
+                  <p className="text-sm font-semibold text-[#334155] dark:text-[#cbd5e1]">
+                    {t('documents.analysis', 'Analysis')}
+                  </p>
+                </div>
+                <div className="space-y-3 p-3 border border-black/[0.06] dark:border-[#3b4264] rounded-lg bg-transparent dark:bg-[#0d1117]">
+                  <div className="flex items-start gap-3">
+                    <label
+                      htmlFor="upload-language"
+                      className="w-20 shrink-0 text-sm font-medium text-[#334155] dark:text-[#cbd5e1] pt-1.5"
+                    >
+                      {t('common.language')}
+                    </label>
+                    <select
+                      id="upload-language"
+                      data-modal-input
+                      value={language}
+                      onChange={(e) => setLanguage(e.target.value)}
+                      disabled={uploading}
+                      className="flex-1 px-2 py-1.5 text-sm border border-black/10 dark:border-[#3b4264] rounded-md bg-transparent dark:bg-[#0d1117] text-[#0f172a] dark:text-[#f1f5f9] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+                    >
+                      {LANGUAGES.map((lang) => (
+                        <option key={lang.code} value={lang.code}>
+                          {t(`languages.${lang.code}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <label className="w-20 shrink-0 text-sm font-medium text-[#334155] dark:text-[#cbd5e1] pt-2">
+                      {t('documents.analysisInstructions', 'Instructions')}
+                    </label>
+                    <textarea
+                      data-modal-input
+                      value={documentPrompt}
+                      onChange={(e) => setDocumentPrompt(e.target.value)}
+                      placeholder={t('analysis.placeholder')}
+                      rows={4}
+                      disabled={uploading}
+                      className="flex-1 px-3 py-2 text-sm border border-black/10 dark:border-[#3b4264] rounded-lg bg-transparent dark:bg-[#0d1117] text-[#0f172a] dark:text-[#f1f5f9] placeholder-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 resize-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* OCR Settings Overlay */}
+              {showOcr && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center">
+                  <div
+                    className="absolute inset-0 bg-black/30"
+                    onClick={() => setShowOcr(false)}
+                  />
+                  <div className="upload-modal-container relative rounded-xl w-full max-w-sm mx-4 border border-white/70 dark:border-[#3b4264] shadow-xl overflow-hidden">
+                    <div
+                      className="hidden dark:block absolute inset-0 pointer-events-none rounded-xl"
+                      style={{
+                        background:
+                          'radial-gradient(ellipse 60% 50% at 80% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 70%)',
+                      }}
+                    />
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-black/[0.06] dark:border-[#2a2f45]">
+                      <h3 className="text-sm font-semibold text-[#1e293b] dark:text-[#f8fafc]">
                         {t('projectSettings.ocrSettings')}
-                      </span>
+                      </h3>
+                      <button
+                        onClick={() => setShowOcr(false)}
+                        className="p-1 hover:bg-white/40 dark:hover:bg-[#1e2235] rounded-lg transition-colors"
+                      >
+                        <X className="h-4 w-4 text-[#64748b]" />
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowOcr(!showOcr)}
-                      disabled={uploading}
-                      className="p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors disabled:opacity-50"
-                    >
-                      {showOcr ? (
-                        <ChevronUp className="h-4 w-4 text-slate-400" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4 text-slate-400" />
-                      )}
-                    </button>
-                  </div>
-                  {showOcr && useOcr && (
-                    <div className="p-3 border-t border-slate-200 dark:border-slate-700">
+                    <div className="p-4">
                       <OcrSettingsForm
                         settings={ocrSettings}
                         onChange={setOcrSettings}
                         variant="compact"
                       />
                     </div>
-                  )}
-                </div>
-
-                {/* Transcribe */}
-                <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-2.5 bg-slate-50 dark:bg-slate-800/50">
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        checked={useTranscribe}
-                        onChange={(e) => setUseTranscribe(e.target.checked)}
-                        disabled={uploading || !hasTranscribeEligibleFiles}
-                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
-                      />
-                      <span
-                        className={`text-sm font-medium ${hasTranscribeEligibleFiles ? 'text-slate-700 dark:text-slate-300' : 'text-slate-400 dark:text-slate-500'}`}
+                    <div className="flex justify-end px-4 py-3 border-t border-black/[0.06] dark:border-[#2a2f45]">
+                      <button
+                        onClick={() => setShowOcr(false)}
+                        className="px-4 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 rounded-lg transition-colors"
                       >
-                        {t('documents.transcribe', 'Transcribe (STT)')}
-                      </span>
+                        {t('common.apply', 'Apply')}
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowTranscribe(!showTranscribe)}
-                      disabled={uploading}
-                      className="p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors disabled:opacity-50"
-                    >
-                      {showTranscribe ? (
-                        <ChevronUp className="h-4 w-4 text-slate-400" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4 text-slate-400" />
-                      )}
-                    </button>
                   </div>
-                  {showTranscribe && (
-                    <div className="px-3 py-3 border-t border-slate-200 dark:border-slate-700">
-                      <p className="text-xs text-slate-500">
-                        {t(
-                          'documents.useTranscribeDescription',
-                          'Transcribe audio/video files to text using Amazon Transcribe.',
-                        )}
-                      </p>
-                    </div>
-                  )}
                 </div>
-
-                {/* Analysis Instructions */}
-                <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setShowPrompt(!showPrompt)}
-                    disabled={uploading}
-                    className="w-full flex items-center justify-between px-3 py-2.5 bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
-                  >
-                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                      {t('projectSettings.analysisInstructions')}
-                    </span>
-                    {showPrompt ? (
-                      <ChevronUp className="h-4 w-4 text-slate-400" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4 text-slate-400" />
-                    )}
-                  </button>
-                  {showPrompt && (
-                    <div className="p-3 border-t border-slate-200 dark:border-slate-700">
-                      <textarea
-                        value={documentPrompt}
-                        onChange={(e) => setDocumentPrompt(e.target.value)}
-                        placeholder={t('analysis.placeholder')}
-                        rows={8}
-                        disabled={uploading}
-                        className="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 resize-none"
-                      />
-                      <p className="text-xs text-slate-500 mt-1.5">
-                        {t('analysis.hint')}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
+              )}
             </>
           ) : (
             <>
               {/* Web URL Input */}
-              <div className="space-y-2">
-                <label
-                  htmlFor="web-url"
-                  className="block text-sm font-medium text-slate-700 dark:text-slate-300"
-                >
-                  {t('documents.webUrl', 'URL')}
-                </label>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Link className="h-3.5 w-3.5 text-blue-500" />
+                  <label
+                    htmlFor="web-url"
+                    className="text-sm font-semibold text-[#334155] dark:text-[#cbd5e1]"
+                  >
+                    {t('documents.webUrl', 'URL')}
+                  </label>
+                </div>
                 <input
                   id="web-url"
+                  data-modal-input
                   type="url"
                   value={webUrl}
                   onChange={(e) => setWebUrl(e.target.value)}
@@ -656,20 +791,24 @@ export default function DocumentUploadModal({
                     'https://example.com/page',
                   )}
                   disabled={uploading}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+                  className="w-full px-3 py-2 text-sm border border-black/10 dark:border-[#3b4264] rounded-lg bg-transparent dark:bg-[#0d1117] text-[#0f172a] dark:text-[#f1f5f9] placeholder-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
                 />
               </div>
 
               {/* Web Instruction */}
-              <div className="space-y-2">
-                <label
-                  htmlFor="web-instruction"
-                  className="block text-sm font-medium text-slate-700 dark:text-slate-300"
-                >
-                  {t('documents.webInstruction', 'Instructions (Optional)')}
-                </label>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <MessageSquareText className="h-3.5 w-3.5 text-amber-500" />
+                  <label
+                    htmlFor="web-instruction"
+                    className="text-sm font-semibold text-[#334155] dark:text-[#cbd5e1]"
+                  >
+                    {t('documents.webInstruction')}
+                  </label>
+                </div>
                 <textarea
                   id="web-instruction"
+                  data-modal-input
                   value={webInstruction}
                   onChange={(e) => setWebInstruction(e.target.value)}
                   placeholder={t(
@@ -678,9 +817,9 @@ export default function DocumentUploadModal({
                   )}
                   disabled={uploading}
                   rows={8}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 resize-none"
+                  className="w-full px-3 py-2 text-sm border border-black/10 dark:border-[#3b4264] rounded-lg bg-transparent dark:bg-[#0d1117] text-[#0f172a] dark:text-[#f1f5f9] placeholder-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 resize-none"
                 />
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-[#64748b]">
                   {t(
                     'documents.webInstructionHint',
                     'Instructions help AI extract relevant content from the web page.',
@@ -688,31 +827,42 @@ export default function DocumentUploadModal({
                 </p>
               </div>
 
-              {/* Language */}
-              <div className="flex items-center gap-3 px-3 py-2.5 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800/50">
-                <label
-                  htmlFor="web-language"
-                  className="text-sm font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap"
-                >
-                  {t('common.language')}
-                </label>
-                <select
-                  id="web-language"
-                  value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
-                  disabled={uploading}
-                  className="flex-1 px-2 py-1.5 text-sm border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
-                >
-                  {LANGUAGES.map((lang) => (
-                    <option key={lang.code} value={lang.code}>
-                      {t(`languages.${lang.code}`)}
-                    </option>
-                  ))}
-                </select>
+              {/* Analysis */}
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <BrainCircuit className="h-3.5 w-3.5 text-emerald-500" />
+                  <p className="text-sm font-semibold text-[#334155] dark:text-[#cbd5e1]">
+                    {t('documents.analysis', 'Analysis')}
+                  </p>
+                </div>
+                <div className="p-3 border border-black/[0.06] dark:border-[#3b4264] rounded-lg bg-transparent dark:bg-[#0d1117]">
+                  <div className="flex items-center gap-3">
+                    <label
+                      htmlFor="web-language"
+                      className="text-sm font-medium text-[#334155] dark:text-[#cbd5e1] whitespace-nowrap"
+                    >
+                      {t('common.language')}
+                    </label>
+                    <select
+                      id="web-language"
+                      data-modal-input
+                      value={language}
+                      onChange={(e) => setLanguage(e.target.value)}
+                      disabled={uploading}
+                      className="flex-1 px-2 py-1.5 text-sm border border-black/10 dark:border-[#3b4264] rounded-md bg-transparent dark:bg-[#0d1117] text-[#0f172a] dark:text-[#f1f5f9] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+                    >
+                      {LANGUAGES.map((lang) => (
+                        <option key={lang.code} value={lang.code}>
+                          {t(`languages.${lang.code}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               </div>
 
               {/* Web Info */}
-              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <div className="p-3 bg-blue-50 dark:bg-blue-500/[0.07] border border-blue-200 dark:border-blue-400/20 rounded-lg">
                 <p className="text-xs text-blue-700 dark:text-blue-300">
                   {t(
                     'documents.webDescription',
@@ -725,18 +875,18 @@ export default function DocumentUploadModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 p-4 border-t border-slate-200 dark:border-slate-700 flex-shrink-0">
+        <div className="flex items-center justify-end gap-3 p-4 border-t border-black/[0.06] dark:border-[#2a2f45] flex-shrink-0">
           <button
             onClick={handleClose}
             disabled={uploading}
-            className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-sm font-medium text-[#334155] dark:text-[#cbd5e1] hover:bg-[#f1f5f9] dark:hover:bg-[#0d1117] rounded-lg transition-colors disabled:opacity-50 border border-black/10 dark:border-[#3b4264]"
           >
             {t('common.cancel', 'Cancel')}
           </button>
           <button
             onClick={handleUpload}
             disabled={isUploadDisabled || uploading}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed dark:shadow-[0_0_20px_rgba(99,102,241,0.15)]"
           >
             {uploading ? (
               <>

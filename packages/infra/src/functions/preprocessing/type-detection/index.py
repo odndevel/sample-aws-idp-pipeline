@@ -28,6 +28,18 @@ WORKFLOW_QUEUE_URL = os.environ.get('WORKFLOW_QUEUE_URL', '')
 SAGEMAKER_ENDPOINT_NAME = os.environ.get('SAGEMAKER_ENDPOINT_NAME', '')
 WEBCRAWLER_QUEUE_URL = os.environ.get('WEBCRAWLER_QUEUE_URL', '')
 
+# Models that run on Lambda (CPU-only) instead of SageMaker (GPU)
+LAMBDA_OCR_MODELS = {'pp-ocrv5', 'pp-structurev3'}
+
+# ISO 639-1 project language -> PaddleOCR language code
+PROJECT_LANG_TO_OCR_LANG = {
+    'ko': 'korean', 'ja': 'japan', 'zh': 'ch', 'zh-tw': 'chinese_cht',
+    'en': 'en', 'fr': 'french', 'de': 'german', 'it': 'it', 'es': 'es',
+    'pt': 'pt', 'ru': 'ru', 'ar': 'ar', 'hi': 'hi', 'vi': 'vi',
+    'th': 'th', 'ms': 'ms', 'id': 'id', 'tr': 'tr', 'pl': 'pl', 'nl': 'nl',
+    'sv': 'sv', 'no': 'no', 'da': 'da', 'fi': 'fi',
+}
+
 MIME_TYPE_MAP = {
     # Documents
     'pdf': 'application/pdf',
@@ -200,7 +212,7 @@ def distribute_to_queues(
     use_bda: bool,
     use_ocr: bool = True,
     use_transcribe: bool = False,
-    ocr_model: str = 'paddleocr-vl',
+    ocr_model: str = 'pp-ocrv5',
     ocr_options: dict | None = None,
     document_prompt: str = '',
 ) -> dict:
@@ -249,17 +261,23 @@ def distribute_to_queues(
 
     # OCR Queue (PDF or Image, but not .webreq, and OCR enabled)
     if (is_pdf or is_image) and not is_webreq and use_ocr:
+        resolved_ocr_options = dict(ocr_options or {})
+        if not resolved_ocr_options.get('lang') and language:
+            ocr_lang = PROJECT_LANG_TO_OCR_LANG.get(language)
+            if ocr_lang:
+                resolved_ocr_options['lang'] = ocr_lang
         send_to_queue(OCR_QUEUE_URL, {
             **base_message,
             'processor': PreprocessType.OCR,
             'ocr_model': ocr_model,
-            'ocr_options': ocr_options or {},
+            'ocr_options': resolved_ocr_options,
         })
         queues_sent.append('ocr')
         print(f'Sent to OCR queue: {workflow_id} (model={ocr_model})')
 
-        # Trigger immediate SageMaker scale-out (bypass CloudWatch metric delay)
-        trigger_sagemaker_scale_out()
+        # Only trigger SageMaker scale-out for models that use SageMaker (GPU)
+        if ocr_model not in LAMBDA_OCR_MODELS:
+            trigger_sagemaker_scale_out()
 
     # BDA Queue (if use_bda is enabled, but not .webreq, office documents, or spreadsheets)
     if use_bda and not is_webreq and not is_office_document and not is_spreadsheet:
@@ -332,7 +350,7 @@ def handler(event, context):
 
             # Resolve OCR settings: document override > project default
             project_ocr = get_project_ocr_settings(project_id)
-            ocr_model = (document.get('ocr_model') if document else None) or project_ocr.get('ocr_model') or 'paddleocr-vl'
+            ocr_model = (document.get('ocr_model') if document else None) or project_ocr.get('ocr_model') or 'pp-ocrv5'
             ocr_options = (document.get('ocr_options') if document else None) or project_ocr.get('ocr_options') or {}
             print(f'Resolved OCR: enabled={use_ocr}, model={ocr_model}, options={ocr_options}')
 

@@ -311,8 +311,6 @@ function ProjectsPage() {
     language: string;
     color: number;
     document_prompt: string;
-    ocr_model: string;
-    ocr_options: Record<string, unknown>;
   }) => {
     if (editingProject) {
       await fetchApi<Project>(`projects/${editingProject.project_id}`, {
@@ -380,13 +378,13 @@ function ProjectsPage() {
           <div className="flex flex-col sm:flex-row gap-3 mb-6">
             {/* Search */}
             <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 dark:text-slate-400 z-10" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t('common.search')}
-                className="w-full pl-10 pr-4 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900 dark:text-white placeholder-slate-400"
+                className="w-full pl-10 pr-4 py-2 text-sm bg-white/40 backdrop-blur-sm dark:bg-slate-800 border border-white/50 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900 dark:text-white placeholder-slate-500"
               />
             </div>
 
@@ -396,7 +394,7 @@ function ProjectsPage() {
               <select
                 value={sortOption}
                 onChange={(e) => handleSortChange(e.target.value as SortOption)}
-                className="pl-3 pr-7 py-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900 dark:text-white"
+                className="pl-3 pr-7 py-2.5 text-sm bg-white/40 backdrop-blur-sm dark:bg-slate-800 border border-white/50 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900 dark:text-white"
               >
                 <option value="created_desc">
                   {t('projects.sortCreatedDesc')}

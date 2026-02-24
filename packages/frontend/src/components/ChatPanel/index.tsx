@@ -339,9 +339,12 @@ export default function ChatPanel({
   );
 
   return (
-    <div className="glow-through w-full h-full flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 overflow-hidden relative">
+    <div className="glow-through w-full h-full flex flex-col bg-[#e8ecf4]/90 dark:bg-slate-900 border-r border-black/[0.08] dark:border-slate-700 overflow-hidden relative">
       {/* Messages Container */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
+      <div
+        ref={scrollContainerRef}
+        className="chat-messages-scroll flex-1 overflow-y-auto"
+      >
         {loadingHistory ? (
           <div className="flex flex-col items-center justify-center h-full p-6">
             <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">

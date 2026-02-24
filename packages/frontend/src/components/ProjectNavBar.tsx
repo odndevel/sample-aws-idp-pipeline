@@ -76,7 +76,7 @@ export default function ProjectNavBar({
   };
 
   return (
-    <nav className="glow-through flex items-center h-[68px] min-h-[68px] flex-shrink-0 bg-white dark:bg-transparent border-b border-slate-200 dark:border-white/[0.08] px-4">
+    <nav className="glow-through flex items-center h-[68px] min-h-[68px] flex-shrink-0 bg-white/40 backdrop-blur-md dark:bg-transparent dark:backdrop-blur-none border-b border-black/[0.08] dark:border-white/[0.08] px-4 z-20 relative">
       {/* Breadcrumb */}
       <div className="flex items-center">
         {/* Home */}
@@ -115,7 +115,13 @@ export default function ProjectNavBar({
 
           {/* Dropdown */}
           {dropdownOpen && (
-            <div className="glass-panel absolute left-0 top-full mt-1 z-50 min-w-[240px] max-w-[320px] max-h-[320px] overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg py-1">
+            <div
+              className="nav-project-dropdown absolute left-0 top-full mt-1 z-50 min-w-[240px] max-w-[320px] max-h-[320px] overflow-y-auto border border-white/60 dark:border-indigo-500/20 rounded-lg shadow-lg dark:shadow-[0_0_40px_rgba(99,102,241,0.06),0_4px_20px_rgba(0,0,0,0.4)] py-1"
+              style={{
+                background:
+                  'linear-gradient(180deg, #dce4f0 0%, #e4eaf4 40%, #eef1f7 100%)',
+              }}
+            >
               {/* Project Home + Refresh */}
               <div className="flex items-center">
                 <Link
@@ -137,7 +143,7 @@ export default function ProjectNavBar({
                   />
                 </button>
               </div>
-              <div className="my-1 border-t border-slate-200 dark:border-white/[0.1]" />
+              <div className="my-1 border-t border-black/[0.06] dark:border-white/[0.1]" />
 
               {loadingProjects && projects.length === 0 ? (
                 <div className="px-3 py-4 text-center text-xs text-slate-400">

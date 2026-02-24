@@ -6,6 +6,7 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY *.py ./
 COPY agents/ ./agents/
+COPY .skills/ ./.skills/
 
 # Install dependencies
 RUN pip install --no-cache-dir .

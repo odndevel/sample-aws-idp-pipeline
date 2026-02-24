@@ -27,6 +27,17 @@ import {
   formatFileSize,
 } from '../lib/fileTypeUtils';
 
+const truncateMiddle = (str: string, maxLen = 30) => {
+  if (str.length <= maxLen) return str;
+  const dotIdx = str.lastIndexOf('.');
+  const ext = dotIdx !== -1 ? str.slice(dotIdx) : '';
+  const name = str.slice(0, str.length - ext.length);
+  const keep = maxLen - ext.length - 3;
+  const front = Math.ceil(keep / 2);
+  const back = Math.floor(keep / 2);
+  return name.slice(0, front) + '...' + name.slice(-back) + ext;
+};
+
 export const Route = createFileRoute('/artifacts')({
   component: ArtifactsPage,
 });
@@ -429,12 +440,12 @@ function ArtifactsPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('artifacts.searchPlaceholder', 'Search files...')}
-            className="w-full pl-10 pr-4 py-2.5 text-sm bg-white dark:bg-white/[0.06] border border-slate-200 dark:border-white/[0.12] rounded-xl outline-none focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-slate-700 dark:text-slate-200"
+            className="w-full pl-10 pr-4 py-2.5 text-sm bg-transparent dark:bg-white/[0.06] border border-black/10 dark:border-white/[0.12] rounded-xl outline-none focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-slate-700 dark:text-slate-200"
           />
         </div>
 
         {/* Count */}
-        <div className="flex items-center gap-2 px-4 py-2 text-sm text-slate-500 dark:text-slate-400 bg-white dark:bg-white/[0.06] border border-slate-200 dark:border-white/[0.12] rounded-xl">
+        <div className="flex items-center gap-2 px-4 py-2 text-sm text-slate-500 dark:text-slate-400 bg-transparent dark:bg-white/[0.06] border border-black/10 dark:border-white/[0.12] rounded-xl">
           <Layers className="w-4 h-4" />
           <span>
             {filteredArtifacts.length} {t('artifacts.items', 'files')}
@@ -483,8 +494,11 @@ function ArtifactsPage() {
                             <ArtifactIcon className="w-5 h-5 text-white" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h3 className="font-semibold text-slate-900 dark:text-white text-sm leading-tight truncate">
-                              {artifact.filename}
+                            <h3
+                              className="font-semibold text-slate-900 dark:text-white text-sm leading-tight"
+                              title={artifact.filename}
+                            >
+                              {truncateMiddle(artifact.filename)}
                             </h3>
                             <div className="flex items-center gap-2 mt-1">
                               <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -517,18 +531,18 @@ function ArtifactsPage() {
                           </button>
 
                           {openMenuId === artifact.artifact_id && (
-                            <div className="glass-panel absolute right-0 top-full mt-1 z-50 min-w-[140px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/[0.15] rounded-xl shadow-lg py-1 overflow-hidden">
+                            <div className="absolute right-0 top-full mt-1 z-50 min-w-[140px] bg-[#e4eaf4] dark:bg-slate-800 border border-white/60 dark:border-white/[0.15] rounded-xl shadow-lg py-1 overflow-hidden">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleDownload(artifact);
                                 }}
-                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/10/50"
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 glass-menu-item"
                               >
                                 <Download className="w-4 h-4" />
                                 {t('common.download', 'Download')}
                               </button>
-                              <div className="h-px bg-slate-100 dark:bg-white/[0.1] my-1" />
+                              <div className="h-px bg-black/[0.06] dark:bg-white/[0.1] my-1" />
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -545,7 +559,7 @@ function ArtifactsPage() {
                       </div>
 
                       {/* Footer */}
-                      <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-white/[0.08]">
+                      <div className="flex items-center justify-between pt-3 border-t border-black/[0.06] dark:border-white/[0.08]">
                         <span className="text-xs text-slate-400 dark:text-slate-500">
                           {formatDate(artifact.created_at)}
                         </span>
@@ -572,7 +586,7 @@ function ArtifactsPage() {
                 <button
                   onClick={handleLoadMore}
                   disabled={loadingMore}
-                  className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-300 bg-white dark:bg-white/[0.06] border border-slate-200 dark:border-white/[0.12] rounded-xl hover:bg-slate-50 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
+                  className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-300 bg-transparent dark:bg-white/[0.06] border border-black/10 dark:border-white/[0.12] rounded-xl hover:bg-white/30 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
                 >
                   {loadingMore ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -611,11 +625,11 @@ function ArtifactsPage() {
           onClick={handleCloseViewer}
         >
           <div
-            className="glass-panel relative w-full max-w-4xl max-h-[90vh] mx-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+            className="artifact-viewer-container relative w-full max-w-4xl max-h-[90vh] mx-4 border border-white/60 dark:border-indigo-500/20 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.03]">
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-black/[0.08] dark:border-white/[0.08] bg-transparent dark:bg-white/[0.05]">
               {(() => {
                 const ViewerIcon = getArtifactIcon(
                   viewingArtifact.content_type,
@@ -702,7 +716,7 @@ function ArtifactsPage() {
                   </p>
                   <div
                     ref={pptxContainerRef}
-                    className="flex-1 overflow-auto bg-slate-100 dark:bg-white/[0.04] rounded-lg p-4 [&_.pptx-wrapper]:flex [&_.pptx-wrapper]:flex-col [&_.pptx-wrapper]:items-center [&_.pptx-wrapper]:gap-6 [&_.pptx-slide]:shadow-xl [&_.pptx-slide]:rounded-lg [&_.pptx-slide]:overflow-hidden"
+                    className="flex-1 overflow-auto bg-white/30 dark:bg-white/[0.04] rounded-lg p-4 [&_.pptx-wrapper]:flex [&_.pptx-wrapper]:flex-col [&_.pptx-wrapper]:items-center [&_.pptx-wrapper]:gap-6 [&_.pptx-slide]:shadow-xl [&_.pptx-slide]:rounded-lg [&_.pptx-slide]:overflow-hidden"
                   />
                 </div>
               ) : (viewingArtifact.content_type ===
@@ -714,7 +728,7 @@ function ArtifactsPage() {
                   dangerouslySetInnerHTML={{ __html: viewerContent }}
                 />
               ) : viewerImageUrl ? (
-                <div className="flex items-center justify-center min-h-64 bg-slate-100 dark:bg-white/[0.04] rounded-lg">
+                <div className="flex items-center justify-center min-h-64 bg-white/30 dark:bg-white/[0.04] rounded-lg">
                   <img
                     src={viewerImageUrl}
                     alt={viewingArtifact.filename}
@@ -739,7 +753,7 @@ function ArtifactsPage() {
                     dangerouslySetInnerHTML={{ __html: viewerContent }}
                   />
                 ) : (
-                  <pre className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap font-mono bg-slate-50 dark:bg-white/[0.04] p-4 rounded-lg overflow-auto">
+                  <pre className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap font-mono bg-white/30 dark:bg-white/[0.04] p-4 rounded-lg overflow-auto">
                     {viewerContent}
                   </pre>
                 )
@@ -760,7 +774,7 @@ function ArtifactsPage() {
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-between px-5 py-3 border-t border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.03]">
+            <div className="flex items-center justify-between px-5 py-3 border-t border-black/[0.08] dark:border-white/[0.08] bg-transparent dark:bg-white/[0.05]">
               <span className="text-xs text-slate-500 dark:text-slate-400">
                 {formatDate(viewingArtifact.created_at)}
               </span>

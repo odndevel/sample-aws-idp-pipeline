@@ -224,9 +224,9 @@ export default function ArtifactViewer({
   }, [onClose]);
 
   return (
-    <div className="glass-panel absolute inset-0 z-10 flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden animate-fade-in">
+    <div className="artifact-viewer-container absolute inset-0 z-10 flex flex-col border border-white/60 dark:border-indigo-500/20 rounded-xl overflow-hidden animate-fade-in">
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.03]">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-black/[0.08] dark:border-white/[0.08] bg-transparent dark:bg-white/[0.05]">
         <div
           className={`flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br ${isExcel ? 'from-green-500 to-emerald-600' : isPptx ? 'from-orange-500 to-red-600' : 'from-blue-500 to-indigo-600'}`}
         >
@@ -301,11 +301,11 @@ export default function ArtifactViewer({
             </p>
             <div
               ref={pptxContainerRef}
-              className="flex-1 overflow-auto bg-slate-100 dark:bg-white/[0.04] rounded-lg p-4 [&_.pptx-wrapper]:flex [&_.pptx-wrapper]:flex-col [&_.pptx-wrapper]:items-center [&_.pptx-wrapper]:gap-6 [&_.pptx-slide]:shadow-xl [&_.pptx-slide]:rounded-lg [&_.pptx-slide]:overflow-hidden"
+              className="flex-1 overflow-auto bg-white/30 dark:bg-white/[0.04] rounded-lg p-4 [&_.pptx-wrapper]:flex [&_.pptx-wrapper]:flex-col [&_.pptx-wrapper]:items-center [&_.pptx-wrapper]:gap-6 [&_.pptx-slide]:shadow-xl [&_.pptx-slide]:rounded-lg [&_.pptx-slide]:overflow-hidden"
             />
           </div>
         ) : isImage && imageUrl ? (
-          <div className="flex items-center justify-center h-full bg-slate-100 dark:bg-white/[0.04] rounded-lg">
+          <div className="flex items-center justify-center h-full bg-white/30 dark:bg-white/[0.04] rounded-lg">
             <img
               src={imageUrl}
               alt={artifact.filename}
@@ -336,7 +336,7 @@ export default function ArtifactViewer({
             dangerouslySetInnerHTML={{ __html: content }}
           />
         ) : content ? (
-          <pre className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap font-mono bg-slate-50 dark:bg-slate-800 p-4 rounded-lg overflow-auto">
+          <pre className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap font-mono bg-white/30 dark:bg-white/[0.04] p-4 rounded-lg overflow-auto">
             {content}
           </pre>
         ) : (

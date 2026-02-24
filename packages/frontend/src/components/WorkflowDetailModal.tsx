@@ -500,11 +500,11 @@ export default function WorkflowDetailModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6"
+      className="fixed inset-0 bg-black/55 dark:bg-black/65 backdrop-blur-md flex items-center justify-center z-50 p-6"
       onClick={handleBackdropClick}
     >
       <div
-        className="document-detail-modal bg-white dark:bg-slate-900 rounded-2xl w-full max-w-7xl h-[90vh] flex overflow-hidden relative"
+        className="document-detail-modal rounded-2xl w-full max-w-7xl h-[90vh] flex overflow-hidden relative"
         style={
           {
             '--modal-glow-color':
@@ -515,7 +515,7 @@ export default function WorkflowDetailModal({
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 z-10 p-2 bg-white dark:bg-white/10 hover:bg-slate-100 dark:hover:bg-white/20 rounded-lg transition-colors border border-slate-200 dark:border-white/[0.12]"
+          className="absolute top-3 right-3 z-10 p-2 bg-transparent dark:bg-[#0d1117] hover:bg-black/[0.06] dark:hover:bg-[#1e2235] rounded-lg transition-colors border border-black/10 dark:border-[#3b4264]"
         >
           <svg
             className="h-5 w-5 text-slate-600 dark:text-slate-300"
@@ -534,11 +534,11 @@ export default function WorkflowDetailModal({
 
         {/* Left Panel - Document Details */}
         <div
-          className={`bg-slate-50 dark:bg-white/[0.03] flex flex-col flex-shrink-0 border-r border-slate-200 dark:border-white/[0.08] transition-all duration-300 ${analysisPopup.type ? 'w-[600px]' : 'w-[400px]'}`}
+          className={`bg-transparent dark:bg-[#0d1117]/50 flex flex-col flex-shrink-0 border-r border-black/[0.08] dark:border-[#2a2f45] transition-all duration-300 ${analysisPopup.type ? 'w-[600px]' : 'w-[400px]'}`}
         >
           {/* Header */}
-          <div className="flex items-center gap-3 p-4 border-b border-slate-200 dark:border-white/[0.08] bg-white dark:bg-transparent">
-            <div className="p-2 bg-slate-200 dark:bg-white/10 rounded-lg">
+          <div className="flex items-center gap-3 p-4 border-b border-black/[0.08] dark:border-[#2a2f45] bg-transparent">
+            <div className="p-2 bg-black/[0.06] dark:bg-[#1e2235] rounded-lg">
               <svg
                 className="h-5 w-5 text-slate-600 dark:text-slate-300"
                 fill="none"
@@ -764,7 +764,7 @@ export default function WorkflowDetailModal({
                             <div
                               key={idx}
                               id={`qa-item-${idx}`}
-                              className="bg-white dark:bg-white/[0.04] rounded-lg border border-slate-200 dark:border-white/[0.08] overflow-hidden scroll-mt-2"
+                              className="bg-white/30 dark:bg-white/[0.04] rounded-lg border border-black/[0.08] dark:border-white/[0.08] overflow-hidden scroll-mt-2"
                             >
                               {/* Question */}
                               <div className="bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800/30 px-4 py-3">
@@ -850,7 +850,7 @@ export default function WorkflowDetailModal({
                         <button
                           key={idx}
                           onClick={() => seekVideo(seg.start_time)}
-                          className="w-full text-left bg-white dark:bg-white/[0.04] rounded-lg border border-slate-200 dark:border-white/[0.08] p-3 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:border-purple-300 dark:hover:border-purple-800/40 transition-colors cursor-pointer"
+                          className="w-full text-left bg-white/30 dark:bg-white/[0.04] rounded-lg border border-black/[0.08] dark:border-white/[0.08] p-3 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:border-purple-300 dark:hover:border-purple-800/40 transition-colors cursor-pointer"
                         >
                           <div className="inline-flex items-center gap-1.5 px-2 py-1 mb-1.5 bg-purple-50 dark:bg-purple-900/30 rounded">
                             <span className="text-xs font-mono text-purple-600 dark:text-purple-400">
@@ -1082,7 +1082,7 @@ export default function WorkflowDetailModal({
                     )}
                 </div>
 
-                <hr className="border-slate-200 dark:border-white/[0.08]" />
+                <hr className="border-black/[0.08] dark:border-white/[0.08]" />
 
                 {/* Analysis Summary */}
                 {workflow.total_segments > 0 && (
@@ -1099,7 +1099,7 @@ export default function WorkflowDetailModal({
                           (label) => (
                             <div
                               key={label}
-                              className="flex-1 bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] rounded-lg p-3 text-center animate-pulse"
+                              className="flex-1 bg-white/30 dark:bg-white/[0.04] border border-black/[0.08] dark:border-white/[0.08] rounded-lg p-3 text-center animate-pulse"
                             >
                               <div className="h-3 w-8 bg-slate-200 dark:bg-white/10 rounded mx-auto mb-2" />
                               <div className="h-6 w-6 bg-slate-200 dark:bg-white/10 rounded mx-auto" />
@@ -1207,7 +1207,7 @@ export default function WorkflowDetailModal({
                                   });
                                 }
                               }}
-                              className="flex-1 bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] rounded-lg p-3 text-center hover:bg-slate-50 dark:hover:bg-white/[0.08] hover:border-slate-300 dark:hover:border-white/20 transition-colors"
+                              className="flex-1 bg-white/30 dark:bg-white/[0.04] border border-black/[0.08] dark:border-white/[0.08] rounded-lg p-3 text-center hover:bg-white/50 dark:hover:bg-white/[0.08] hover:border-black/[0.12] dark:hover:border-white/20 transition-colors"
                             >
                               <p className="text-xs text-slate-500 dark:text-slate-400">
                                 {label}
@@ -1227,9 +1227,9 @@ export default function WorkflowDetailModal({
         </div>
 
         {/* Right Panel - Image Viewer */}
-        <div className="flex-1 flex flex-col bg-slate-100 dark:bg-white/[0.02] min-w-0">
+        <div className="flex-1 flex flex-col bg-transparent dark:bg-[#0d1117]/30 min-w-0">
           {/* Segment Navigation */}
-          <div className="flex items-center justify-between p-4 pr-16 border-b border-slate-200 dark:border-white/[0.08] bg-white dark:bg-transparent">
+          <div className="flex items-center justify-between p-4 pr-16 border-b border-black/[0.08] dark:border-[#2a2f45] bg-transparent">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
@@ -1260,7 +1260,7 @@ export default function WorkflowDetailModal({
                   setImageLoading(true);
                   setCurrentSegmentIndex(Number(e.target.value));
                 }}
-                className="bg-white dark:bg-white/[0.06] border border-slate-300 dark:border-white/[0.12] text-slate-800 dark:text-slate-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="bg-transparent dark:bg-white/[0.06] border border-black/10 dark:border-white/[0.12] text-slate-800 dark:text-slate-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {Array.from({ length: workflow.total_segments }, (_, idx) => (
                   <option key={idx} value={idx}>
@@ -1303,35 +1303,39 @@ export default function WorkflowDetailModal({
               </button>
             </div>
 
-            {/* Zoom Controls */}
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() =>
-                  setImageZoom((prev) => Math.max(0.5, prev - 0.25))
-                }
-                disabled={imageZoom <= 0.5}
-                className="p-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <ZoomOut className="h-4 w-4" />
-              </button>
-              <span className="text-xs font-medium text-slate-600 dark:text-slate-300 min-w-[3rem] text-center">
-                {Math.round(imageZoom * 100)}%
-              </span>
-              <button
-                onClick={() => setImageZoom((prev) => Math.min(3, prev + 0.25))}
-                disabled={imageZoom >= 3}
-                className="p-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <ZoomIn className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => setImageZoom(1)}
-                disabled={imageZoom === 1}
-                className="p-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-              </button>
-            </div>
+            {/* Zoom Controls - image segments only */}
+            {currentSegment?.image_url && (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() =>
+                    setImageZoom((prev) => Math.max(0.5, prev - 0.25))
+                  }
+                  disabled={imageZoom <= 0.5}
+                  className="p-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ZoomOut className="h-4 w-4" />
+                </button>
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-300 min-w-[3rem] text-center">
+                  {Math.round(imageZoom * 100)}%
+                </span>
+                <button
+                  onClick={() =>
+                    setImageZoom((prev) => Math.min(3, prev + 0.25))
+                  }
+                  disabled={imageZoom >= 3}
+                  className="p-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ZoomIn className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setImageZoom(1)}
+                  disabled={imageZoom === 1}
+                  className="p-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Media Display */}
@@ -1428,8 +1432,8 @@ export default function WorkflowDetailModal({
                     currentSegment?.format_parser ||
                     '';
                   return (
-                    <div className="w-full h-full overflow-auto bg-white dark:bg-white/[0.04] rounded-lg shadow-lg p-6">
-                      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-200 dark:border-white/[0.08]">
+                    <div className="w-full h-full overflow-auto bg-white/30 dark:bg-white/[0.04] rounded-lg shadow-lg p-6">
+                      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-black/[0.08] dark:border-white/[0.08]">
                         <FileText className="h-5 w-5 text-slate-500 dark:text-slate-400" />
                         <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
                           {t('workflow.textPreview', 'Text Preview')} -{' '}
@@ -1475,8 +1479,8 @@ export default function WorkflowDetailModal({
                 if (isWebSegment) {
                   const webContent = currentSegment?.webcrawler_content || '';
                   return (
-                    <div className="w-full h-full overflow-auto bg-white dark:bg-white/[0.04] rounded-lg shadow-lg p-6">
-                      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-200 dark:border-white/[0.08]">
+                    <div className="w-full h-full overflow-auto bg-white/30 dark:bg-white/[0.04] rounded-lg shadow-lg p-6">
+                      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-black/[0.08] dark:border-white/[0.08]">
                         <Globe className="h-5 w-5 text-blue-500 dark:text-blue-400" />
                         <span className="text-sm font-medium text-slate-600 dark:text-slate-300 truncate">
                           {currentSegment?.page_title ||
@@ -1609,9 +1613,9 @@ export default function WorkflowDetailModal({
 
       {/* Regenerate Q&A Modal */}
       {regenerateTarget && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
-          <div className="bg-white dark:bg-slate-800 rounded-xl w-full max-w-lg mx-4 overflow-hidden shadow-xl border border-slate-200 dark:border-white/[0.12] ring-1 ring-slate-900/5 dark:ring-white/5">
-            <div className="p-6 border-b border-slate-200 dark:border-white/[0.08]">
+        <div className="fixed inset-0 bg-black/55 dark:bg-black/65 backdrop-blur-md flex items-center justify-center z-[60]">
+          <div className="workflow-sub-modal rounded-xl w-full max-w-lg mx-4 overflow-hidden shadow-xl border border-white/60 dark:border-white/[0.12] ring-1 ring-slate-900/5 dark:ring-white/5">
+            <div className="p-6 border-b border-black/[0.08] dark:border-white/[0.08]">
               <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
                 {t('workflow.regenerateQaTitle')}
               </h3>
@@ -1631,7 +1635,7 @@ export default function WorkflowDetailModal({
                       prev ? { ...prev, question: e.target.value } : null,
                     )
                   }
-                  className="w-full h-24 px-3 py-2 text-sm border border-slate-300 dark:border-white/[0.12] rounded-lg bg-white dark:bg-white/[0.06] text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  className="w-full h-24 px-3 py-2 text-sm border border-black/10 dark:border-white/[0.12] rounded-lg bg-transparent dark:bg-white/[0.06] text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 />
               </div>
               <div>
@@ -1650,11 +1654,11 @@ export default function WorkflowDetailModal({
                   placeholder={t(
                     'workflow.regenerateQaInstructionsPlaceholder',
                   )}
-                  className="w-full h-24 px-3 py-2 text-sm border border-slate-300 dark:border-white/[0.12] rounded-lg bg-white dark:bg-white/[0.06] text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  className="w-full h-24 px-3 py-2 text-sm border border-black/10 dark:border-white/[0.12] rounded-lg bg-transparent dark:bg-white/[0.06] text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-3 px-6 py-4 bg-slate-50 dark:bg-white/[0.03] border-t border-slate-200 dark:border-white/[0.08]">
+            <div className="flex justify-end gap-3 px-6 py-4 bg-transparent dark:bg-white/[0.03] border-t border-black/[0.08] dark:border-white/[0.08]">
               <button
                 onClick={() => setRegenerateTarget(null)}
                 className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg transition-colors"
@@ -1688,9 +1692,9 @@ export default function WorkflowDetailModal({
 
       {/* Add Q&A Modal */}
       {addQaTarget && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
-          <div className="bg-white dark:bg-slate-800 rounded-xl w-full max-w-lg mx-4 overflow-hidden shadow-xl border border-slate-200 dark:border-white/[0.12] ring-1 ring-slate-900/5 dark:ring-white/5">
-            <div className="p-6 border-b border-slate-200 dark:border-white/[0.08]">
+        <div className="fixed inset-0 bg-black/55 dark:bg-black/65 backdrop-blur-md flex items-center justify-center z-[60]">
+          <div className="workflow-sub-modal rounded-xl w-full max-w-lg mx-4 overflow-hidden shadow-xl border border-white/60 dark:border-white/[0.12] ring-1 ring-slate-900/5 dark:ring-white/5">
+            <div className="p-6 border-b border-black/[0.08] dark:border-white/[0.08]">
               <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
                 {t('workflow.addQaTitle')}
               </h3>
@@ -1711,7 +1715,7 @@ export default function WorkflowDetailModal({
                     )
                   }
                   placeholder={t('workflow.addQaQuestionPlaceholder', '')}
-                  className="w-full h-24 px-3 py-2 text-sm border border-slate-300 dark:border-white/[0.12] rounded-lg bg-white dark:bg-white/[0.06] text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  className="w-full h-24 px-3 py-2 text-sm border border-black/10 dark:border-white/[0.12] rounded-lg bg-transparent dark:bg-white/[0.06] text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 />
               </div>
               <div>
@@ -1728,11 +1732,11 @@ export default function WorkflowDetailModal({
                     )
                   }
                   placeholder={t('workflow.addQaInstructionsPlaceholder')}
-                  className="w-full h-24 px-3 py-2 text-sm border border-slate-300 dark:border-white/[0.12] rounded-lg bg-white dark:bg-white/[0.06] text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  className="w-full h-24 px-3 py-2 text-sm border border-black/10 dark:border-white/[0.12] rounded-lg bg-transparent dark:bg-white/[0.06] text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-3 px-6 py-4 bg-slate-50 dark:bg-white/[0.03] border-t border-slate-200 dark:border-white/[0.08]">
+            <div className="flex justify-end gap-3 px-6 py-4 bg-transparent dark:bg-white/[0.03] border-t border-black/[0.08] dark:border-white/[0.08]">
               <button
                 onClick={() => setAddQaTarget(null)}
                 className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg transition-colors"
@@ -1754,9 +1758,9 @@ export default function WorkflowDetailModal({
 
       {/* Re-analyze Modal */}
       {showReanalyzeModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
-          <div className="bg-white dark:bg-slate-800 rounded-xl w-full max-w-lg mx-4 overflow-hidden shadow-xl">
-            <div className="p-6 border-b border-slate-200 dark:border-white/[0.08]">
+        <div className="fixed inset-0 bg-black/55 dark:bg-black/65 backdrop-blur-md flex items-center justify-center z-[60]">
+          <div className="workflow-sub-modal rounded-xl w-full max-w-lg mx-4 overflow-hidden shadow-xl border border-white/60 dark:border-white/[0.12]">
+            <div className="p-6 border-b border-black/[0.08] dark:border-white/[0.08]">
               <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
                 {t('workflow.reanalyzeTitle')}
               </h3>
@@ -1772,10 +1776,10 @@ export default function WorkflowDetailModal({
                 value={reanalyzeInstructions}
                 onChange={(e) => setReanalyzeInstructions(e.target.value)}
                 placeholder={t('workflow.reanalyzeInstructionsPlaceholder')}
-                className="w-full h-40 px-3 py-2 text-sm border border-slate-300 dark:border-white/[0.12] rounded-lg bg-white dark:bg-white/[0.06] text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                className="w-full h-40 px-3 py-2 text-sm border border-black/10 dark:border-white/[0.12] rounded-lg bg-transparent dark:bg-white/[0.06] text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
             </div>
-            <div className="flex justify-end gap-3 px-6 py-4 bg-slate-50 dark:bg-white/[0.03] border-t border-slate-200 dark:border-white/[0.08]">
+            <div className="flex justify-end gap-3 px-6 py-4 bg-transparent dark:bg-white/[0.03] border-t border-black/[0.08] dark:border-white/[0.08]">
               <button
                 onClick={() => {
                   setShowReanalyzeModal(false);

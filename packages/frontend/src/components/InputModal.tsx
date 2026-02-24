@@ -62,7 +62,7 @@ export default function InputModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200 bg-black/40 dark:bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200 bg-black/55 dark:bg-black/65 backdrop-blur-md"
       onClick={handleBackdropClick}
     >
       <div

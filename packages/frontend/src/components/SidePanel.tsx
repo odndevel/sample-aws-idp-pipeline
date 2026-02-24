@@ -6,6 +6,7 @@ import {
   useMemo,
   type RefObject,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Layers,
@@ -425,6 +426,10 @@ export default function SidePanel({
   const [openArtifactMenuId, setOpenArtifactMenuId] = useState<string | null>(
     null,
   );
+  const [artifactMenuPos, setArtifactMenuPos] = useState<{
+    top: number;
+    right: number;
+  } | null>(null);
   const [artifactToDelete, setArtifactToDelete] = useState<Artifact | null>(
     null,
   );
@@ -493,6 +498,7 @@ export default function SidePanel({
       const target = event.target as HTMLElement;
       if (!target.closest('[data-artifact-menu]')) {
         setOpenArtifactMenuId(null);
+        setArtifactMenuPos(null);
       }
     };
 
@@ -513,23 +519,34 @@ export default function SidePanel({
     e: React.MouseEvent,
   ) => {
     e.stopPropagation();
-    setOpenArtifactMenuId(
-      openArtifactMenuId === artifactId ? null : artifactId,
-    );
+    if (openArtifactMenuId === artifactId) {
+      setOpenArtifactMenuId(null);
+      setArtifactMenuPos(null);
+    } else {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      setArtifactMenuPos({
+        top: rect.bottom + 4,
+        right: window.innerWidth - rect.right,
+      });
+      setOpenArtifactMenuId(artifactId);
+    }
   };
 
   const handleArtifactCopyClick = (artifact: Artifact) => {
     setOpenArtifactMenuId(null);
+    setArtifactMenuPos(null);
     onArtifactCopy?.(artifact);
   };
 
   const handleArtifactDownloadClick = (artifact: Artifact) => {
     setOpenArtifactMenuId(null);
+    setArtifactMenuPos(null);
     onArtifactDownload?.(artifact);
   };
 
   const handleArtifactDeleteClick = (artifact: Artifact) => {
     setOpenArtifactMenuId(null);
+    setArtifactMenuPos(null);
     setArtifactToDelete(artifact);
   };
 
@@ -552,7 +569,7 @@ export default function SidePanel({
       <div ref={splitContainerRef} className="h-full flex flex-col gap-0.5 p-1">
         {/* Documents Panel (top) */}
         <div
-          className="glow-through glass-panel flex flex-col min-h-0 overflow-hidden bg-white dark:bg-slate-900 rounded-lg border border-slate-200/80 dark:border-slate-700/60"
+          className="glow-through glass-panel flex flex-col min-h-0 overflow-hidden bg-[#e8ecf4]/90 dark:bg-slate-900 rounded-lg border border-white/50 dark:border-slate-700/60"
           style={{ height: `${topRatio}%` }}
         >
           {/* Documents Header */}
@@ -618,7 +635,7 @@ export default function SidePanel({
 
           {/* Documents Search Toolbar */}
           {docSearchOpen && (
-            <div className="px-3 py-2 bg-slate-50 dark:bg-white/[0.03] border-b border-slate-200/80 dark:border-white/[0.08] flex-shrink-0 space-y-1.5">
+            <div className="px-3 py-2 bg-white/20 dark:bg-white/[0.03] border-b border-black/[0.08] dark:border-white/[0.08] flex-shrink-0 space-y-1.5">
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400" />
                 <input
@@ -638,7 +655,7 @@ export default function SidePanel({
                     setDocSearchQuery((e.target as HTMLInputElement).value);
                   }}
                   placeholder={t('documents.searchPlaceholder')}
-                  className="w-full h-7 pl-7 pr-7 text-xs rounded-md border border-slate-200 dark:border-white/[0.12] bg-white dark:bg-white/[0.06] text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  className="w-full h-7 pl-7 pr-7 text-xs rounded-md border border-white/40 dark:border-white/[0.12] bg-white/30 dark:bg-white/[0.06] text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
                 />
                 {docSearchQuery && (
                   <button
@@ -758,10 +775,10 @@ export default function SidePanel({
                         );
                         e.dataTransfer.effectAllowed = 'copy';
                       }}
-                      className={`group bg-white dark:bg-white/[0.03] border rounded-lg p-2.5 transition-all ${
+                      className={`group bg-white/30 dark:bg-white/[0.03] border rounded-lg p-2.5 transition-all ${
                         isProcessing
-                          ? 'border-blue-300 dark:border-blue-500/30 bg-blue-50/30 dark:bg-blue-900/10'
-                          : 'border-slate-200 dark:border-white/[0.08] hover:border-slate-300 dark:hover:border-white/20'
+                          ? 'border-blue-300/50 dark:border-blue-500/30 bg-blue-50/20 dark:bg-blue-900/10'
+                          : 'border-white/40 dark:border-white/[0.08] hover:border-white/60 dark:hover:border-white/20'
                       }`}
                     >
                       <div className="flex items-center gap-2 min-w-0">
@@ -888,7 +905,7 @@ export default function SidePanel({
 
         {/* Artifacts Panel (bottom) */}
         <div
-          className="glow-through glass-panel flex flex-col min-h-0 overflow-hidden bg-white dark:bg-slate-900 rounded-lg border border-slate-200/80 dark:border-slate-700/60"
+          className="glow-through glass-panel flex flex-col min-h-0 overflow-hidden bg-[#e8ecf4]/90 dark:bg-slate-900 rounded-lg border border-white/50 dark:border-slate-700/60"
           style={{ flex: 1 }}
         >
           {/* Artifacts Header */}
@@ -924,7 +941,7 @@ export default function SidePanel({
 
           {/* Artifacts Search Toolbar */}
           {artSearchOpen && (
-            <div className="px-3 py-2 bg-slate-50 dark:bg-white/[0.03] border-b border-slate-200/80 dark:border-white/[0.08] flex-shrink-0">
+            <div className="px-3 py-2 bg-white/20 dark:bg-white/[0.03] border-b border-black/[0.08] dark:border-white/[0.08] flex-shrink-0">
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400" />
                 <input
@@ -944,7 +961,7 @@ export default function SidePanel({
                     setArtSearchQuery((e.target as HTMLInputElement).value);
                   }}
                   placeholder={t('artifacts.searchPlaceholder')}
-                  className="w-full h-7 pl-7 pr-7 text-xs rounded-md border border-slate-200 dark:border-white/[0.12] bg-white dark:bg-white/[0.06] text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                  className="w-full h-7 pl-7 pr-7 text-xs rounded-md border border-white/40 dark:border-white/[0.12] bg-white/30 dark:bg-white/[0.06] text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400"
                 />
                 {artSearchQuery && (
                   <button
@@ -978,7 +995,7 @@ export default function SidePanel({
                 </p>
               </div>
             ) : (
-              <div className="p-2 pb-3 space-y-0.5">
+              <div className="p-2 pb-3 space-y-1">
                 {filteredArtifacts.map((artifact) => {
                   const ArtifactIcon = getArtifactIcon(artifact.content_type);
                   return (
@@ -995,10 +1012,10 @@ export default function SidePanel({
                         );
                         e.dataTransfer.effectAllowed = 'copy';
                       }}
-                      className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                      className={`group relative flex items-center gap-2 px-3 py-2 rounded-lg border backdrop-blur-sm transition-all cursor-pointer ${
                         artifact.artifact_id === currentArtifactId
-                          ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-500 dark:text-blue-400'
-                          : 'hover:bg-slate-100 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300'
+                          ? 'bg-white/50 dark:bg-blue-900/30 border-blue-300/50 dark:border-blue-500/30 shadow-sm text-blue-500 dark:text-blue-400'
+                          : 'bg-white/30 dark:bg-white/[0.03] border-white/50 dark:border-white/[0.08] hover:bg-white/45 dark:hover:bg-white/[0.06] hover:border-white/70 dark:hover:border-white/20 hover:shadow-sm text-slate-700 dark:text-slate-300'
                       }`}
                       onClick={() => onArtifactSelect?.(artifact.artifact_id)}
                     >
@@ -1029,46 +1046,56 @@ export default function SidePanel({
                             )}
                           </button>
 
-                          {openArtifactMenuId === artifact.artifact_id && (
-                            <div className="glass-panel absolute right-0 top-full mt-1 z-50 min-w-[150px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/[0.15] rounded-lg shadow-lg py-1">
-                              {onArtifactCopy && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleArtifactCopyClick(artifact);
-                                  }}
-                                  className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10"
-                                >
-                                  <Copy className="w-3.5 h-3.5" />
-                                  {t('common.copy', 'Copy')}
-                                </button>
-                              )}
-                              {onArtifactDownload && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleArtifactDownloadClick(artifact);
-                                  }}
-                                  className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10"
-                                >
-                                  <Download className="w-3.5 h-3.5" />
-                                  {t('common.download', 'Download')}
-                                </button>
-                              )}
-                              {onArtifactDelete && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleArtifactDeleteClick(artifact);
-                                  }}
-                                  className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                  {t('common.delete')}
-                                </button>
-                              )}
-                            </div>
-                          )}
+                          {openArtifactMenuId === artifact.artifact_id &&
+                            artifactMenuPos &&
+                            createPortal(
+                              <div
+                                className="fixed z-[9999] min-w-[150px] bg-[#e4eaf4] dark:bg-slate-800 border border-white/60 dark:border-white/[0.15] rounded-lg shadow-lg py-1"
+                                style={{
+                                  top: artifactMenuPos.top,
+                                  right: artifactMenuPos.right,
+                                }}
+                                data-artifact-menu
+                              >
+                                {onArtifactCopy && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleArtifactCopyClick(artifact);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-300 glass-menu-item"
+                                  >
+                                    <Copy className="w-3.5 h-3.5" />
+                                    {t('common.copy', 'Copy')}
+                                  </button>
+                                )}
+                                {onArtifactDownload && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleArtifactDownloadClick(artifact);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-300 glass-menu-item"
+                                  >
+                                    <Download className="w-3.5 h-3.5" />
+                                    {t('common.download', 'Download')}
+                                  </button>
+                                )}
+                                {onArtifactDelete && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleArtifactDeleteClick(artifact);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    {t('common.delete')}
+                                  </button>
+                                )}
+                              </div>,
+                              document.body,
+                            )}
                         </div>
                       )}
                     </div>

@@ -1,11 +1,7 @@
 import { useTranslation } from 'react-i18next';
+import { Info, AlertTriangle } from 'lucide-react';
 
 export const OCR_MODELS = [
-  {
-    value: 'paddleocr-vl',
-    hasLangOption: false,
-    hasOptions: false,
-  },
   {
     value: 'pp-ocrv5',
     hasLangOption: true,
@@ -15,6 +11,11 @@ export const OCR_MODELS = [
     value: 'pp-structurev3',
     hasLangOption: true,
     hasOptions: true,
+  },
+  {
+    value: 'paddleocr-vl',
+    hasLangOption: false,
+    hasOptions: false,
   },
 ];
 
@@ -102,88 +103,143 @@ export default function OcrSettingsForm({
     <div className={isBento ? undefined : 'space-y-4'}>
       {/* OCR Model */}
       <div className={isBento ? 'bento-form-group' : 'space-y-2'}>
-        <label
+        <div
           className={
             isBento
               ? 'bento-form-label'
-              : 'block text-sm font-medium text-slate-700 dark:text-slate-300'
+              : 'flex items-center gap-1.5 text-sm font-medium text-[#334155] dark:text-[#cbd5e1]'
           }
         >
           {t('ocr.model')}
-        </label>
-        <div className={isBento ? 'bento-radio-group' : 'space-y-1.5'}>
-          {OCR_MODELS.map((model) => (
-            <label
-              key={model.value}
-              className={
-                isBento
-                  ? `bento-radio-option ${settings.ocr_model === model.value ? 'active' : ''}`
-                  : `flex items-start gap-2.5 p-2 rounded-lg border cursor-pointer transition-colors ${
-                      settings.ocr_model === model.value
-                        ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20'
-                        : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
-                    }`
-              }
-            >
-              <input
-                type="radio"
-                name="ocr_model"
-                value={model.value}
-                checked={settings.ocr_model === model.value}
-                onChange={(e) =>
-                  onChange({
-                    ...settings,
-                    ocr_model: e.target.value,
-                    ...(e.target.value === 'paddleocr-vl'
-                      ? {
-                          ocr_lang: '',
-                          use_doc_orientation_classify: false,
-                          use_doc_unwarping: false,
-                          use_textline_orientation: false,
-                        }
-                      : {}),
-                  })
-                }
-                className={isBento ? undefined : 'mt-0.5'}
-              />
-              <div>
-                <div
-                  className={
-                    isBento
-                      ? 'bento-radio-label'
-                      : 'text-sm font-medium text-slate-700 dark:text-slate-300'
+          {!isBento && (
+            <span className="relative group/model">
+              <Info className="h-3.5 w-3.5 text-[#94a3b8] cursor-help" />
+              <span className="absolute top-full left-0 mt-1 hidden group-hover/model:block w-52 p-2 text-xs font-normal text-[#475569] dark:text-[#cbd5e1] bg-white dark:bg-[#1e2235] border border-black/10 dark:border-[#3b4264] rounded-lg shadow-lg z-10">
+                {t('ocr.settingsTooltip')}
+              </span>
+            </span>
+          )}
+        </div>
+        {isBento ? (
+          <div className="bento-radio-group">
+            {OCR_MODELS.map((model) => (
+              <label
+                key={model.value}
+                className={`bento-radio-option ${settings.ocr_model === model.value ? 'active' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name="ocr_model"
+                  value={model.value}
+                  checked={settings.ocr_model === model.value}
+                  onChange={(e) =>
+                    onChange({
+                      ...settings,
+                      ocr_model: e.target.value,
+                      ...(e.target.value === 'paddleocr-vl'
+                        ? {
+                            use_doc_orientation_classify: false,
+                            use_doc_unwarping: false,
+                            use_textline_orientation: false,
+                          }
+                        : {}),
+                    })
                   }
+                />
+                <div>
+                  <div className="bento-radio-label">
+                    {t(`ocr.models.${model.value}.name`)}
+                  </div>
+                  <div className="bento-radio-desc">
+                    {t(`ocr.models.${model.value}.description`)}
+                  </div>
+                </div>
+              </label>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-1.5">
+            {OCR_MODELS.map((model) => (
+              <label
+                key={model.value}
+                title={t(`ocr.models.${model.value}.description`)}
+                className={`relative flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border cursor-pointer transition-colors text-center ${
+                  settings.ocr_model === model.value
+                    ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20'
+                    : 'border-black/10 dark:border-[#3b4264] hover:border-black/20 dark:hover:border-[#4f5680]'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="ocr_model"
+                  value={model.value}
+                  checked={settings.ocr_model === model.value}
+                  onChange={(e) =>
+                    onChange({
+                      ...settings,
+                      ocr_model: e.target.value,
+                      ...(e.target.value === 'paddleocr-vl'
+                        ? {
+                            use_doc_orientation_classify: false,
+                            use_doc_unwarping: false,
+                            use_textline_orientation: false,
+                          }
+                        : {}),
+                    })
+                  }
+                  className="sr-only"
+                />
+                <span
+                  className={`text-xs font-medium ${
+                    settings.ocr_model === model.value
+                      ? 'text-blue-700 dark:text-blue-300'
+                      : 'text-[#475569] dark:text-[#94a3b8]'
+                  }`}
                 >
                   {t(`ocr.models.${model.value}.name`)}
-                </div>
-                <div
-                  className={
-                    isBento
-                      ? 'bento-radio-desc'
-                      : 'text-xs text-slate-500 dark:text-slate-400'
-                  }
-                >
-                  {t(`ocr.models.${model.value}.description`)}
-                </div>
-              </div>
-            </label>
-          ))}
-        </div>
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* PaddleOCR-VL cold start warning */}
+      {settings.ocr_model === 'paddleocr-vl' && (
+        <div
+          className={`flex items-start gap-2 ${isBento ? 'mt-2 p-3' : 'p-2.5'} bg-amber-50 dark:bg-amber-500/[0.07] border border-amber-200 dark:border-amber-400/20 rounded-lg`}
+        >
+          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+          <p
+            className={`${isBento ? 'text-xs' : 'text-[11px]'} text-amber-700 dark:text-amber-300`}
+          >
+            {t('ocr.vlColdStartWarning')}
+          </p>
+        </div>
+      )}
 
       {/* Language */}
       {selectedModel?.hasLangOption && (
         <div className={isBento ? 'bento-form-group' : 'space-y-2'}>
-          <label
+          <div
             className={
               isBento
                 ? 'bento-form-label'
-                : 'block text-sm font-medium text-slate-700 dark:text-slate-300'
+                : 'flex items-center gap-1.5 text-sm font-medium text-[#334155] dark:text-[#cbd5e1]'
             }
           >
             {t('ocr.language')}
-          </label>
+            {!isBento && (
+              <span className="relative group/lang">
+                <Info className="h-3.5 w-3.5 text-[#94a3b8] cursor-help" />
+                <span className="absolute top-full left-0 mt-1 hidden group-hover/lang:block w-48 p-2 text-xs font-normal text-[#475569] dark:text-[#cbd5e1] bg-white dark:bg-[#1e2235] border border-black/10 dark:border-[#3b4264] rounded-lg shadow-lg z-10">
+                  {t('ocr.languageSettingsTooltip')}
+                </span>
+              </span>
+            )}
+          </div>
           <select
+            data-modal-input={!isBento || undefined}
             value={settings.ocr_lang}
             onChange={(e) =>
               onChange({ ...settings, ocr_lang: e.target.value })
@@ -191,12 +247,12 @@ export default function OcrSettingsForm({
             className={
               isBento
                 ? 'bento-form-select'
-                : 'w-full px-3 py-1.5 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+                : 'w-full px-3 py-1.5 text-sm border border-black/10 dark:border-[#3b4264] rounded-lg bg-transparent dark:bg-[#0d1117] text-[#0f172a] dark:text-[#f1f5f9] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent'
             }
           >
             {OCR_LANGUAGES.map((lang) => (
               <option key={lang.code} value={lang.code}>
-                {lang.name}
+                {t(`ocr.languages.${lang.code || 'default'}`)}
               </option>
             ))}
           </select>
@@ -210,7 +266,7 @@ export default function OcrSettingsForm({
             className={
               isBento
                 ? 'bento-form-label'
-                : 'block text-sm font-medium text-slate-700 dark:text-slate-300'
+                : 'block text-sm font-medium text-[#334155] dark:text-[#cbd5e1]'
             }
           >
             {t('ocr.processingOptions')}
@@ -232,14 +288,18 @@ export default function OcrSettingsForm({
                     use_doc_orientation_classify: e.target.checked,
                   })
                 }
-                className={isBento ? undefined : 'mt-0.5'}
+                className={
+                  isBento
+                    ? undefined
+                    : 'mt-0.5 accent-blue-400 appearance-auto bg-transparent'
+                }
               />
               <div>
                 <div
                   className={
                     isBento
                       ? 'bento-checkbox-label'
-                      : 'text-sm text-slate-700 dark:text-slate-300'
+                      : 'text-sm text-[#334155] dark:text-[#cbd5e1]'
                   }
                 >
                   {t('ocr.documentOrientation')}
@@ -248,7 +308,7 @@ export default function OcrSettingsForm({
                   className={
                     isBento
                       ? 'bento-checkbox-desc'
-                      : 'text-xs text-slate-500 dark:text-slate-400'
+                      : 'text-xs text-[#64748b] dark:text-[#94a3b8]'
                   }
                 >
                   {t('ocr.documentOrientationDesc')}
@@ -272,14 +332,18 @@ export default function OcrSettingsForm({
                     use_doc_unwarping: e.target.checked,
                   })
                 }
-                className={isBento ? undefined : 'mt-0.5'}
+                className={
+                  isBento
+                    ? undefined
+                    : 'mt-0.5 accent-blue-400 appearance-auto bg-transparent'
+                }
               />
               <div>
                 <div
                   className={
                     isBento
                       ? 'bento-checkbox-label'
-                      : 'text-sm text-slate-700 dark:text-slate-300'
+                      : 'text-sm text-[#334155] dark:text-[#cbd5e1]'
                   }
                 >
                   {t('ocr.documentUnwarping')}
@@ -288,7 +352,7 @@ export default function OcrSettingsForm({
                   className={
                     isBento
                       ? 'bento-checkbox-desc'
-                      : 'text-xs text-slate-500 dark:text-slate-400'
+                      : 'text-xs text-[#64748b] dark:text-[#94a3b8]'
                   }
                 >
                   {t('ocr.documentUnwarpingDesc')}
@@ -313,14 +377,18 @@ export default function OcrSettingsForm({
                       use_textline_orientation: e.target.checked,
                     })
                   }
-                  className={isBento ? undefined : 'mt-0.5'}
+                  className={
+                    isBento
+                      ? undefined
+                      : 'mt-0.5 accent-blue-400 appearance-auto bg-transparent'
+                  }
                 />
                 <div>
                   <div
                     className={
                       isBento
                         ? 'bento-checkbox-label'
-                        : 'text-sm text-slate-700 dark:text-slate-300'
+                        : 'text-sm text-[#334155] dark:text-[#cbd5e1]'
                     }
                   >
                     {t('ocr.textlineOrientation')}
@@ -329,7 +397,7 @@ export default function OcrSettingsForm({
                     className={
                       isBento
                         ? 'bento-checkbox-desc'
-                        : 'text-xs text-slate-500 dark:text-slate-400'
+                        : 'text-xs text-[#64748b] dark:text-[#94a3b8]'
                     }
                   >
                     {t('ocr.textlineOrientationDesc')}

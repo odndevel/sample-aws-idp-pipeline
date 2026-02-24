@@ -1,7 +1,8 @@
 """OCR Invoker Lambda
 
-Receives PDF/Image files from SQS queue and invokes SageMaker async inference.
-Does NOT poll for results - completion is handled by SNS callback.
+Receives PDF/Image files from SQS queue and routes to the appropriate backend:
+- pp-ocrv5, pp-structurev3 -> Lambda async invoke (CPU-only, no SageMaker needed)
+- paddleocr-vl -> SageMaker async inference (GPU required)
 """
 import json
 import os
@@ -22,6 +23,10 @@ from shared.s3_analysis import get_s3_client, parse_s3_uri
 
 SAGEMAKER_ENDPOINT_NAME = os.environ.get('SAGEMAKER_ENDPOINT_NAME', '')
 OUTPUT_BUCKET = os.environ.get('OUTPUT_BUCKET', '')
+OCR_LAMBDA_FUNCTION_NAME = os.environ.get('OCR_LAMBDA_FUNCTION_NAME', '')
+
+# Models that run on Lambda (CPU-only) instead of SageMaker (GPU)
+LAMBDA_OCR_MODELS = {'pp-ocrv5', 'pp-structurev3'}
 
 SUPPORTED_MIME_TYPES = {
     'application/pdf',
@@ -35,6 +40,7 @@ SUPPORTED_MIME_TYPES = {
 
 sagemaker_runtime = None
 sagemaker_client = None
+lambda_client = None
 
 
 def get_sagemaker_runtime():
@@ -55,6 +61,16 @@ def get_sagemaker_client():
             region_name=os.environ.get('AWS_REGION', 'us-east-1')
         )
     return sagemaker_client
+
+
+def get_lambda_client():
+    global lambda_client
+    if lambda_client is None:
+        lambda_client = boto3.client(
+            'lambda',
+            region_name=os.environ.get('AWS_REGION', 'us-east-1')
+        )
+    return lambda_client
 
 
 def ensure_endpoint_running():
@@ -99,7 +115,7 @@ def invoke_async_inference(
     workflow_id: str,
     document_id: str,
     project_id: str,
-    ocr_model: str = 'paddleocr-vl',
+    ocr_model: str = 'pp-ocrv5',
     ocr_options: dict | None = None,
 ) -> str:
     """Invoke SageMaker async inference and return immediately."""
@@ -150,6 +166,39 @@ def invoke_async_inference(
     return output_location
 
 
+def invoke_lambda_async(
+    file_uri: str,
+    workflow_id: str,
+    document_id: str,
+    project_id: str,
+    ocr_model: str,
+    ocr_options: dict | None = None,
+) -> None:
+    """Invoke OCR Lambda processor asynchronously (fire-and-forget).
+
+    The Lambda processor handles DDB/S3 writes on completion.
+    """
+    client = get_lambda_client()
+
+    payload = {
+        'workflow_id': workflow_id,
+        'document_id': document_id,
+        'project_id': project_id,
+        'file_uri': file_uri,
+        'ocr_model': ocr_model,
+        'ocr_options': ocr_options or {},
+    }
+
+    print(f'Invoking Lambda async: function={OCR_LAMBDA_FUNCTION_NAME}, model={ocr_model}')
+
+    client.invoke(
+        FunctionName=OCR_LAMBDA_FUNCTION_NAME,
+        InvocationType='Event',
+        Payload=json.dumps(payload).encode('utf-8'),
+    )
+    print(f'Lambda async invoked for workflow={workflow_id}')
+
+
 def process_message(message: dict) -> dict:
     """Process a single message from the queue."""
     workflow_id = message.get('workflow_id')
@@ -157,13 +206,10 @@ def process_message(message: dict) -> dict:
     project_id = message.get('project_id')
     file_uri = message.get('file_uri')
     file_type = message.get('file_type')
-    ocr_model = message.get('ocr_model', 'paddleocr-vl')
+    ocr_model = message.get('ocr_model', 'pp-ocrv5')
     ocr_options = message.get('ocr_options', {})
 
     print(f'Processing OCR job: workflow={workflow_id}, file={file_uri}, model={ocr_model}')
-
-    # Request scale-out immediately (idempotent - safe if already running)
-    ensure_endpoint_running()
 
     # Check if file type is supported
     if file_type not in SUPPORTED_MIME_TYPES:
@@ -190,21 +236,29 @@ def process_message(message: dict) -> dict:
             status=PreprocessStatus.PROCESSING
         )
 
-        # Invoke async inference (returns immediately)
-        output_location = invoke_async_inference(
-            file_uri=file_uri,
-            workflow_id=workflow_id,
-            document_id=document_id,
-            project_id=project_id,
-            ocr_model=ocr_model,
-            ocr_options=ocr_options,
-        )
-
-        # Return immediately - SNS callback will handle completion
-        return {
-            'status': 'invoked',
-            'output_location': output_location
-        }
+        if ocr_model in LAMBDA_OCR_MODELS:
+            # CPU-only models -> Lambda async invoke (fire-and-forget)
+            invoke_lambda_async(
+                file_uri=file_uri,
+                workflow_id=workflow_id,
+                document_id=document_id,
+                project_id=project_id,
+                ocr_model=ocr_model,
+                ocr_options=ocr_options,
+            )
+            return {'status': 'invoked', 'backend': 'lambda'}
+        else:
+            # GPU models -> SageMaker async inference
+            ensure_endpoint_running()
+            output_location = invoke_async_inference(
+                file_uri=file_uri,
+                workflow_id=workflow_id,
+                document_id=document_id,
+                project_id=project_id,
+                ocr_model=ocr_model,
+                ocr_options=ocr_options,
+            )
+            return {'status': 'invoked', 'backend': 'sagemaker', 'output_location': output_location}
 
     except Exception as e:
         print(f'Error invoking OCR: {e}')

@@ -505,7 +505,7 @@ export default function ChatInputBox({
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      <div className="chat-input-box glass-panel flex flex-col rounded-2xl border transition-all duration-200 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm hover:shadow-md focus-within:shadow-lg">
+      <div className="chat-input-box glass-panel flex flex-col rounded-2xl border transition-all duration-200 border-white/30 dark:border-slate-700 bg-white/20 backdrop-blur-md dark:bg-slate-800 dark:backdrop-blur-none shadow-sm hover:shadow-md focus-within:shadow-lg">
         <div className="flex flex-col px-3 pt-3 pb-2 gap-2">
           {/* Attached Files Preview */}
           {attachedFiles.length > 0 && (

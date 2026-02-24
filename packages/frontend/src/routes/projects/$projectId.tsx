@@ -68,6 +68,7 @@ function ProjectDetailPage() {
     projectId,
     userId: userId || '',
     selectedVoiceModel,
+    setSelectedVoiceModel,
     setMessages: chatSession.setMessages,
     setStreamingBlocks: chatSession.setStreamingBlocks,
   });
@@ -563,8 +564,6 @@ function ProjectDetailPage() {
         isOpen={documentsHook.showUploadModal}
         uploading={documentsHook.uploading}
         projectLanguage={projectData.project?.language || undefined}
-        projectOcrModel={projectData.project?.ocr_model || undefined}
-        projectOcrOptions={projectData.project?.ocr_options || undefined}
         projectDocumentPrompt={
           projectData.project?.document_prompt || undefined
         }
@@ -584,7 +583,8 @@ function ProjectDetailPage() {
         isOpen={voiceChatManager.showVoiceModelSettings}
         onClose={() => voiceChatManager.setShowVoiceModelSettings(false)}
         selectedModel={selectedVoiceModel}
-        onSave={() => {
+        onSave={(config) => {
+          setSelectedVoiceModel(config.modelType);
           if (voiceChatManager.voiceChat.state.status === 'connected') {
             voiceChatManager.voiceChat.disconnect();
             setTimeout(() => {

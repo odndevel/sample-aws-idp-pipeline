@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Settings, X, Eye, EyeOff } from 'lucide-react';
+import { Mic, X, Eye, EyeOff } from 'lucide-react';
 import type { BidiModelType, VoiceModelConfig } from '../hooks/useVoiceChat';
 import { useModal } from '../hooks/useModal';
 
@@ -129,25 +129,28 @@ export default function VoiceModelSettingsModal({
     gemini?: string;
     openai?: string;
   }>({});
+  const [modelUnlocked, setModelUnlocked] = useState(false);
+  const tapCountRef = useRef(0);
+  const tapTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // If selectedModel is provided, lock to that model
-  const isModelLocked = selectedModel !== undefined;
+  // If selectedModel is provided, lock to that model (unless unlocked via hidden tap)
+  const isModelLocked = selectedModel !== undefined && !modelUnlocked;
   const effectiveModelType = isModelLocked ? selectedModel : modelType;
 
   useEffect(() => {
     if (isOpen) {
+      setModelUnlocked(false);
+      tapCountRef.current = 0;
       const config = getStoredVoiceModelConfig();
-      // If model is locked, use the locked model; otherwise use stored model
-      const targetModel = isModelLocked ? selectedModel : config.modelType;
+      const targetModel = selectedModel ?? config.modelType;
       setModelType(targetModel);
       setStoredApiKeys(config.apiKeys || {});
       setApiKey(getApiKeyForModel(config, targetModel));
-      // Load stored voice for this specific model, or use default
       const storedVoice =
         config.modelType === targetModel ? config.voice : undefined;
       setVoice(storedVoice || VOICE_OPTIONS[targetModel][0]?.value || '');
     }
-  }, [isOpen, isModelLocked, selectedModel]);
+  }, [isOpen, selectedModel]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -161,7 +164,7 @@ export default function VoiceModelSettingsModal({
     setApiKey(storedApiKeys[effectiveModelType as 'gemini' | 'openai'] || '');
   }, [effectiveModelType, storedApiKeys, isOpen, voice]);
 
-  const { handleBackdropClick } = useModal({ isOpen, onClose });
+  useModal({ isOpen, onClose });
 
   const handleSave = () => {
     // Update stored API keys with current key
@@ -192,51 +195,76 @@ export default function VoiceModelSettingsModal({
   if (!isOpen) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200 bg-black/40 dark:bg-black/60 backdrop-blur-sm"
-      onClick={handleBackdropClick}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
       <div
-        className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl animate-in zoom-in-95 duration-200 overflow-hidden"
-        style={{
-          border: '1px solid rgba(139, 92, 246, 0.3)',
-          boxShadow:
-            '0 0 40px rgba(139, 92, 246, 0.08), 0 25px 50px -12px rgba(0, 0, 0, 0.15)',
-        }}
-      >
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors z-10"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        className="absolute inset-0 bg-black/55 dark:bg-black/65 backdrop-blur-md"
+        onClick={onClose}
+      />
 
-        <div className="relative p-8">
-          {/* Icon */}
-          <div className="w-14 h-14 mx-auto mb-5 rounded-xl flex items-center justify-center bg-purple-100 dark:bg-purple-500/10">
-            <Settings className="w-7 h-7 text-purple-600 dark:text-purple-400" />
-          </div>
+      {/* Modal */}
+      <div className="voice-settings-modal relative rounded-2xl w-full max-w-md mx-4 flex flex-col overflow-hidden border border-white/70 dark:border-indigo-500/20 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.15)] dark:shadow-[0_0_80px_rgba(99,102,241,0.08),0_25px_50px_-12px_rgba(0,0,0,0.5)]">
+        {/* Gradient glow */}
+        <div
+          className="dark:hidden absolute inset-0 pointer-events-none rounded-2xl"
+          style={{
+            background:
+              'radial-gradient(ellipse 60% 50% at 80% 0%, rgba(139, 92, 246, 0.1) 0%, transparent 70%)',
+          }}
+        />
+        <div
+          className="hidden dark:block absolute inset-0 pointer-events-none rounded-2xl"
+          style={{
+            background:
+              'radial-gradient(ellipse 60% 50% at 80% 0%, rgba(139, 92, 246, 0.15) 0%, transparent 70%)',
+          }}
+        />
 
-          {/* Title */}
-          <h3 className="text-lg font-semibold text-center text-slate-900 dark:text-white mb-6">
+        {/* Header */}
+        <div className="flex items-center gap-3 p-4 border-b border-black/[0.06] dark:border-[#2a2f45] flex-shrink-0">
+          <Mic className="h-5 w-5 text-purple-500" />
+          <h2 className="text-lg font-semibold text-[#1e293b] dark:text-[#f8fafc]">
             {t('voiceModel.settings', 'Voice Model Settings')}
-          </h3>
+          </h2>
+          <button
+            onClick={onClose}
+            className="ml-auto p-1.5 hover:bg-white/40 dark:hover:bg-[#1e2235] rounded-lg transition-colors"
+          >
+            <X className="h-5 w-5 text-[#64748b]" />
+          </button>
+        </div>
 
+        {/* Content */}
+        <div className="relative p-4 space-y-4">
           {/* Model Selection */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-[#334155] dark:text-[#cbd5e1]">
               {t('voiceModel.model', 'Model')}
             </label>
             {isModelLocked ? (
-              <div className="w-full px-4 py-3 text-sm bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+              <div
+                className="w-full px-3 py-2 text-sm bg-transparent dark:bg-[#0d1117] border border-black/10 dark:border-[#3b4264] rounded-lg text-[#475569] dark:text-[#cbd5e1] select-none cursor-default"
+                onClick={() => {
+                  tapCountRef.current += 1;
+                  clearTimeout(tapTimerRef.current);
+                  if (tapCountRef.current >= 5) {
+                    tapCountRef.current = 0;
+                    setModelUnlocked(true);
+                  } else {
+                    tapTimerRef.current = setTimeout(() => {
+                      tapCountRef.current = 0;
+                    }, 1500);
+                  }
+                }}
+              >
                 {modelOption?.label || effectiveModelType}
               </div>
             ) : (
               <select
+                data-modal-input
                 value={modelType}
                 onChange={(e) => setModelType(e.target.value as BidiModelType)}
-                className="w-full px-4 py-3 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-purple-500 dark:focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20 transition-all"
+                className="w-full px-3 py-2 text-sm border border-black/10 dark:border-[#3b4264] rounded-lg bg-transparent dark:bg-[#0d1117] text-[#0f172a] dark:text-[#f1f5f9] focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
               >
                 {MODEL_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -249,31 +277,32 @@ export default function VoiceModelSettingsModal({
 
           {/* API Key (conditional) */}
           {requiresApiKey && (
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-[#334155] dark:text-[#cbd5e1]">
                 {t('voiceModel.apiKey', 'API Key')}
               </label>
               <div className="relative">
                 <input
+                  data-modal-input
                   type={showApiKey ? 'text' : 'password'}
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   placeholder={modelType === 'gemini' ? 'AIza...' : 'sk-...'}
-                  className="w-full px-4 py-3 pr-12 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-purple-500 dark:focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20 transition-all"
+                  className="w-full px-3 py-2 pr-10 text-sm border border-black/10 dark:border-[#3b4264] rounded-lg bg-transparent dark:bg-[#0d1117] text-[#0f172a] dark:text-[#f1f5f9] placeholder-[#94a3b8] focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
                 />
                 <button
                   type="button"
                   onClick={() => setShowApiKey(!showApiKey)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-[#94a3b8] hover:text-[#475569] dark:hover:text-[#cbd5e1] transition-colors"
                 >
                   {showApiKey ? (
-                    <EyeOff className="w-5 h-5" />
+                    <EyeOff className="w-4 h-4" />
                   ) : (
-                    <Eye className="w-5 h-5" />
+                    <Eye className="w-4 h-4" />
                   )}
                 </button>
               </div>
-              <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-[#64748b]">
                 {t(
                   'voiceModel.apiKeyHint',
                   'Stored locally in your browser only',
@@ -283,14 +312,15 @@ export default function VoiceModelSettingsModal({
           )}
 
           {/* Voice Selection */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-[#334155] dark:text-[#cbd5e1]">
               {t('voiceModel.voice', 'Voice')}
             </label>
             <select
+              data-modal-input
               value={voice}
               onChange={(e) => setVoice(e.target.value)}
-              className="w-full px-4 py-3 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-purple-500 dark:focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20 transition-all"
+              className="w-full px-3 py-2 text-sm border border-black/10 dark:border-[#3b4264] rounded-lg bg-transparent dark:bg-[#0d1117] text-[#0f172a] dark:text-[#f1f5f9] focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
             >
               {VOICE_OPTIONS[effectiveModelType]?.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -299,22 +329,22 @@ export default function VoiceModelSettingsModal({
               ))}
             </select>
           </div>
+        </div>
 
-          {/* Buttons */}
-          <div className="flex gap-4">
-            <button
-              onClick={onClose}
-              className="flex-1 px-5 py-3 text-sm font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 rounded-xl transition-all"
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              onClick={handleSave}
-              className="flex-1 px-5 py-3 text-sm font-medium text-white bg-purple-600 hover:bg-purple-500 rounded-xl transition-all"
-            >
-              {t('common.save')}
-            </button>
-          </div>
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 p-4 border-t border-black/[0.06] dark:border-[#2a2f45] flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-[#334155] dark:text-[#cbd5e1] hover:bg-[#f1f5f9] dark:hover:bg-[#0d1117] rounded-lg transition-colors border border-black/10 dark:border-[#3b4264]"
+          >
+            {t('common.cancel')}
+          </button>
+          <button
+            onClick={handleSave}
+            className="px-4 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 dark:bg-purple-600 dark:hover:bg-purple-500 rounded-lg transition-colors dark:shadow-[0_0_20px_rgba(139,92,246,0.15)]"
+          >
+            {t('common.save')}
+          </button>
         </div>
       </div>
     </div>
