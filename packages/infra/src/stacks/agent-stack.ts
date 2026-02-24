@@ -168,10 +168,14 @@ export class AgentStack extends Stack {
     }
 
     // Create Code Interpreter for IDP Agent
-    const idpCodeInterpreter = new CodeInterpreterCustom(this, 'IdpCodeInterpreter', {
-      codeInterpreterCustomName: 'idp_agent_interpreter',
-      description: 'Code interpreter for IDP agent',
-    });
+    const idpCodeInterpreter = new CodeInterpreterCustom(
+      this,
+      'IdpCodeInterpreter',
+      {
+        codeInterpreterCustomName: 'idp_agent_interpreter',
+        description: 'Code interpreter for IDP agent',
+      },
+    );
     agentStorageBucket.grantReadWrite(idpCodeInterpreter.executionRole);
 
     const idpAgent = new IdpAgent(this, 'IdpAgent', {
@@ -180,7 +184,7 @@ export class AgentStack extends Stack {
       sessionStorageBucket,
       backendTable,
       gateway,
-      bedrockModelId: 'global.anthropic.claude-sonnet-4-6',
+      bedrockModelId: 'global.anthropic.claude-opus-4-6-v1',
       agentStorageBucket,
       websocketMessageQueue,
       codeInterpreterIdentifier: idpCodeInterpreter.codeInterpreterId,
