@@ -2,3 +2,4 @@ packages:
   - 'packages/*'
   - 'packages/common/*'
   - 'packages/lambda/*'
+  - 'docs'
