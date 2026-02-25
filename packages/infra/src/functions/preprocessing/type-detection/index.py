@@ -75,6 +75,8 @@ MIME_TYPE_MAP = {
     'm4a': 'audio/mp4',
     # Web Request
     'webreq': 'application/x-webreq',
+    # CAD
+    'dxf': 'application/dxf',
 }
 
 def get_sqs_client():
@@ -237,6 +239,9 @@ def distribute_to_queues(
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'application/msword',
     )
+    is_dxf = file_type in (
+        'application/dxf', 'image/vnd.dxf',
+    )
 
     base_message = {
         'workflow_id': workflow_id,
@@ -259,8 +264,8 @@ def distribute_to_queues(
         queues_sent.append('webcrawler')
         print(f'Sent to WebCrawler queue: {workflow_id}')
 
-    # OCR Queue (PDF or Image, but not .webreq, and OCR enabled)
-    if (is_pdf or is_image) and not is_webreq and use_ocr:
+    # OCR Queue (PDF or Image, but not .webreq or DWG, and OCR enabled)
+    if (is_pdf or (is_image and not is_dxf)) and not is_webreq and use_ocr:
         resolved_ocr_options = dict(ocr_options or {})
         if not resolved_ocr_options.get('lang') and language:
             ocr_lang = PROJECT_LANG_TO_OCR_LANG.get(language)
@@ -279,8 +284,8 @@ def distribute_to_queues(
         if ocr_model not in LAMBDA_OCR_MODELS:
             trigger_sagemaker_scale_out()
 
-    # BDA Queue (if use_bda is enabled, but not .webreq, office documents, or spreadsheets)
-    if use_bda and not is_webreq and not is_office_document and not is_spreadsheet:
+    # BDA Queue (if use_bda is enabled, but not .webreq, office documents, spreadsheets, or DWG)
+    if use_bda and not is_webreq and not is_office_document and not is_spreadsheet and not is_dxf:
         send_to_queue(BDA_QUEUE_URL, {
             **base_message,
             'processor': PreprocessType.BDA,
@@ -298,7 +303,7 @@ def distribute_to_queues(
         print(f'Sent to Transcribe queue: {workflow_id}')
 
     # Always send to Workflow Queue (Step Functions will poll for completion)
-    processing_type = 'web' if is_webreq else ('text' if (is_text or is_spreadsheet) else get_processing_type(file_type))
+    processing_type = 'web' if is_webreq else ('text' if (is_text or is_spreadsheet or is_dxf) else get_processing_type(file_type))
     send_to_queue(WORKFLOW_QUEUE_URL, {
         **base_message,
         'processing_type': processing_type,

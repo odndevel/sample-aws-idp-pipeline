@@ -9,6 +9,7 @@ export interface Document {
   ocr_model?: string;
   ocr_options?: Record<string, unknown>;
   document_prompt?: string;
+  s3_key?: string;
   started_at: string;
   ended_at: string | null;
 }

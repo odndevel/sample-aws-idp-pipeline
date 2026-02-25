@@ -13,6 +13,12 @@ import type {
 } from '../types/project';
 import type { DocumentProcessingOptions } from '../components/DocumentUploadModal';
 
+const EXT_MIME: Record<string, string> = { dxf: 'application/dxf' };
+const getMimeTypeByExt = (name: string): string => {
+  const ext = name.split('.').pop()?.toLowerCase() || '';
+  return EXT_MIME[ext] || 'application/octet-stream';
+};
+
 interface DocumentWorkflows {
   document_id: string;
   document_name: string;
@@ -472,7 +478,7 @@ export function useDocuments({
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 file_name: file.name,
-                content_type: file.type || 'application/octet-stream',
+                content_type: file.type || getMimeTypeByExt(file.name),
                 file_size: file.size,
                 use_bda: options.use_bda,
                 use_ocr: options.use_ocr,
@@ -490,7 +496,7 @@ export function useDocuments({
             {
               document_id: uploadInfo.document_id,
               name: file.name,
-              file_type: file.type || 'application/octet-stream',
+              file_type: file.type || getMimeTypeByExt(file.name),
               file_size: file.size,
               status: 'uploading',
               use_bda: options.use_bda,
@@ -518,7 +524,7 @@ export function useDocuments({
             method: 'PUT',
             body: file,
             headers: {
-              'Content-Type': file.type || 'application/octet-stream',
+              'Content-Type': file.type || getMimeTypeByExt(file.name),
             },
           });
 

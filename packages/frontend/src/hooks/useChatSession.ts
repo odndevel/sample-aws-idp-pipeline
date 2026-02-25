@@ -63,7 +63,7 @@ interface UseChatSessionOptions {
 
 export function useChatSession({ projectId }: UseChatSessionOptions) {
   const { t } = useTranslation();
-  const { fetchApi, invokeAgent, researchAgentRuntimeArn } = useAwsClient();
+  const { fetchApi, invokeAgent } = useAwsClient();
   const { showToast } = useToast();
 
   // AgentCore requires session ID >= 33 chars
@@ -78,7 +78,6 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
   const [sending, setSending] = useState(false);
   const [streamingBlocks, setStreamingBlocks] = useState<StreamingBlock[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [researchMode, setResearchMode] = useState(false);
   const pendingMessagesRef = useRef<ChatMessage[]>([]);
   const toolUseMapRef = useRef<Map<string, string>>(new Map());
   const forceNewTextBlockRef = useRef(false);
@@ -125,7 +124,6 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
     const newSessionId = nanoid(33);
     setCurrentSessionId(newSessionId);
     setMessages([]);
-    setResearchMode(false);
     // Voice chat and agent reset are handled by the parent
   }, []);
 
@@ -175,7 +173,6 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
       const session = sessions.find((s) => s.session_id === sessionId);
 
       if (session?.agent_id?.startsWith('voice')) {
-        setResearchMode(false);
         opts.setVoiceChatMode(true);
         opts.setSelectedAgent(null);
         const modelType = session.agent_id.replace(
@@ -191,12 +188,11 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
         } else {
           opts.setSelectedVoiceModel('nova_sonic');
         }
-      } else if (session?.agent_id === 'research') {
-        setResearchMode(true);
-        opts.setVoiceChatMode(false);
-        opts.setSelectedAgent(null);
-      } else if (session?.agent_id && session.agent_id !== 'default') {
-        setResearchMode(false);
+      } else if (
+        session?.agent_id &&
+        session.agent_id !== 'default' &&
+        session.agent_id !== 'research'
+      ) {
         opts.setVoiceChatMode(false);
         const agent = opts.agents.find(
           (a) => a.agent_id === session.agent_id || a.name === session.agent_id,
@@ -217,7 +213,6 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
           opts.setSelectedAgent(null);
         }
       } else {
-        setResearchMode(false);
         opts.setVoiceChatMode(false);
         opts.setSelectedAgent(null);
       }
@@ -546,7 +541,6 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
       if (sessionId === currentSessionId) {
         opts.voiceChatDisconnect();
         opts.setVoiceChatMode(false);
-        setResearchMode(false);
         opts.setSelectedAgent(null);
         setCurrentSessionId(nanoid(33));
         setMessages([]);
@@ -955,151 +949,6 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
     ],
   );
 
-  const handleResearchMessage = useCallback(
-    async (
-      files: AttachedFile[],
-      message: string | undefined,
-      selectedAgent: Agent | null,
-    ) => {
-      if (!researchAgentRuntimeArn) {
-        showToast('error', t('chat.researchNotAvailable'));
-        return;
-      }
-
-      const messageContent = message ?? inputMessage;
-      if ((!messageContent.trim() && files.length === 0) || sending) return;
-
-      const attachments: ChatAttachment[] = files.map((f) => ({
-        id: f.id,
-        type: f.type === 'image' ? 'image' : 'document',
-        name: f.file.name,
-        preview: f.preview,
-      }));
-
-      const userMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'user',
-        content: messageContent.trim(),
-        attachments: attachments.length > 0 ? attachments : undefined,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, userMessage]);
-      setInputMessage('');
-      setSending(true);
-      setStreamingBlocks([]);
-      streamingBlocksRef.current = [];
-      pendingMessagesRef.current = [];
-      toolUseMapRef.current.clear();
-      forceNewTextBlockRef.current = false;
-
-      try {
-        const contentBlocks: ContentBlock[] = [];
-
-        const usedDocNames = new Set<string>();
-        const getUniqueDocName = (originalName: string): string => {
-          let name = originalName;
-          let counter = 1;
-          while (usedDocNames.has(name)) {
-            const dotIndex = originalName.lastIndexOf('.');
-            if (dotIndex > 0) {
-              name = `${originalName.slice(0, dotIndex)}_${counter}${originalName.slice(dotIndex)}`;
-            } else {
-              name = `${originalName}_${counter}`;
-            }
-            counter++;
-          }
-          usedDocNames.add(name);
-          return name;
-        };
-
-        for (const attachedFile of files) {
-          const base64 = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-              const result = reader.result as string;
-              const base64Data = result.split(',')[1];
-              resolve(base64Data);
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(attachedFile.file);
-          });
-
-          if (attachedFile.type === 'image') {
-            let format =
-              attachedFile.file.type.split('/')[1] ||
-              attachedFile.file.name.split('.').pop()?.toLowerCase() ||
-              'png';
-            if (format === 'jpeg') format = 'jpg';
-            contentBlocks.push({
-              image: { format, source: { base64 } },
-            });
-          } else {
-            const format =
-              attachedFile.file.name.split('.').pop()?.toLowerCase() || 'txt';
-            const uniqueName = getUniqueDocName(attachedFile.file.name);
-            contentBlocks.push({
-              document: { format, name: uniqueName, source: { base64 } },
-            });
-          }
-        }
-
-        if (userMessage.content) {
-          contentBlocks.push({ text: userMessage.content });
-        }
-
-        await invokeAgent(
-          contentBlocks,
-          currentSessionId,
-          projectId,
-          handleStreamEvent,
-          selectedAgent?.agent_id,
-          researchAgentRuntimeArn,
-        );
-
-        let pending = pendingMessagesRef.current;
-        pendingMessagesRef.current = [];
-
-        // Fallback: if pending is empty, rebuild from streaming blocks ref
-        if (pending.length === 0 && streamingBlocksRef.current.length > 0) {
-          pending = blocksToMessages(streamingBlocksRef.current);
-        }
-
-        setMessages((prev) => [...prev, ...pending]);
-      } catch (error) {
-        console.error('Failed to send research message:', error);
-        let partial = pendingMessagesRef.current;
-        pendingMessagesRef.current = [];
-        if (partial.length === 0 && streamingBlocksRef.current.length > 0) {
-          partial = blocksToMessages(streamingBlocksRef.current);
-        }
-        const errorMessage: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: `Failed to get response: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, ...partial, errorMessage]);
-      }
-      setSending(false);
-      setStreamingBlocks([]);
-      streamingBlocksRef.current = [];
-      loadSessions();
-    },
-    [
-      inputMessage,
-      sending,
-      invokeAgent,
-      currentSessionId,
-      projectId,
-      handleStreamEvent,
-      loadSessions,
-      researchAgentRuntimeArn,
-      showToast,
-      t,
-    ],
-  );
-
   return {
     currentSessionId,
     setCurrentSessionId,
@@ -1116,11 +965,8 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
     streamingBlocks,
     setStreamingBlocks,
     loadingHistory,
-    researchMode,
-    setResearchMode,
     pendingMessagesRef,
     chatScrollPositionRef,
-    researchAgentRuntimeArn,
     loadSessions,
     handleNewSession,
     loadMoreSessions,
@@ -1129,6 +975,5 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
     handleSessionDelete,
     handleStreamEvent,
     handleSendMessage,
-    handleResearchMessage,
   };
 }

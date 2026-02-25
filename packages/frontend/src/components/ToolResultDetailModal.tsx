@@ -1,8 +1,6 @@
 import { X, Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import ReactMarkdown from 'react-markdown';
-import rehypeRaw from 'rehype-raw';
-import remarkGfm from 'remark-gfm';
+import MarkdownRenderer from './ChatPanel/MarkdownRenderer';
 import { useModal } from '../hooks/useModal';
 
 interface ToolResultDetailModalProps {
@@ -52,12 +50,7 @@ export default function ToolResultDetailModal({
           style={{ maxHeight: 'calc(85vh - 56px)' }}
         >
           <div className="prose prose-sm dark:prose-invert max-w-none text-slate-700 dark:text-slate-200 [&_strong]:!text-inherit">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeRaw]}
-            >
-              {content}
-            </ReactMarkdown>
+            <MarkdownRenderer>{content}</MarkdownRenderer>
           </div>
         </div>
       </div>

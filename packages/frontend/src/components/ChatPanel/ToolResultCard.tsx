@@ -10,10 +10,8 @@ import {
   Loader2,
   Sparkles,
 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import rehypeRaw from 'rehype-raw';
-import remarkGfm from 'remark-gfm';
 import { getToolEntry } from './toolRegistry';
+import MarkdownRenderer from './MarkdownRenderer';
 import {
   formatToolDisplayName,
   prepareMarkdown,
@@ -229,12 +227,7 @@ export default function ToolResultCard({
         {/* Agent full content (research, plan, handoff) */}
         {entry.renderAsMarkdown && content && (
           <div className="px-1 prose prose-sm dark:prose-invert max-w-none text-slate-700 dark:text-emerald-100 [&_strong]:!text-inherit [&_a]:text-blue-600 dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeRaw]}
-            >
-              {prepareMarkdown(content)}
-            </ReactMarkdown>
+            <MarkdownRenderer>{prepareMarkdown(content)}</MarkdownRenderer>
           </div>
         )}
 

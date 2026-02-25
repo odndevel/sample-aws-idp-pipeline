@@ -1,9 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Check, Loader2 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import rehypeRaw from 'rehype-raw';
-import remarkGfm from 'remark-gfm';
 import BouncingCirclesLoader from '../ui/bouncing-circles-loader';
+import MarkdownRenderer from './MarkdownRenderer';
 import ToolResultCard from './ToolResultCard';
 import ToolUseIndicator from './ToolUseIndicator';
 import { prepareMarkdown, getFileTypeInfo } from './utils';
@@ -112,12 +110,9 @@ export default function MessageList({
                     key={idx}
                     className="prose prose-sm dark:prose-invert max-w-none text-slate-800 dark:text-slate-200 [&_strong]:!text-inherit"
                   >
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      rehypePlugins={[rehypeRaw]}
-                    >
+                    <MarkdownRenderer>
                       {prepareMarkdown(block.content)}
-                    </ReactMarkdown>
+                    </MarkdownRenderer>
                   </div>
                 );
               }
@@ -158,12 +153,9 @@ export default function MessageList({
                       </span>
                     </div>
                     <div className="px-4 py-3 prose prose-sm dark:prose-invert max-w-none text-slate-700 dark:text-emerald-100 [&_strong]:!text-inherit">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        rehypePlugins={[rehypeRaw]}
-                      >
+                      <MarkdownRenderer>
                         {prepareMarkdown(block.result)}
-                      </ReactMarkdown>
+                      </MarkdownRenderer>
                     </div>
                   </div>
                 );
@@ -306,12 +298,9 @@ function StageResult({ message }: { message: ChatMessage }) {
       </div>
       {message.content && (
         <div className="px-4 py-3 prose prose-sm dark:prose-invert max-w-none text-slate-700 dark:text-emerald-100 [&_strong]:!text-inherit">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeRaw]}
-          >
+          <MarkdownRenderer>
             {prepareMarkdown(message.content)}
-          </ReactMarkdown>
+          </MarkdownRenderer>
         </div>
       )}
     </div>
@@ -362,12 +351,9 @@ function AssistantMessage({
       {/* Text content */}
       {message.content && (
         <div className="prose prose-sm dark:prose-invert max-w-none text-slate-800 dark:text-slate-200 [&_strong]:!text-inherit">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeRaw]}
-          >
+          <MarkdownRenderer>
             {prepareMarkdown(message.content)}
-          </ReactMarkdown>
+          </MarkdownRenderer>
         </div>
       )}
     </div>

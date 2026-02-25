@@ -33,6 +33,7 @@ import {
   X,
   Presentation,
   Globe,
+  Ruler,
 } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 import {
@@ -58,6 +59,12 @@ const getIconHue = (fileType: string): number => {
   )
     return 140;
   if (fileType.includes('webreq')) return 190;
+  if (
+    fileType.includes('dxf') ||
+    fileType.includes('dwg') ||
+    fileType.includes('acad')
+  )
+    return 170;
   return 220;
 };
 
@@ -79,6 +86,13 @@ const getFileIcon = (fileType: string) => {
   }
   if (fileType.includes('webreq')) {
     return <Globe className="h-5 w-5 text-cyan-400" />;
+  }
+  if (
+    fileType.includes('dxf') ||
+    fileType.includes('dwg') ||
+    fileType.includes('acad')
+  ) {
+    return <Ruler className="h-5 w-5 text-teal-400" />;
   }
   if (
     fileType.includes('presentationml') ||
@@ -771,6 +785,7 @@ export default function SidePanel({
                           JSON.stringify({
                             document_id: doc.document_id,
                             name: doc.name,
+                            s3_key: doc.s3_key,
                           }),
                         );
                         e.dataTransfer.effectAllowed = 'copy';

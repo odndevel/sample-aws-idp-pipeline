@@ -509,7 +509,7 @@ def is_spreadsheet_file(file_type: str) -> bool:
 
 
 def is_office_document(file_type: str) -> bool:
-    """Check if file type is an office document (PPTX, PPT, DOCX, DOC)."""
+    """Check if file type is an office document (PPTX, PPT, DOCX, DOC, DXF)."""
     if not file_type:
         return False
     return file_type in (
@@ -517,6 +517,8 @@ def is_office_document(file_type: str) -> bool:
         'application/vnd.ms-powerpoint',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'application/msword',
+        'application/dxf',
+        'image/vnd.dxf',
     )
 
 

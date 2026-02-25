@@ -101,13 +101,16 @@ def determine_preprocess_required(file_type: str, use_bda: bool = False, use_ocr
     is_video = file_type.startswith('video/')
     is_audio = file_type.startswith('audio/')
     is_webreq = file_type == 'application/x-webreq'
+    is_dxf = file_type in (
+        'application/dxf', 'image/vnd.dxf',
+    )
     is_text = file_type in (
         'text/plain',
         'text/markdown',
         'text/csv',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'application/msword',
-    )
+    ) or is_dxf
 
     # Text files skip all preprocessing
     if is_text:
@@ -234,12 +237,15 @@ def create_workflow(
     is_video = file_type.startswith('video/')
     is_audio = file_type.startswith('audio/')
     is_webreq = file_type == 'application/x-webreq'
+    is_dxf_file = file_type in (
+        'application/dxf', 'image/vnd.dxf',
+    )
 
     skip_conditions = {
         StepName.BDA_PROCESSOR: not use_bda or is_webreq,
         StepName.PADDLEOCR_PROCESSOR: not (is_pdf or is_image) or is_webreq or not use_ocr,
         StepName.TRANSCRIBE: not (is_video or is_audio) or is_webreq or not use_transcribe,
-        StepName.FORMAT_PARSER: not is_pdf or is_webreq,
+        StepName.FORMAT_PARSER: not (is_pdf or is_dxf_file) or is_webreq,
         StepName.WEBCRAWLER: not is_webreq,
         StepName.SEGMENT_ANALYZER: False,
     }

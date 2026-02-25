@@ -1,13 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Check,
-  ChevronRight,
-  Mic,
-  Search,
-  Settings2,
-  Sparkles,
-} from 'lucide-react';
+import { Check, ChevronRight, Mic, Settings2, Sparkles } from 'lucide-react';
 import type { Agent, BidiModelType } from './types';
 
 interface ToolsMenuVoiceChat {
@@ -21,16 +14,8 @@ interface ToolsMenuVoiceChat {
   onDisconnect?: () => void;
 }
 
-interface ToolsMenuResearch {
-  available: boolean;
-  mode: boolean;
-  onToggle: () => void;
-  setMode: (mode: boolean) => void;
-}
-
 interface ToolsMenuPopoverProps {
   voiceChat: ToolsMenuVoiceChat;
-  research: ToolsMenuResearch;
   onAgentSelect?: (agentName: string | null) => void;
   selectedAgent: Agent | null;
   agents: Agent[];
@@ -43,7 +28,6 @@ interface ToolsMenuPopoverProps {
 
 export default function ToolsMenuPopover({
   voiceChat,
-  research,
   onAgentSelect,
   selectedAgent,
   agents,
@@ -58,51 +42,11 @@ export default function ToolsMenuPopover({
 
   return (
     <div className="absolute bottom-full left-0 mb-2 w-56 bg-[#e4eaf4] dark:bg-slate-800 border border-white/60 dark:border-white/30 rounded-xl shadow-lg z-50 py-1">
-      {/* Research toggle */}
-      {research.available && (
-        <button
-          type="button"
-          disabled={!!selectedAgent || voiceChat.mode || messagesLength > 0}
-          onClick={() => {
-            if (!research.mode) {
-              if (selectedAgent && onAgentSelect) {
-                onAgentSelect(null);
-              }
-              if (voiceChat.mode) {
-                voiceChat.setMode(false);
-                voiceChat.onDisconnect?.();
-              }
-            }
-            research.onToggle();
-            onClose();
-          }}
-          className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
-            selectedAgent || voiceChat.mode || messagesLength > 0
-              ? 'opacity-30 cursor-not-allowed'
-              : 'glass-menu-item'
-          }`}
-        >
-          <Search
-            className={`w-4 h-4 ${research.mode ? 'text-blue-500' : 'text-slate-500 dark:text-slate-400'}`}
-          />
-          <span
-            className={
-              research.mode
-                ? 'text-blue-600 dark:text-blue-400'
-                : 'text-slate-700 dark:text-slate-300'
-            }
-          >
-            {t('chat.research')}
-          </span>
-          {research.mode && <Check className="w-4 h-4 text-blue-500 ml-auto" />}
-        </button>
-      )}
-
       {/* Voice Chat toggle */}
       {voiceChat.available && voiceChat.onModelSelect && (
         <button
           type="button"
-          disabled={!!selectedAgent || research.mode}
+          disabled={!!selectedAgent}
           onClick={() => {
             if (voiceChat.mode) {
               voiceChat.onDisable();
@@ -110,17 +54,12 @@ export default function ToolsMenuPopover({
               if (selectedAgent && onAgentSelect) {
                 onAgentSelect(null);
               }
-              if (research.mode) {
-                research.setMode(false);
-              }
               voiceChat.onEnable();
             }
             onClose();
           }}
           className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
-            selectedAgent || research.mode
-              ? 'opacity-30 cursor-not-allowed'
-              : 'glass-menu-item'
+            selectedAgent ? 'opacity-30 cursor-not-allowed' : 'glass-menu-item'
           }`}
         >
           <Mic
@@ -148,12 +87,12 @@ export default function ToolsMenuPopover({
           <div className="relative">
             <button
               type="button"
-              disabled={research.mode || voiceChat.mode}
+              disabled={voiceChat.mode}
               onClick={() => {
                 setShowAgentSubmenu((v) => !v);
               }}
               className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
-                research.mode || voiceChat.mode
+                voiceChat.mode
                   ? 'opacity-30 cursor-not-allowed'
                   : 'text-slate-700 dark:text-slate-300 glass-menu-item'
               }`}
@@ -216,9 +155,6 @@ export default function ToolsMenuPopover({
                           if (voiceChat.mode) {
                             voiceChat.setMode(false);
                             voiceChat.onDisconnect?.();
-                          }
-                          if (research.mode) {
-                            research.setMode(false);
                           }
                           onAgentSelect(agent.name);
                         }

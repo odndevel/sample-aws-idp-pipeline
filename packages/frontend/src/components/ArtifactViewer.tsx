@@ -9,9 +9,7 @@ import {
   Image as ImageIcon,
   Presentation,
 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import rehypeRaw from 'rehype-raw';
-import remarkGfm from 'remark-gfm';
+import MarkdownRenderer from './ChatPanel/MarkdownRenderer';
 import mammoth from 'mammoth';
 import { init as initPptxPreview } from 'pptx-preview';
 import ExcelViewer from './ExcelViewer';
@@ -323,12 +321,7 @@ export default function ArtifactViewer({
           />
         ) : isMarkdown && content ? (
           <div className="prose prose-sm prose-slate dark:prose-invert max-w-none [&_strong]:!text-inherit">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeRaw]}
-            >
-              {content}
-            </ReactMarkdown>
+            <MarkdownRenderer>{content}</MarkdownRenderer>
           </div>
         ) : isHtml && content ? (
           <div

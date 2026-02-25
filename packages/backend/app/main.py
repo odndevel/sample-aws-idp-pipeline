@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import embedding as _embedding  # noqa: F401 - Register embedding function
 from app.routers import (
     agents,
     artifacts,
@@ -11,11 +10,8 @@ from app.routers import (
     projects,
     prompts,
     sagemaker,
-    search,
     workflows,
 )
-
-del _embedding  # Silence unused import warning
 
 app = FastAPI(
     openapi_tags=[
@@ -23,7 +19,6 @@ app = FastAPI(
         {"name": "projects", "description": "프로젝트 관리"},
         {"name": "documents", "description": "문서 관리"},
         {"name": "workflows", "description": "워크플로우 관리"},
-        {"name": "search", "description": "검색 API"},
         {"name": "chat", "description": "채팅 기록 관리"},
         {"name": "agents", "description": "커스텀 에이전트 관리"},
         {"name": "artifacts", "description": "아티팩트 관리"},
@@ -48,5 +43,4 @@ app.include_router(health.router)
 app.include_router(projects.router)
 app.include_router(prompts.router)
 app.include_router(sagemaker.router)
-app.include_router(search.router)
 app.include_router(workflows.router)

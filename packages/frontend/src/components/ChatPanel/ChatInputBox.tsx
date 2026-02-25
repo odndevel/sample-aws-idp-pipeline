@@ -6,12 +6,12 @@ import {
   X,
   Archive,
   FileText,
-  Search,
   Settings2,
   Sparkles,
   Mic,
 } from 'lucide-react';
 import { formatFileSize, getFileTypeInfo } from './utils';
+import { useRuntimeConfig } from '../../hooks/useRuntimeConfig';
 import ToolsMenuPopover from './ToolsMenuPopover';
 import type {
   AttachedFile,
@@ -35,13 +35,6 @@ interface InputBoxVoiceChat {
   handleEnable: () => void;
 }
 
-interface InputBoxResearch {
-  mode: boolean;
-  onResearch?: (files: AttachedFile[], message?: string) => void;
-  setMode: (mode: boolean) => void;
-  handleDisable: () => void;
-}
-
 interface ChatInputBoxProps {
   inputMessage: string;
   sending: boolean;
@@ -56,7 +49,6 @@ interface ChatInputBoxProps {
   onAgentSelect?: (agentName: string | null) => void;
   onAgentClick: () => void;
   voiceChat: InputBoxVoiceChat;
-  research: InputBoxResearch;
   messagesLength: number;
   setPendingAgentChange: (val: string | null) => void;
   setShowRemoveAgentConfirm: (val: boolean) => void;
@@ -78,7 +70,6 @@ export default function ChatInputBox({
   onAgentSelect,
   onAgentClick,
   voiceChat,
-  research,
   messagesLength,
   setPendingAgentChange,
   setShowRemoveAgentConfirm,
@@ -86,6 +77,7 @@ export default function ChatInputBox({
   fileInputRef,
 }: ChatInputBoxProps) {
   const { t } = useTranslation();
+  const { documentStorageBucketName } = useRuntimeConfig();
   const isComposingRef = useRef(false);
   const [isDragging, setIsDragging] = useState(false);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
@@ -167,7 +159,7 @@ export default function ChatInputBox({
         if (el.dataset.artifactId) {
           result += `[artifact:${el.dataset.artifactId}](${el.dataset.artifactS3 || el.dataset.artifactFilename})`;
         } else if (el.dataset.documentId) {
-          result += `[document:${el.dataset.documentId}](${el.dataset.documentFilename})`;
+          result += `[document:${el.dataset.documentId}](${el.dataset.documentS3 || el.dataset.documentFilename})`;
         } else if (el.tagName === 'BR') {
           result += '\n';
         } else {
@@ -250,16 +242,22 @@ export default function ChatInputBox({
     return chip;
   }, []);
 
-  const createDocumentChip = useCallback((doc: Document) => {
-    const chip = document.createElement('span');
-    chip.contentEditable = 'false';
-    chip.dataset.documentId = doc.document_id;
-    chip.dataset.documentFilename = doc.name;
-    chip.className =
-      'inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 bg-blue-100 dark:bg-blue-900/40 border border-blue-200 dark:border-blue-700 rounded text-xs font-medium text-blue-700 dark:text-blue-300 align-middle';
-    chip.innerHTML = `<svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg><span class="max-w-24 truncate">${doc.name}</span>`;
-    return chip;
-  }, []);
+  const createDocumentChip = useCallback(
+    (doc: Document) => {
+      const chip = document.createElement('span');
+      chip.contentEditable = 'false';
+      chip.dataset.documentId = doc.document_id;
+      chip.dataset.documentFilename = doc.name;
+      if (documentStorageBucketName && doc.s3_key) {
+        chip.dataset.documentS3 = `s3://${documentStorageBucketName}/${doc.s3_key}`;
+      }
+      chip.className =
+        'inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 bg-blue-100 dark:bg-blue-900/40 border border-blue-200 dark:border-blue-700 rounded text-xs font-medium text-blue-700 dark:text-blue-300 align-middle';
+      chip.innerHTML = `<svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg><span class="max-w-24 truncate">${doc.name}</span>`;
+      return chip;
+    },
+    [documentStorageBucketName],
+  );
 
   // Mention selection handlers
   const handleArtifactSelect = useCallback(
@@ -402,8 +400,12 @@ export default function ChatInputBox({
     const documentData = e.dataTransfer.getData('application/x-document');
     if (documentData) {
       try {
-        const { document_id, name } = JSON.parse(documentData);
-        const chip = createDocumentChip({ document_id, name } as Document);
+        const { document_id, name, s3_key } = JSON.parse(documentData);
+        const chip = createDocumentChip({
+          document_id,
+          name,
+          s3_key,
+        } as Document);
         insertChipAtEnd(chip);
       } catch {
         /* ignore */
@@ -421,8 +423,6 @@ export default function ChatInputBox({
 
     if (voiceChat.mode && voiceChat.onText) {
       voiceChat.onText(messageContent);
-    } else if (research.mode && research.onResearch) {
-      research.onResearch(attachedFiles, messageContent);
     } else {
       onSendMessage(attachedFiles, messageContent);
     }
@@ -436,7 +436,6 @@ export default function ChatInputBox({
   }, [
     hasContent,
     sending,
-    research,
     voiceChat,
     onSendMessage,
     attachedFiles,
@@ -606,9 +605,7 @@ export default function ChatInputBox({
               </button>
 
               {/* Tools popover */}
-              {(research.onResearch ||
-                onAgentSelect ||
-                voiceChat.available) && (
+              {(onAgentSelect || voiceChat.available) && (
                 <div className="relative" ref={toolsMenuRef}>
                   <button
                     type="button"
@@ -635,12 +632,6 @@ export default function ChatInputBox({
                         setMode: voiceChat.setMode,
                         onDisconnect: voiceChat.onDisconnect,
                       }}
-                      research={{
-                        available: !!research.onResearch,
-                        mode: research.mode,
-                        onToggle: () => research.setMode(!research.mode),
-                        setMode: research.setMode,
-                      }}
                       onAgentSelect={onAgentSelect}
                       selectedAgent={selectedAgent}
                       agents={agents}
@@ -657,20 +648,9 @@ export default function ChatInputBox({
               )}
 
               {/* Selected tool chips */}
-              {(research.mode || selectedAgent || voiceChat.mode) && (
+              {(selectedAgent || voiceChat.mode) && (
                 <>
                   <div className="w-px h-5 bg-slate-200 dark:bg-white/10 mx-0.5" />
-                  {research.mode && research.onResearch && (
-                    <button
-                      type="button"
-                      onClick={research.handleDisable}
-                      className="inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-medium rounded-lg bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-800/40 transition-colors"
-                    >
-                      <Search className="w-3.5 h-3.5" />
-                      {t('chat.research')}
-                      <X className="w-3.5 h-3.5 ml-0.5" />
-                    </button>
-                  )}
                   {selectedAgent && onAgentSelect && (
                     <button
                       type="button"
@@ -717,9 +697,7 @@ export default function ChatInputBox({
                 hasContent && !sending
                   ? voiceChat.mode
                     ? 'bg-purple-500 hover:bg-purple-600 text-white shadow-md'
-                    : research.mode
-                      ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-md'
-                      : 'bg-blue-500 hover:bg-blue-600 text-white shadow-md'
+                    : 'bg-blue-500 hover:bg-blue-600 text-white shadow-md'
                   : 'bg-slate-200 dark:bg-white/15 text-slate-400 cursor-not-allowed'
               }`}
             >

@@ -173,6 +173,7 @@ export class OcrStack extends Stack {
       'OcrLambdaProcessor',
       {
         functionName: 'idp-v2-ocr-lambda-processor',
+        description: 'PaddleOCR processor (CPU)',
         code: lambda.DockerImageCode.fromImageAsset(
           path.join(__dirname, '../functions'),
           {

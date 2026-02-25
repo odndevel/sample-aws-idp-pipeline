@@ -9,6 +9,7 @@ import {
   Music,
   Globe,
   Presentation,
+  Ruler,
 } from 'lucide-react';
 
 // --- MIME type constants ---
@@ -80,6 +81,13 @@ export const isPptxFileType = (fileType: string | undefined): boolean => {
   );
 };
 
+export const DXF_MIME_TYPES = ['application/dxf', 'image/vnd.dxf'];
+
+export const isDxfFileType = (fileType: string | undefined): boolean => {
+  if (!fileType) return false;
+  return DXF_MIME_TYPES.includes(fileType);
+};
+
 // --- Labels ---
 
 export const FILE_TYPE_LABELS: Record<string, string> = {
@@ -101,6 +109,8 @@ export const FILE_TYPE_LABELS: Record<string, string> = {
   'video/mp4': 'MP4',
   'audio/mpeg': 'MP3',
   'application/x-webreq': 'Web',
+  'application/dxf': 'DXF',
+  'image/vnd.dxf': 'DXF',
 };
 
 export const getFileTypeLabel = (fileType: string | undefined): string => {
@@ -111,6 +121,7 @@ export const getFileTypeLabel = (fileType: string | undefined): string => {
 // --- Category (for document filtering) ---
 
 export const getFileTypeCategory = (fileType: string): string => {
+  if (isDxfFileType(fileType)) return 'cad';
   if (fileType.includes('pdf')) return 'pdf';
   if (fileType.startsWith('image/')) return 'image';
   if (fileType.startsWith('video/') || fileType.startsWith('audio/'))
@@ -132,6 +143,7 @@ export const getFileTypeCategory = (fileType: string): string => {
 // --- Icon components (returns LucideIcon class, not JSX) ---
 
 export function getArtifactIcon(contentType: string): LucideIcon {
+  if (isDxfFileType(contentType)) return Ruler;
   if (contentType.startsWith('image/')) return Image;
   if (contentType.startsWith('video/')) return Film;
   if (contentType === 'application/pdf') return FileText;
@@ -148,6 +160,7 @@ export function getArtifactIcon(contentType: string): LucideIcon {
 }
 
 export function getArtifactIconClass(contentType: string): string {
+  if (isDxfFileType(contentType)) return 'bg-teal-500';
   if (contentType.startsWith('image/')) return 'bg-purple-500';
   if (contentType.startsWith('video/')) return 'bg-pink-500';
   if (contentType === 'application/pdf') return 'bg-red-500';
@@ -169,6 +182,8 @@ export function getFileIconComponent(fileType: string): {
   icon: LucideIcon;
   className: string;
 } {
+  if (isDxfFileType(fileType))
+    return { icon: Ruler, className: 'h-5 w-5 text-teal-400' };
   if (fileType.includes('pdf'))
     return { icon: FileText, className: 'h-5 w-5 text-blue-400' };
   if (fileType.includes('image'))
@@ -236,6 +251,12 @@ export const getFileTypeInfo = (
         icon: File,
         color: 'text-slate-500',
         bgColor: 'bg-slate-100 dark:bg-slate-600',
+      };
+    case 'dxf':
+      return {
+        icon: Ruler,
+        color: 'text-teal-500',
+        bgColor: 'bg-teal-100 dark:bg-teal-900/30',
       };
     default:
       return {

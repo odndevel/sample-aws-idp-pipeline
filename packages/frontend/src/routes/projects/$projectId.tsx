@@ -80,7 +80,6 @@ function ProjectDetailPage() {
     onNewSession: useCallback(() => {
       chatSession.handleNewSession();
       agentsHook_setSelectedAgent(null);
-      chatSession.setResearchMode(false);
       voiceChatManager.setVoiceChatMode(false);
       voiceChatManager.voiceChatDisconnectRef.current();
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -181,7 +180,6 @@ function ProjectDetailPage() {
   const handleNewSession = useCallback(() => {
     chatSession.handleNewSession();
     agentsHook.setSelectedAgent(null);
-    chatSession.setResearchMode(false);
     voiceChatManager.setVoiceChatMode(false);
     voiceChatManager.voiceChatDisconnectRef.current();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -222,19 +220,6 @@ function ProjectDetailPage() {
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [chatSession.handleSendMessage, agentsHook.selectedAgent],
-  );
-
-  // handleResearchMessage wrapper passing selectedAgent
-  const handleResearchMessage = useCallback(
-    (files: AttachedFile[], message?: string) => {
-      chatSession.handleResearchMessage(
-        files,
-        message,
-        agentsHook.selectedAgent,
-      );
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [chatSession.handleResearchMessage, agentsHook.selectedAgent],
   );
 
   // --- Sidebar sessions sync ---
@@ -390,15 +375,6 @@ function ProjectDetailPage() {
                     voiceChatManager.setShowVoiceModelSettings(true),
                   onModelSelect: voiceChatManager.handleVoiceModelSelect,
                 }}
-                research={
-                  chatSession.researchAgentRuntimeArn
-                    ? {
-                        mode: chatSession.researchMode,
-                        onModeChange: chatSession.setResearchMode,
-                        onResearch: handleResearchMessage,
-                      }
-                    : undefined
-                }
               />
             </div>
           </ResizablePanel>

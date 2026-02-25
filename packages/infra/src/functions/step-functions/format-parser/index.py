@@ -1,9 +1,10 @@
 """Format Parser Lambda
 
-Extracts text from documents (PDF, DOCX, PPTX, Markdown, TXT, Excel, CSV).
+Extracts text from documents (PDF, DOCX, PPTX, DWG, Markdown, TXT, Excel, CSV).
 - PDF: Uses pypdf with graphics stripping for efficiency
 - DOCX: Uses python-docx for text extraction
 - PPTX: Uses python-pptx for text, LibreOffice for PDF conversion, pypdfium2 for images
+- DWG: Uses aspose-cad for DWG-to-DXF conversion, ezdxf for text extraction + PNG rendering
 - Excel/CSV: openpyxl (xlsx), xlrd (xls), csv module - per-sheet markdown tables
 - Markdown/TXT: Direct text reading
 
@@ -44,6 +45,11 @@ PRESENTATION_MIME_TYPES = (
 OFFICE_DOC_MIME_TYPES = (
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/msword',
+)
+
+DXF_MIME_TYPES = (
+    'application/dxf',
+    'image/vnd.dxf',
 )
 
 from shared.ddb_client import (
@@ -723,6 +729,185 @@ def process_spreadsheet(file_uri: str, file_type: str) -> dict:
             os.remove(tmp_path)
 
 
+def is_dxf(file_type: str) -> bool:
+    """Check if file type is a DXF file."""
+    return file_type in DXF_MIME_TYPES
+
+
+def _extract_dxf_layout_text(layout) -> str:
+    """Extract text entities from a single ezdxf layout."""
+    parts = []
+    for entity in layout:
+        dxftype = entity.dxftype()
+        if dxftype == 'TEXT':
+            text = entity.dxf.text.strip()
+            if text:
+                parts.append(text)
+        elif dxftype == 'MTEXT':
+            text = entity.plain_text().strip()
+            if text:
+                parts.append(text)
+        elif dxftype == 'ATTRIB':
+            tag = entity.dxf.tag.strip()
+            text = entity.dxf.text.strip()
+            if text:
+                parts.append(f'{tag}: {text}' if tag else text)
+        elif dxftype == 'DIMENSION':
+            text = getattr(entity.dxf, 'text', '').strip()
+            if text:
+                parts.append(text)
+    return '\n'.join(parts)
+
+
+def _extract_dxf_metadata(doc) -> str:
+    """Extract metadata summary (layers, blocks) from ezdxf document."""
+    lines = []
+
+    layer_names = [layer.dxf.name for layer in doc.layers]
+    if layer_names:
+        lines.append(f'Layers ({len(layer_names)}): {", ".join(layer_names[:50])}')
+        if len(layer_names) > 50:
+            lines.append(f'  ... and {len(layer_names) - 50} more')
+
+    block_names = [
+        block.name for block in doc.blocks
+        if not block.name.startswith('*')
+    ]
+    if block_names:
+        lines.append(f'Blocks ({len(block_names)}): {", ".join(block_names[:50])}')
+        if len(block_names) > 50:
+            lines.append(f'  ... and {len(block_names) - 50} more')
+
+    return '\n'.join(lines)
+
+
+def process_dxf(file_uri: str) -> dict:
+    """Process DXF: extract text + render PNG via ezdxf."""
+    import shutil
+    import ezdxf
+
+    s3_client = get_s3_client()
+    bucket, key = parse_s3_uri(file_uri)
+
+    with tempfile.NamedTemporaryFile(suffix='.dxf', delete=False) as tmp:
+        tmp_path = tmp.name
+        s3_client.download_file(bucket, key, tmp_path)
+
+    file_size = os.path.getsize(tmp_path)
+    print(f'[format-parser] Downloaded DXF: {file_size} bytes')
+
+    tmp_dir = tempfile.mkdtemp()
+
+    try:
+        doc = ezdxf.readfile(tmp_path)
+
+        # Collect layout names (Model Space + Paper Space layouts)
+        layout_names = ['Model']
+        for name in doc.layout_names():
+            if name != 'Model':
+                layout_names.append(name)
+
+        print(f'[format-parser] Found {len(layout_names)} layouts: {layout_names}')
+
+        # 4. Extract metadata summary
+        metadata_text = _extract_dxf_metadata(doc)
+
+        # 5. Process each layout
+        doc_bucket, base_path = get_document_base_path(file_uri)
+        pages = []
+        total_chars = 0
+
+        page_idx = 0
+        for layout_name in layout_names:
+            # Extract text via ezdxf
+            layout = doc.modelspace() if layout_name == 'Model' else doc.layout(layout_name)
+            layout_text = _extract_dxf_layout_text(layout)
+
+            # Skip empty non-Model layouts (common for unused Paper Space)
+            entity_count = len(list(layout))
+            if layout_name != 'Model' and entity_count == 0 and not layout_text:
+                print(f'[format-parser] Skipping empty layout: {layout_name}')
+                continue
+
+            if page_idx == 0 and metadata_text:
+                layout_text = f'{metadata_text}\n\n{layout_text}' if layout_text else metadata_text
+
+            # Render to PNG via ezdxf + matplotlib
+            try:
+                import matplotlib
+                matplotlib.use('Agg')
+                from ezdxf.addons.drawing import RenderContext, Frontend
+                from ezdxf.addons.drawing.config import Configuration, LineweightPolicy
+                from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
+                import matplotlib.pyplot as plt
+
+                fig = plt.figure(dpi=300)
+                ax = fig.add_axes([0, 0, 1, 1])
+                ax.set_aspect('equal')
+
+                config = Configuration.defaults().with_changes(
+                    lineweight_scaling=0.5,
+                    min_lineweight=0.1,
+                    lineweight_policy=LineweightPolicy.RELATIVE,
+                )
+
+                ctx = RenderContext(doc)
+                out = MatplotlibBackend(ax)
+                Frontend(ctx, out, config=config).draw_layout(layout, finalize=True)
+
+                png_path = os.path.join(tmp_dir, f'layout_{page_idx:04d}.png')
+                fig.savefig(png_path, dpi=300, bbox_inches='tight', pad_inches=0.1)
+                plt.close(fig)
+
+                with open(png_path, 'rb') as f:
+                    png_bytes = f.read()
+
+                image_key = f'{base_path}/format-parser/slides/layout_{page_idx:04d}.png'
+                s3_client.put_object(
+                    Bucket=doc_bucket,
+                    Key=image_key,
+                    Body=png_bytes,
+                    ContentType='image/png',
+                )
+                image_uri = f's3://{doc_bucket}/{image_key}'
+            except Exception as e:
+                print(f'[format-parser] Failed to render layout "{layout_name}": {e}')
+                image_uri = ''
+
+            pages.append({
+                'page_index': page_idx,
+                'text': layout_text,
+                'image_uri': image_uri,
+            })
+            total_chars += len(layout_text)
+            page_idx += 1
+
+        print(f'[format-parser] Done: {len(pages)} layouts, {total_chars} chars')
+
+        # Save result.json
+        result_data = {'pages': pages}
+        result_key = f'{base_path}/format-parser/result.json'
+        s3_client.put_object(
+            Bucket=doc_bucket,
+            Key=result_key,
+            Body=json.dumps(result_data, ensure_ascii=False),
+            ContentType='application/json',
+        )
+        print(f'[format-parser] Saved result to s3://{doc_bucket}/{result_key}')
+
+        return {
+            'status': 'completed',
+            'page_count': len(pages),
+            'total_chars': total_chars,
+        }
+
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        if os.path.exists(tmp_dir):
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
 def handler(event, context):
     print(f'Event: {json.dumps(event)}')
 
@@ -736,8 +921,9 @@ def handler(event, context):
     is_pptx = is_presentation(file_type)
     is_docx = is_office_doc(file_type)
     is_spread = is_spreadsheet(file_type)
+    is_dxf_file = is_dxf(file_type)
 
-    if not is_pdf and not is_text and not is_pptx and not is_docx and not is_spread:
+    if not is_pdf and not is_text and not is_pptx and not is_docx and not is_spread and not is_dxf_file:
         print(f'Skipping unsupported file: {file_type}')
         record_step_skipped(workflow_id, StepName.FORMAT_PARSER, f'File type {file_type} is not supported')
         return {
@@ -751,7 +937,9 @@ def handler(event, context):
     try:
         record_step_start(workflow_id, StepName.FORMAT_PARSER)
 
-        if is_pptx:
+        if is_dxf_file:
+            result = process_dxf(file_uri=file_uri)
+        elif is_pptx:
             result = process_pptx(file_uri=file_uri)
         elif is_docx:
             result = process_docx(file_uri=file_uri)

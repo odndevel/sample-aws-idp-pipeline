@@ -39,13 +39,6 @@ export class ApplicationStack extends Stack {
     );
     RuntimeConfig.ensure(this).config.agentRuntimeArn = agentRuntimeArn;
 
-    const researchAgentRuntimeArn = StringParameter.valueForStringParameter(
-      this,
-      SSM_KEYS.RESEARCH_AGENT_RUNTIME_ARN,
-    );
-    RuntimeConfig.ensure(this).config.researchAgentRuntimeArn =
-      researchAgentRuntimeArn;
-
     const bidiAgentRuntimeArn = StringParameter.valueForStringParameter(
       this,
       SSM_KEYS.BIDI_AGENT_RUNTIME_ARN,

@@ -42,7 +42,6 @@ export default function ChatPanel({
   loadingSourceKey,
   scrollPositionRef,
   voiceChat,
-  research,
 }: ChatPanelProps) {
   const { t } = useTranslation();
   const { getPresignedDownloadUrl } = useAwsClient();
@@ -74,23 +73,8 @@ export default function ChatPanel({
   );
 
   // Extract stable references for hook dependencies
-  const researchOnModeChange = research?.onModeChange;
   const voiceChatOnModeChange = voiceChat?.onModeChange;
   const voiceChatOnDisconnect = voiceChat?.onDisconnect;
-
-  // Research mode: use controlled prop if provided, otherwise internal state
-  const [researchModeInternal, setResearchModeInternal] = useState(false);
-  const researchMode = research?.mode ?? researchModeInternal;
-  const setResearchMode = useCallback(
-    (mode: boolean) => {
-      if (researchOnModeChange) {
-        researchOnModeChange(mode);
-      } else {
-        setResearchModeInternal(mode);
-      }
-    },
-    [researchOnModeChange],
-  );
 
   // Voice Chat mode: use controlled prop if provided, otherwise internal state
   const [voiceChatModeInternal, setVoiceChatModeInternal] = useState(false);
@@ -110,11 +94,10 @@ export default function ChatPanel({
   const prevLoadingHistory = useRef(false);
   useEffect(() => {
     if (loadingHistory && !prevLoadingHistory.current) {
-      if (!researchOnModeChange) setResearchModeInternal(false);
       if (!voiceChatOnModeChange) setVoiceChatModeInternal(false);
     }
     prevLoadingHistory.current = loadingHistory;
-  }, [loadingHistory, researchOnModeChange, voiceChatOnModeChange]);
+  }, [loadingHistory, voiceChatOnModeChange]);
 
   // Sync voiceChatMode with connection status
   useEffect(() => {
@@ -130,8 +113,6 @@ export default function ChatPanel({
   // Confirm modals state
   const [showRemoveAgentConfirm, setShowRemoveAgentConfirm] = useState(false);
   const [showNovaSonicDisableConfirm, setShowNovaSonicDisableConfirm] =
-    useState(false);
-  const [showResearchDisableConfirm, setShowResearchDisableConfirm] =
     useState(false);
   const [showVoiceChatEnableConfirm, setShowVoiceChatEnableConfirm] =
     useState(false);
@@ -155,21 +136,6 @@ export default function ChatPanel({
     voiceChatOnDisconnect?.();
     onNewChat();
   }, [setNovaSonicMode, voiceChatOnDisconnect, onNewChat]);
-
-  // Handle Research mode disable with confirmation if needed
-  const handleResearchDisable = useCallback(() => {
-    if (messages.length > 0) {
-      setShowResearchDisableConfirm(true);
-    } else {
-      setResearchMode(false);
-    }
-  }, [messages.length, setResearchMode]);
-
-  const confirmResearchDisable = useCallback(() => {
-    setShowResearchDisableConfirm(false);
-    setResearchMode(false);
-    onNewChat();
-  }, [setResearchMode, onNewChat]);
 
   // Handle Voice Chat mode enable with confirmation if messages exist
   const handleNovaSonicEnable = useCallback(() => {
@@ -370,12 +336,6 @@ export default function ChatPanel({
         handleDisable: handleNovaSonicDisable,
         handleEnable: handleNovaSonicEnable,
       }}
-      research={{
-        mode: researchMode,
-        onResearch: research?.onResearch,
-        setMode: setResearchMode,
-        handleDisable: handleResearchDisable,
-      }}
       messagesLength={messages.length}
       setPendingAgentChange={(val) => setPendingAgentChange(val)}
       setShowRemoveAgentConfirm={(val) => setShowRemoveAgentConfirm(val)}
@@ -515,15 +475,6 @@ export default function ChatPanel({
         onClose={() => setShowNovaSonicDisableConfirm(false)}
         onConfirm={confirmNovaSonicDisable}
         title={t('voiceChat.title')}
-        message={t('chat.removeAgentConfirm')}
-        confirmText={t('agent.startNewChat')}
-        variant="warning"
-      />
-      <ConfirmModal
-        isOpen={showResearchDisableConfirm}
-        onClose={() => setShowResearchDisableConfirm(false)}
-        onConfirm={confirmResearchDisable}
-        title={t('chat.research')}
         message={t('chat.removeAgentConfirm')}
         confirmText={t('agent.startNewChat')}
         variant="warning"

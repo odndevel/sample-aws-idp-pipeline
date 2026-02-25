@@ -67,6 +67,9 @@ TEXT_EXTENSIONS = {'.txt'}
 # Spreadsheet extensions
 SPREADSHEET_EXTENSIONS = {'.xlsx', '.xls', '.csv'}
 
+# DXF (CAD exchange format) extensions
+DXF_EXTENSIONS = {'.dxf'}
+
 
 def get_file_extension(file_uri: str) -> str:
     """Get lowercase file extension from URI."""
@@ -285,12 +288,14 @@ def process_text_file(file_uri: str, bucket: str, base_path: str) -> list[dict]:
 
 
 def is_office_document_type(file_type: str) -> bool:
-    """Check if file type is a presentation or Word document (rendered via LibreOffice)."""
+    """Check if file type is a presentation, Word document, or DXF (rendered via format-parser)."""
     return file_type in (
         'application/vnd.openxmlformats-officedocument.presentationml.presentation',
         'application/vnd.ms-powerpoint',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'application/msword',
+        'application/dxf',
+        'image/vnd.dxf',
     )
 
 
@@ -336,7 +341,7 @@ def handler(event, _context):
         if ext in WEBREQ_EXTENSIONS or file_type == 'application/x-webreq':
             print('Processing as web request')
             segments = process_webreq(file_uri, bucket, base_path)
-        elif ext in PPTX_EXTENSIONS or ext in DOCX_EXTENSIONS or is_office_document_type(file_type):
+        elif ext in PPTX_EXTENSIONS or ext in DOCX_EXTENSIONS or ext in DXF_EXTENSIONS or is_office_document_type(file_type):
             print('Processing as office document')
             segments = prepare_presentation_segments(file_uri)
         elif ext in PDF_EXTENSIONS or file_type == 'application/pdf':

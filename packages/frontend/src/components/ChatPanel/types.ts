@@ -62,12 +62,6 @@ export interface VoiceChatProps {
   onModelSelect?: (modelType: BidiModelType) => void;
 }
 
-export interface ResearchProps {
-  mode?: boolean;
-  onModeChange?: (mode: boolean) => void;
-  onResearch?: (files: AttachedFile[], message?: string) => void;
-}
-
 export interface ChatPanelProps {
   projectName?: string;
   projectDescription?: string;
@@ -91,7 +85,6 @@ export interface ChatPanelProps {
   loadingSourceKey?: string | null;
   scrollPositionRef?: React.MutableRefObject<number>;
   voiceChat?: VoiceChatProps;
-  research?: ResearchProps;
 }
 
 export interface ToolRegistryEntry {

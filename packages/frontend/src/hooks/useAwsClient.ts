@@ -39,6 +39,8 @@ const MIME_TYPES: Record<string, string> = {
   ppt: 'application/vnd.ms-powerpoint',
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   txt: 'text/plain',
+  // CAD
+  dxf: 'application/dxf',
 };
 
 const getMimeType = (file: File): string => {
@@ -183,7 +185,6 @@ export function useAwsClient() {
     cognitoProps,
     documentStorageBucketName,
     agentRuntimeArn,
-    researchAgentRuntimeArn,
     bidiAgentRuntimeArn,
   } = useRuntimeConfig();
   const { user } = useAuth();
@@ -381,7 +382,6 @@ export function useAwsClient() {
     uploadToS3,
     invokeAgent,
     getPresignedDownloadUrl,
-    researchAgentRuntimeArn,
     bidiAgentRuntimeArn,
     getCredentials,
     userId: user?.profile?.['cognito:username'] as string | undefined,
