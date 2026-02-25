@@ -15,8 +15,9 @@ description: "Use this skill whenever the user wants to create, read, edit, or m
 
 ### Workflow
 
-1. Call `artifact_path(filename="report.docx")` — returns `{ bucket, key, artifact_ref }`
-2. Call `code_interpreter` ONCE with a single script that does everything: create the document, save it, and upload to S3.
+1. Call `artifact_path(filename="report.docx")` — returns `{ s3_uri, bucket, key, artifact_ref }`
+2. **Copy the actual `s3_uri` string value** from the artifact_path result and **hardcode it as a string literal** in your code_interpreter script. Do NOT use variable references — the code_interpreter runs in an isolated sandbox and cannot access the agent's tool results.
+3. Call `code_interpreter` ONCE with a single script that does everything: create the document, save it, and upload to S3.
 
 ```python
 !pip install python-docx
@@ -24,20 +25,26 @@ description: "Use this skill whenever the user wants to create, read, edit, or m
 from docx import Document
 import boto3
 
+# IMPORTANT: Replace with the ACTUAL s3_uri value returned by artifact_path
+S3_URI = "s3://my-bucket/user123/proj456/artifacts/art_abc123/report.docx"  # ← paste the actual s3_uri here
+
+# Parse S3 URI into bucket and key
+BUCKET, KEY = S3_URI.replace("s3://", "").split("/", 1)
+
 # Build entire document
 doc = Document()
 # ... all document content ...
 doc.save('./output.docx')
 
-# Upload to S3 (use bucket and key from artifact_path result)
+# Upload to S3
 s3 = boto3.client('s3')
 with open('./output.docx', 'rb') as f:
     s3.upload_fileobj(
-        f, bucket, key,
+        f, BUCKET, KEY,
         ExtraArgs={'ContentType': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}
     )
 ```
-3. Report the `artifact_ref` to the user
+4. Report the `artifact_ref` to the user
 
 ---
 
