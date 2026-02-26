@@ -29,6 +29,8 @@ description: "Sample AWS IDP Pipeline 主要機能紹介"
 - PDFテキストレイヤー抽出（pypdf）
 - 音声/映像トランスクリプション（AWS Transcribe）
 
+> ファイルタイプ別前処理フローの詳細は[Preprocessing Pipeline](./preprocessing.md)を参照してください。
+
 | ファイルタイプ | 対応フォーマット | 前処理 |
 |---------------|-----------------|--------|
 | 文書 | PDF, DOC, TXT | PaddleOCR + BDA（オプション）+ PDFテキスト抽出 |
@@ -46,7 +48,7 @@ description: "Sample AWS IDP Pipeline 主要機能紹介"
 
 アップロードされた文書はStep Functionsワークフローを通じて自動的に分析されます。Strands SDKベースのReAct Agentがセグメントごとに反復的質問-応答方式の深層分析を実行します。
 
-- セグメントごとの深層分析（Claude Sonnet 4.5 Vision ReAct Agent）
+- セグメントごとの深層分析（Claude Sonnet 4.6 Vision ReAct Agent）
 - 映像分析（TwelveLabs Pegasus 1.2）
 - 文書要約生成（Claude Haiku 4.5）
 - ベクトル埋め込みと保存（Nova Embed 1024d → LanceDB）
@@ -62,7 +64,7 @@ description: "Sample AWS IDP Pipeline 主要機能紹介"
       → 文書要約生成
 ```
 
-> 詳細な分析フローは[AI Analysis Pipeline](./analysis)を参照してください。
+> 詳細な分析フローは[AI Analysis Pipeline](./analysis.md)を参照してください。
 
 <p align="center">
   <img src="../assets/features-analysis.gif" alt="AI Analysis Pipeline" width="800">

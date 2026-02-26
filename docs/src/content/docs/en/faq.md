@@ -26,7 +26,7 @@ The SageMaker endpoint is configured with 0→1 auto-scaling by default, so inst
 
 ### Deployment failed. What should I do?
 
-Refer to the [Quick Deploy Guide - Troubleshooting](./deployment#troubleshooting) section. You can check the failure cause through CodeBuild logs.
+Refer to the [Quick Deploy Guide - Troubleshooting](./deployment.md#troubleshooting) section. You can check the failure cause through CodeBuild logs.
 
 ```bash
 aws logs tail /aws/codebuild/sample-aws-idp-pipeline-deploy --since 10m
@@ -115,7 +115,7 @@ Yes. Large documents are supported through segment-based processing with Step Fu
 | **PaddleOCR** | Open-source OCR running on SageMaker. Supports 80+ languages. Optimized for text extraction |
 | **Bedrock Data Automation (BDA)** | AWS managed service. Analyzes document structure (tables, forms, etc.) together. Selectable in project settings |
 
-> For details, see [PaddleOCR on SageMaker](./ocr).
+> For details, see [PaddleOCR on SageMaker](./ocr.md).
 
 ### How are video/audio files analyzed?
 
@@ -144,7 +144,7 @@ Yes. You can modify the document analysis prompt in the project settings. This p
 
 | Model | Purpose |
 |-------|---------|
-| **Claude Sonnet 4.5** | Segment analysis (Vision ReAct Agent), AI chat |
+| **Claude Sonnet 4.6** | Segment analysis (Vision ReAct Agent), AI chat |
 | **Claude Haiku 4.5** | Document summarization |
 | **Amazon Nova Embed Text v1** | Vector embedding (1024d) |
 | **TwelveLabs Pegasus 1.2** | Video analysis |

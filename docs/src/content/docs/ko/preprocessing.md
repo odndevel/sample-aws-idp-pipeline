@@ -23,7 +23,7 @@ Type Detection Lambda
                         └─ → AI Analysis Pipeline
 ```
 
-> AI 분석 파이프라인(Segment Analyzer, Document Summarizer)에 대한 상세 내용은 [AI Analysis Pipeline](./analysis)을 참조하세요.
+> AI 분석 파이프라인(Segment Analyzer, Document Summarizer)에 대한 상세 내용은 [AI Analysis Pipeline](./analysis.md)을 참조하세요.
 
 ---
 
@@ -65,7 +65,7 @@ PDF와 이미지에서 텍스트를 추출합니다. Lambda(CPU) 또는 SageMake
 
 프로젝트 언어 설정에 따라 OCR 언어가 자동 매핑됩니다 (한국어 → `korean`, 일본어 → `japan` 등).
 
-> 상세 내용은 [PaddleOCR on SageMaker](./ocr)를 참조하세요.
+> 상세 내용은 [PaddleOCR on SageMaker](./ocr.md)를 참조하세요.
 
 ### Bedrock Data Automation (BDA)
 

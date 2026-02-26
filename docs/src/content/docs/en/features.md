@@ -29,6 +29,8 @@ Upload files in various formats and the system automatically detects the file ty
 - PDF text layer extraction (pypdf)
 - Audio/video transcription (AWS Transcribe)
 
+> For detailed preprocessing flows by file type, see [Preprocessing Pipeline](./preprocessing.md).
+
 | File Type | Supported Formats | Preprocessing |
 |-----------|-------------------|---------------|
 | Documents | PDF, DOC, TXT | PaddleOCR + BDA (optional) + PDF text extraction |
@@ -46,7 +48,7 @@ Upload files in various formats and the system automatically detects the file ty
 
 Uploaded documents are automatically analyzed through a Step Functions workflow. A Strands SDK-based ReAct Agent performs in-depth analysis on each segment using an iterative question-answer approach.
 
-- Per-segment deep analysis (Claude Sonnet 4.5 Vision ReAct Agent)
+- Per-segment deep analysis (Claude Sonnet 4.6 Vision ReAct Agent)
 - Video analysis (TwelveLabs Pegasus 1.2)
 - Document summary generation (Claude Haiku 4.5)
 - Vector embedding and storage (Nova Embed 1024d → LanceDB)
@@ -62,7 +64,7 @@ Document Upload
       → Document Summary Generation
 ```
 
-> For detailed analysis flow, see [AI Analysis Pipeline](./analysis).
+> For detailed analysis flow, see [AI Analysis Pipeline](./analysis.md).
 
 <p align="center">
   <img src="../assets/features-analysis.gif" alt="AI Analysis Pipeline" width="800">

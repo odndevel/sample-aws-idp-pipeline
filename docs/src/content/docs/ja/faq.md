@@ -26,7 +26,7 @@ SageMakerエンドポイントはデフォルトで0→1オートスケーリン
 
 ### デプロイに失敗しました。どうすればいいですか？
 
-[Quick Deploy Guide - トラブルシューティング](./deployment#トラブルシューティング)セクションを参照してください。CodeBuildログで失敗原因を確認できます。
+[Quick Deploy Guide - トラブルシューティング](./deployment.md#トラブルシューティング)セクションを参照してください。CodeBuildログで失敗原因を確認できます。
 
 ```bash
 aws logs tail /aws/codebuild/sample-aws-idp-pipeline-deploy --since 10m
@@ -115,7 +115,7 @@ Lambda環境変数を直接修正すると、次回のCDKデプロイ時にmodel
 | **PaddleOCR** | SageMakerで実行されるオープンソースOCR。80以上の言語をサポート。テキスト抽出に最適化 |
 | **Bedrock Data Automation（BDA）** | AWS管理サービス。ドキュメント構造（テーブル、フォームなど）を一緒に分析。プロジェクト設定で選択可能 |
 
-> 詳細は[PaddleOCR on SageMaker](./ocr)を参照してください。
+> 詳細は[PaddleOCR on SageMaker](./ocr.md)を参照してください。
 
 ### 動画/音声ファイルはどのように分析されますか？
 
@@ -144,7 +144,7 @@ Lambda環境変数を直接修正すると、次回のCDKデプロイ時にmodel
 
 | モデル | 用途 |
 |--------|------|
-| **Claude Sonnet 4.5** | セグメント分析（Vision ReAct Agent）、AIチャット |
+| **Claude Sonnet 4.6** | セグメント分析（Vision ReAct Agent）、AIチャット |
 | **Claude Haiku 4.5** | 文書要約 |
 | **Amazon Nova Embed Text v1** | ベクトル埋め込み（1024d） |
 | **TwelveLabs Pegasus 1.2** | 動画分析 |
