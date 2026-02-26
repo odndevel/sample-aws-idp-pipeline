@@ -5,6 +5,12 @@ import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
 import MermaidBlock from './MermaidBlock';
 
+function decodeHtmlEntities(text: string): string {
+  const el = document.createElement('textarea');
+  el.innerHTML = text;
+  return el.value;
+}
+
 const components: Components = {
   // Override <pre> instead of <code> to avoid invalid <div> inside <pre> nesting.
   // Fenced code blocks render as <pre><code class="language-xxx">...</code></pre>.
@@ -16,8 +22,8 @@ const components: Components = {
         children?: React.ReactNode;
       };
       if (/language-mermaid/.test(childProps.className || '')) {
-        const code = String(childProps.children).replace(/\n$/, '');
-        return <MermaidBlock code={code} />;
+        const raw = String(childProps.children).replace(/\n$/, '');
+        return <MermaidBlock code={decodeHtmlEntities(raw)} />;
       }
     }
     return <pre {...props}>{children}</pre>;

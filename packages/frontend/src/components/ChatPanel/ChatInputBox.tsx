@@ -157,9 +157,9 @@ export default function ChatInputBox({
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         const el = node as HTMLElement;
         if (el.dataset.artifactId) {
-          result += `[artifact:${el.dataset.artifactId}](${el.dataset.artifactS3 || el.dataset.artifactFilename})`;
+          result += `[artifact_id:${el.dataset.artifactId}](${el.dataset.artifactS3 || el.dataset.artifactFilename})`;
         } else if (el.dataset.documentId) {
-          result += `[document:${el.dataset.documentId}](${el.dataset.documentS3 || el.dataset.documentFilename})`;
+          result += `[document_id:${el.dataset.documentId}](${el.dataset.documentS3 || el.dataset.documentFilename})`;
         } else if (el.tagName === 'BR') {
           result += '\n';
         } else {

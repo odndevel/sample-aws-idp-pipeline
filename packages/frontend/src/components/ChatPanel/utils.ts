@@ -2,7 +2,8 @@ import DOMPurify from 'isomorphic-dompurify';
 import type { WebSearchResult, FetchContentPreview } from './types';
 export { formatFileSize, getFileTypeInfo } from '../../lib/fileTypeUtils';
 
-export const formatToolDisplayName = (rawName: string): string => rawName;
+export const formatToolDisplayName = (rawName: string): string =>
+  rawName === 'code_interpreter' ? 'crafting' : rawName;
 
 export const parseWebSearchResults = (
   text: string,
