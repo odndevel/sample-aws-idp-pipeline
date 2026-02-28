@@ -5,23 +5,27 @@ import os
 from typing import Callable
 
 import boto3
-import yaml
 from PIL import Image
 from strands import tool
 
+_s3_client = boto3.client('s3')
+_prompt_cache = {}
 
-def _load_image_analysis_prompt() -> str:
-    prompt_path = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)),
-        'prompts',
-        'vision_react_agent.yaml'
-    )
+
+def _load_prompt_from_s3(prompt_name: str) -> str:
+    if prompt_name in _prompt_cache:
+        return _prompt_cache[prompt_name]
+    bucket = os.environ.get('AGENT_STORAGE_BUCKET_NAME', '')
+    if not bucket:
+        return ''
+    s3_key = f'__prompts/analysis/{prompt_name}.txt'
     try:
-        with open(prompt_path, 'r', encoding='utf-8') as f:
-            prompts = yaml.safe_load(f)
-            return prompts.get('image_analysis_prompt', '')
+        resp = _s3_client.get_object(Bucket=bucket, Key=s3_key)
+        content = resp['Body'].read().decode('utf-8')
+        _prompt_cache[prompt_name] = content
+        return content
     except Exception as e:
-        print(f'Error loading image analysis prompt: {e}')
+        print(f'Failed to load prompt from S3 ({s3_key}): {e}')
         return ''
 
 
@@ -104,7 +108,7 @@ def create_image_analyzer_tool(
             image_base64 = base64.b64encode(resized_image).decode('utf-8')
 
             previous_context = previous_context_getter()
-            prompt_template = _load_image_analysis_prompt()
+            prompt_template = _load_prompt_from_s3('image_analysis_prompt')
 
             if prompt_template:
                 analysis_prompt = prompt_template.format(

@@ -87,15 +87,6 @@ def handler(event, _context):
         context_parts.append(f'## PaddleOCR:\n{ocr_text}')
     if webcrawler_content:
         context_parts.append(f'## Web Crawler:\n{webcrawler_content}')
-    if transcribe_segments:
-        # Format transcribe segments with timing info
-        segments_text = []
-        for seg in transcribe_segments:
-            start = seg.get('start_time', '')
-            end = seg.get('end_time', '')
-            transcript = seg.get('transcript', '')
-            segments_text.append(f'[{start}s - {end}s] {transcript}')
-        context_parts.append(f'## Transcribe Segments:\n' + '\n'.join(segments_text))
 
     context = '\n\n'.join(context_parts) if context_parts else 'No prior analysis available.'
 
@@ -127,7 +118,8 @@ def handler(event, _context):
             segment_type=segment_type,
             video_uri=video_uri,
             start_timecode=start_timecode,
-            end_timecode=end_timecode
+            end_timecode=end_timecode,
+            transcribe_segments=transcribe_segments
         )
 
         analysis_steps = result.get('analysis_steps', [])

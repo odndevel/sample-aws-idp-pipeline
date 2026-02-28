@@ -181,6 +181,12 @@ export default function DocumentUploadModal({
     [files],
   );
 
+  // Reset options when files change and eligibility is lost
+  useEffect(() => {
+    if (!hasOcrEligibleFiles) setUseOcr(false);
+    if (!hasTranscribeEligibleFiles) setUseTranscribe(false);
+  }, [hasOcrEligibleFiles, hasTranscribeEligibleFiles]);
+
   // OCR settings - default to pp-ocrv5 with language derived from project
   const [ocrSettings, setOcrSettings] = useState<OcrSettings>(() => ({
     ocr_model: 'pp-ocrv5',

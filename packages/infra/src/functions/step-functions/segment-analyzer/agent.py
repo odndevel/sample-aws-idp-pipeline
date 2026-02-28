@@ -7,7 +7,12 @@ import boto3
 from strands import Agent
 from strands.models import BedrockModel, CacheConfig
 
-from tools import create_image_analyzer_tool, create_image_rotator_tool, create_video_analyzer_tool
+from tools import (
+    create_image_analyzer_tool,
+    create_image_rotator_tool,
+    create_script_extractor_tool,
+    create_video_analyzer_tool,
+)
 
 
 class VisionReactAgent:
@@ -97,7 +102,8 @@ class VisionReactAgent:
         segment_type: str = 'PAGE',
         video_uri: str = '',
         start_timecode: str = '',
-        end_timecode: str = ''
+        end_timecode: str = '',
+        transcribe_segments: Optional[list] = None
     ) -> dict:
         self.analysis_steps = []
         self.previous_context = context
@@ -137,6 +143,15 @@ class VisionReactAgent:
         tools = []
 
         if is_video:
+            extract_script = create_script_extractor_tool(
+                video_uri_getter=self._get_video_uri,
+                timecode_getter=self._get_timecode,
+                transcribe_segments=transcribe_segments or [],
+                analysis_steps=self.analysis_steps,
+                region=self.region,
+                bucket_owner_account_id=self.bucket_owner_account_id,
+                language=language_name
+            )
             analyze_video = create_video_analyzer_tool(
                 video_uri_getter=self._get_video_uri,
                 analysis_steps=self.analysis_steps,
@@ -145,7 +160,7 @@ class VisionReactAgent:
                 bucket_owner_account_id=self.bucket_owner_account_id,
                 language=language_name
             )
-            tools.append(analyze_video)
+            tools.extend([extract_script, analyze_video])
         elif is_text:
             # Text-only analysis: no tools needed, just analyze from context
             pass

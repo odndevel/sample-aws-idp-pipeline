@@ -319,6 +319,8 @@ export class WorkflowStack extends Stack {
         ...commonLambdaProps.environment,
         BEDROCK_MODEL_ID: models.analysis,
         BEDROCK_VIDEO_MODEL_ID: models.videoAnalysis,
+        NOVA_LITE_MODEL_ID: models.scriptExtractor,
+        MAX_REASONING_EFFORT: 'low',
         BUCKET_OWNER_ACCOUNT_ID: this.account,
         AGENT_STORAGE_BUCKET_NAME: agentStorageBucketName,
       },
