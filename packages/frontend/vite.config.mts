@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs';
 import tailwindcss from '@tailwindcss/vite';
 import tsconfigPaths from 'vite-tsconfig-paths';
 import { resolve } from 'path';
@@ -6,9 +7,14 @@ import { tanstackRouter } from '@tanstack/router-plugin/vite';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+const rootPkg = JSON.parse(
+  readFileSync(resolve(__dirname, '../../package.json'), 'utf-8'),
+);
+
 export default defineConfig(() => ({
   define: {
     global: {},
+    __APP_VERSION__: JSON.stringify(rootPkg.version),
   },
   root: import.meta.dirname,
   cacheDir: '../../node_modules/.vite/packages/frontend',

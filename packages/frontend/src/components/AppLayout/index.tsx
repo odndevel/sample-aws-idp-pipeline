@@ -457,6 +457,9 @@ const AppLayout: React.FC<React.PropsWithChildren> = ({ children }) => {
               {!sidebarCollapsed && (
                 <div className="sidebar-user-details">
                   <p className="sidebar-user-name">{username}</p>
+                  <p className="text-[10px] text-slate-400/60 dark:text-slate-500/60">
+                    v{__APP_VERSION__}
+                  </p>
                 </div>
               )}
             </div>

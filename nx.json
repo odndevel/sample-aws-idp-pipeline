@@ -99,6 +99,26 @@
       "inputs": ["production", "^production"]
     }
   },
+  "release": {
+    "projects": ["@idp-v2/frontend", "@idp-v2/infra", "@idp-v2/common-constructs"],
+    "projectsRelationship": "fixed",
+    "version": {
+      "generatorOptions": {
+        "currentVersionResolver": "git-tag",
+        "specifierSource": "prompt",
+        "updateRootVersion": true
+      }
+    },
+    "changelog": {
+      "workspaceChangelog": {
+        "createRelease": false
+      }
+    },
+    "git": {
+      "commit": true,
+      "tag": true
+    }
+  },
   "generators": {
     "@nx/react": {
       "application": {
