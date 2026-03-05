@@ -1,11 +1,9 @@
 import json
 import os
 import re
-from typing import Any, List
+from typing import List
 
 import boto3
-from lancedb.embeddings import TextEmbeddingFunction, register
-from pydantic import PrivateAttr
 
 
 _HTML_TAG_RE = re.compile(r'<[^>]+>')
@@ -17,80 +15,42 @@ def strip_markup(text: str) -> str:
     """Strip HTML tags and markdown headers for cleaner embedding input."""
     text = _HTML_TAG_RE.sub(' ', text)
     text = _MD_HEADER_RE.sub('', text)
-    text = text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&nbsp;', ' ')
+    text = (
+        text.replace('&amp;', '&')
+        .replace('&lt;', '<')
+        .replace('&gt;', '>')
+        .replace('&nbsp;', ' ')
+    )
     text = _WHITESPACE_RE.sub('\n\n', text)
     return text.strip()
 
 
-EMBEDDING_MODEL_ID = os.environ.get('EMBEDDING_MODEL_ID', 'amazon.nova-2-multimodal-embeddings-v1:0')
-
-
-@register('bedrock-nova')
-class BedrockEmbeddingFunction(TextEmbeddingFunction):
-    model_id: str = EMBEDDING_MODEL_ID
-    region_name: str = 'us-east-1'
-
-    _client: Any = PrivateAttr()
-    _ndims: int = PrivateAttr()
-
-    def __init__(self, **data):
-        super().__init__(**data)
-        self._client = boto3.client(
-            'bedrock-runtime',
-            region_name=os.environ.get('AWS_REGION', 'us-east-1')
-        )
-        self._ndims = 1024
-
-    def ndims(self) -> int:
-        return self._ndims
-
-    def generate_embeddings(self, texts: List[str]) -> List[List[float]]:
-        embeddings = []
-        for text in texts:
-            try:
-                clean_text = strip_markup(text)
-                response = self._client.invoke_model(
-                    modelId=self.model_id,
-                    body=json.dumps({
-                        'taskType': 'SINGLE_EMBEDDING',
-                        'singleEmbeddingParams': {
-                            'embeddingPurpose': 'GENERIC_INDEX',
-                            'embeddingDimension': 1024,
-                            'text': {'truncationMode': 'END', 'value': clean_text}
-                        }
-                    }),
-                    contentType='application/json'
-                )
-                result = json.loads(response['body'].read())
-                embedding = result['embeddings'][0]['embedding']
-                embeddings.append(embedding)
-            except Exception as e:
-                print(f'Error generating embedding: {e}')
-                embeddings.append([0.0] * self._ndims)
-
-        return embeddings
+EMBEDDING_MODEL_ID = os.environ.get(
+    'EMBEDDING_MODEL_ID', 'amazon.nova-2-multimodal-embeddings-v1:0'
+)
 
 
 def generate_single_embedding(text: str, client=None) -> List[float]:
     if client is None:
         client = boto3.client(
-            'bedrock-runtime',
-            region_name=os.environ.get('AWS_REGION', 'us-east-1')
+            'bedrock-runtime', region_name=os.environ.get('AWS_REGION', 'us-east-1')
         )
 
     try:
         clean_text = strip_markup(text)
         response = client.invoke_model(
             modelId=EMBEDDING_MODEL_ID,
-            body=json.dumps({
-                'taskType': 'SINGLE_EMBEDDING',
-                'singleEmbeddingParams': {
-                    'embeddingPurpose': 'GENERIC_INDEX',
-                    'embeddingDimension': 1024,
-                    'text': {'truncationMode': 'END', 'value': clean_text}
+            body=json.dumps(
+                {
+                    'taskType': 'SINGLE_EMBEDDING',
+                    'singleEmbeddingParams': {
+                        'embeddingPurpose': 'GENERIC_INDEX',
+                        'embeddingDimension': 1024,
+                        'text': {'truncationMode': 'END', 'value': clean_text},
+                    },
                 }
-            }),
-            contentType='application/json'
+            ),
+            contentType='application/json',
         )
         result = json.loads(response['body'].read())
         return result['embeddings'][0]['embedding']

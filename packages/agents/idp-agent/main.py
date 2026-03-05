@@ -51,13 +51,14 @@ def filter_stream_event(event: dict) -> list[dict]:
     if "current_tool_use" in event:
         tool_use = event["current_tool_use"]
         if tool_use.get("name"):
-            return [
-                {
-                    "type": "tool_use",
-                    "name": tool_use["name"],
-                    "tool_use_id": tool_use.get("toolUseId", ""),
-                }
-            ]
+            result = {
+                "type": "tool_use",
+                "name": tool_use["name"],
+                "tool_use_id": tool_use.get("toolUseId", ""),
+            }
+            if tool_use.get("input"):
+                result["input"] = tool_use["input"]
+            return [result]
 
     if "message" in event and event["message"].get("role") == "user":
         results = []

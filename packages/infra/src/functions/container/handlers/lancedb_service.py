@@ -99,6 +99,10 @@ class BedrockEmbeddingFunction(TextEmbeddingFunction):
     def generate_embeddings(self, texts):
         embeddings = []
         for text in texts:
+            value = (text or '').strip()
+            if not value:
+                embeddings.append([0.0] * self._ndims)
+                continue
             try:
                 response = self._client.invoke_model(
                     modelId=self.model_id,
@@ -107,7 +111,7 @@ class BedrockEmbeddingFunction(TextEmbeddingFunction):
                         'singleEmbeddingParams': {
                             'embeddingPurpose': 'GENERIC_INDEX',
                             'embeddingDimension': 1024,
-                            'text': {'truncationMode': 'END', 'value': text[:10000]}
+                            'text': {'truncationMode': 'END', 'value': value}
                         }
                     }),
                     contentType='application/json'
@@ -138,7 +142,10 @@ def get_document_record_schema():
         workflow_id: str
         document_id: str
         segment_id: str
+        qa_id: str
         segment_index: int
+        qa_index: int = 0
+        question: str = ''
         content: str = embeddings.SourceField()
         vector: Vector(1024) = embeddings.VectorField()
         keywords: str
@@ -169,8 +176,6 @@ def get_or_create_table(project_id: str):
         DocumentRecord = get_document_record_schema()
         print(f'[get_or_create_table] Schema ready, creating table...')
         table = db.create_table(table_name, schema=DocumentRecord)
-        print(f'[get_or_create_table] Creating FTS index...')
-        table.create_fts_index('keywords', replace=True)
         print(f'[get_or_create_table] Table created successfully')
         return table
 
@@ -185,7 +190,10 @@ def action_add_record(params: dict) -> dict:
 
     workflow_id = params.get('workflow_id', '')
     segment_index = params.get('segment_index', 0)
+    qa_index = params.get('qa_index', 0)
+    question = params.get('question', '')
     segment_id = f'{workflow_id}_{segment_index:04d}'
+    qa_id = f'{workflow_id}_{segment_index:04d}_{qa_index:02d}'
     content = params.get('content_combined', '')
     print(f'[add_record] Extracting keywords from content (len={len(content)})')
     keywords = extract_keywords(content) if content else ''
@@ -201,7 +209,10 @@ def action_add_record(params: dict) -> dict:
         'workflow_id': workflow_id,
         'document_id': params.get('document_id', ''),
         'segment_id': segment_id,
+        'qa_id': qa_id,
         'segment_index': segment_index,
+        'qa_index': qa_index,
+        'question': question,
         'content': content,
         'keywords': keywords,
         'file_uri': params.get('file_uri', ''),
@@ -212,8 +223,8 @@ def action_add_record(params: dict) -> dict:
 
     print(f'[add_record] Adding record to table...')
     table.add([record])
-    print(f'[add_record] Record added successfully: {segment_id}')
-    return {'success': True, 'segment_id': segment_id}
+    print(f'[add_record] Record added successfully: qa_id={qa_id}')
+    return {'success': True, 'segment_id': segment_id, 'qa_id': qa_id}
 
 
 def action_get_segments(params: dict) -> dict:
@@ -228,7 +239,36 @@ def action_get_segments(params: dict) -> dict:
         segments.append({
             'workflow_id': r['workflow_id'],
             'segment_id': r['segment_id'],
+            'qa_id': r.get('qa_id', ''),
             'segment_index': r['segment_index'],
+            'qa_index': r.get('qa_index', 0),
+            'question': r.get('question', ''),
+            'content': r.get('content', ''),
+        })
+
+    return {'success': True, 'segments': segments}
+
+
+def action_get_by_segment_ids(params: dict) -> dict:
+    """Get segment content by a list of segment IDs."""
+    project_id = params.get('project_id', 'default')
+    segment_ids = params.get('segment_ids', [])
+    if not segment_ids:
+        return {'success': True, 'segments': []}
+
+    table = get_or_create_table(project_id)
+    id_list = ', '.join(f"'{sid}'" for sid in segment_ids)
+    results = table.search().where(f'segment_id IN ({id_list})').to_list()
+
+    segments = []
+    for r in results:
+        segments.append({
+            'segment_id': r['segment_id'],
+            'qa_id': r.get('qa_id', ''),
+            'document_id': r.get('document_id', ''),
+            'segment_index': r.get('segment_index', 0),
+            'qa_index': r.get('qa_index', 0),
+            'question': r.get('question', ''),
             'content': r.get('content', ''),
         })
 
@@ -266,6 +306,7 @@ def action_hybrid_search(params: dict) -> dict:
         return {'success': True, 'results': []}
 
     table = db.open_table(project_id)
+    table.create_fts_index('keywords', replace=True)
     keywords = extract_keywords(query)
     search_query = table.search(query=keywords, query_type='hybrid').limit(limit)
 
@@ -281,7 +322,10 @@ def action_hybrid_search(params: dict) -> dict:
                 'workflow_id': r['workflow_id'],
                 'document_id': r.get('document_id', ''),
                 'segment_id': r['segment_id'],
+                'qa_id': r.get('qa_id', ''),
                 'segment_index': r['segment_index'],
+                'qa_index': r.get('qa_index', 0),
+                'question': r.get('question', ''),
                 'content': r.get('content', ''),
                 'keywords': r.get('keywords', ''),
                 'file_uri': r.get('file_uri', ''),
@@ -293,11 +337,15 @@ def action_hybrid_search(params: dict) -> dict:
 
 
 def action_delete_record(params: dict) -> dict:
-    """Delete a specific segment record from LanceDB."""
+    """Delete record(s) from LanceDB.
+
+    If qa_index is specified, deletes the specific QA record by qa_id.
+    If qa_index is None, deletes all QA records for the segment by segment_id.
+    """
     project_id = params.get('project_id', 'default')
     workflow_id = params.get('workflow_id', '')
     segment_index = params.get('segment_index', 0)
-    segment_id = f'{workflow_id}_{segment_index:04d}'
+    qa_index = params.get('qa_index')
 
     db = get_lancedb_connection()
 
@@ -306,11 +354,19 @@ def action_delete_record(params: dict) -> dict:
 
     table = db.open_table(project_id)
 
-    # Delete by segment_id
     try:
-        table.delete(f"segment_id = '{segment_id}'")
-        print(f'[delete_record] Deleted record: {segment_id}')
-        return {'success': True, 'deleted': 1, 'segment_id': segment_id}
+        if qa_index is not None:
+            # Delete specific QA record by qa_id
+            qa_id = f'{workflow_id}_{segment_index:04d}_{qa_index:02d}'
+            table.delete(f"qa_id = '{qa_id}'")
+            print(f'[delete_record] Deleted record: qa_id={qa_id}')
+            return {'success': True, 'deleted': 1, 'qa_id': qa_id}
+        else:
+            # Delete all QA records for this segment by segment_id
+            segment_id = f'{workflow_id}_{segment_index:04d}'
+            table.delete(f"segment_id = '{segment_id}'")
+            print(f'[delete_record] Deleted all records for segment_id={segment_id}')
+            return {'success': True, 'segment_id': segment_id}
     except Exception as e:
         print(f'[delete_record] Error deleting: {e}')
         return {'success': False, 'error': str(e)}
@@ -353,6 +409,7 @@ def handler(event, _context):
         'add_record': action_add_record,
         'delete_record': action_delete_record,
         'get_segments': action_get_segments,
+        'get_by_segment_ids': action_get_by_segment_ids,
         'hybrid_search': action_hybrid_search,
         'list_tables': action_list_tables,
         'count': action_count,

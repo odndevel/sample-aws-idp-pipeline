@@ -35,4 +35,10 @@ export const SSM_KEYS = {
   UNSPLASH_ACCESS_KEY: '/idp-v2/external-service/unsplash/access-key',
   // WebCrawler
   WEBCRAWLER_AGENT_RUNTIME_ARN: '/idp-v2/webcrawler-agent/runtime-arn',
+  // Neptune Database Serverless (Graph RAG)
+  NEPTUNE_CLUSTER_ENDPOINT: '/idp-v2/neptune/cluster-endpoint',
+  NEPTUNE_CLUSTER_PORT: '/idp-v2/neptune/cluster-port',
+  NEPTUNE_CLUSTER_RESOURCE_ID: '/idp-v2/neptune/cluster-resource-id',
+  NEPTUNE_SECURITY_GROUP_ID: '/idp-v2/neptune/security-group-id',
+  GRAPH_SERVICE_FUNCTION_ARN: '/idp-v2/graph/function-arn',
 } as const;

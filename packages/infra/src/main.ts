@@ -11,6 +11,7 @@ import { WorkflowStack } from './stacks/workflow-stack.js';
 import { VpcStack } from './stacks/vpc-stack.js';
 import { WorkerStack } from './stacks/worker-stack.js';
 import { WebcrawlerStack } from './stacks/webcrawler-stack.js';
+import { NeptuneStack } from './stacks/neptune-stack.js';
 import { WebsocketStack } from './stacks/websocket-stack.js';
 
 const app = new App();
@@ -24,6 +25,9 @@ const env = {
 // [With Dependencies] - uncomment this block for production
 // ============================================================
 const vpcStack = new VpcStack(app, 'IDP-V2-Vpc', { env });
+
+const neptuneStack = new NeptuneStack(app, 'IDP-V2-Neptune', { env });
+neptuneStack.addDependency(vpcStack);
 
 const storageStack = new StorageStack(app, 'IDP-V2-Storage', { env });
 storageStack.addDependency(vpcStack);
@@ -44,6 +48,7 @@ transcribeStack.addDependency(eventStack);
 const workflowStack = new WorkflowStack(app, 'IDP-V2-Workflow', { env });
 workflowStack.addDependency(storageStack);
 workflowStack.addDependency(eventStack);
+workflowStack.addDependency(neptuneStack);
 
 const websocketStack = new WebsocketStack(app, 'IDP-V2-Websocket', { env });
 websocketStack.addDependency(storageStack);
@@ -87,6 +92,7 @@ applicationStack.addDependency(vpcStack);
 // [Without Dependencies] - for independent stack deployment (dev)
 // ============================================================
 // new VpcStack(app, 'IDP-V2-Vpc', { env });
+// new NeptuneStack(app, 'IDP-V2-Neptune', { env });
 // new StorageStack(app, 'IDP-V2-Storage', { env });
 // new EventStack(app, 'IDP-V2-Event', { env });
 // new OcrStack(app, 'IDP-V2-Ocr', { env });

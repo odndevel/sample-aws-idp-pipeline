@@ -17,6 +17,7 @@ class Config(BaseSettings):
     lancedb_function_name: str = "idp-v2-lancedb-service"
     paddleocr_endpoint_name: str = "paddleocr-endpoint"
     paddleocr_scale_in_alarm_name: str = "idp-v2-paddleocr-scale-in"
+    graph_service_function_name: str = ""
 
 
 @lru_cache

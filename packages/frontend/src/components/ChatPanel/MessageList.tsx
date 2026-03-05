@@ -11,6 +11,7 @@ import type {
   ChatMessage,
   ChatArtifact,
   Document,
+  GraphSearchResult,
 } from './types';
 
 interface MessageListProps {
@@ -27,6 +28,7 @@ interface MessageListProps {
   loadingSourceKey?: string | null;
   onImageClick?: (img: { src: string; alt: string }) => void;
   onViewDetails?: (content: string) => void;
+  onGraphView?: (data: GraphSearchResult) => void;
   documents: Document[];
   chatEndRef: React.RefObject<HTMLDivElement | null>;
 }
@@ -45,6 +47,7 @@ export default function MessageList({
   loadingSourceKey,
   onImageClick,
   onViewDetails,
+  onGraphView,
   documents,
   chatEndRef,
 }: MessageListProps) {
@@ -76,6 +79,7 @@ export default function MessageList({
             artifact={message.artifact}
             sources={message.sources}
             attachments={message.attachments}
+            toolInput={message.toolInput}
             expandKeyPrefix={message.id}
             expandedSources={expandedSources}
             onToggleExpand={onToggleExpand}
@@ -86,6 +90,7 @@ export default function MessageList({
             loadingSourceKey={loadingSourceKey}
             onImageClick={onImageClick}
             onViewDetails={onViewDetails}
+            onGraphView={onGraphView}
             documents={documents}
           />
         ) : message.isStageResult ? (
@@ -191,12 +196,14 @@ export default function MessageList({
                     content={block.content}
                     images={block.images}
                     sources={block.sources}
+                    toolInput={block.toolInput}
                     expandKeyPrefix={`streaming-tool-result-${idx}`}
                     expandedSources={expandedSources}
                     onToggleExpand={onToggleExpand}
                     onSourceClick={onSourceClick}
                     onImageClick={onImageClick}
                     onViewDetails={onViewDetails}
+                    onGraphView={onGraphView}
                     documents={documents}
                   />
                 );

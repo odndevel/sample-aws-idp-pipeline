@@ -9,7 +9,10 @@ export interface HybridResult {
   workflow_id: string;
   document_id: string;
   segment_id: string;
+  qa_id: string;
   segment_index: number;
+  qa_index: number;
+  question: string;
   content: string;
   keywords: string;
   score: number;
@@ -20,6 +23,7 @@ export interface SearchAnswer {
   sources: Array<{
     document_id: string;
     segment_id: string;
+    qa_id: string;
   }>;
 }
 

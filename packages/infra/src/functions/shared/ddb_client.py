@@ -19,8 +19,7 @@ def get_ddb_resource():
     global ddb_resource
     if ddb_resource is None:
         ddb_resource = boto3.resource(
-            'dynamodb',
-            region_name=os.environ.get('AWS_REGION', 'us-east-1')
+            'dynamodb', region_name=os.environ.get('AWS_REGION', 'us-east-1')
         )
     return ddb_resource
 
@@ -90,7 +89,12 @@ class PreprocessType:
     ALL = ['ocr', 'bda', 'transcribe', 'webcrawler']
 
 
-def determine_preprocess_required(file_type: str, use_bda: bool = False, use_ocr: bool = True, use_transcribe: bool = False) -> dict:
+def determine_preprocess_required(
+    file_type: str,
+    use_bda: bool = False,
+    use_ocr: bool = True,
+    use_transcribe: bool = False,
+) -> dict:
     """Determine which preprocessors are required based on file type and options.
 
     Note: Parser is handled in Step Functions workflow, not as async preprocessing.
@@ -102,42 +106,61 @@ def determine_preprocess_required(file_type: str, use_bda: bool = False, use_ocr
     is_audio = file_type.startswith('audio/')
     is_webreq = file_type == 'application/x-webreq'
     is_dxf = file_type in (
-        'application/dxf', 'image/vnd.dxf',
+        'application/dxf',
+        'image/vnd.dxf',
     )
-    is_text = file_type in (
-        'text/plain',
-        'text/markdown',
-        'text/csv',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/msword',
-    ) or is_dxf
+    is_text = (
+        file_type
+        in (
+            'text/plain',
+            'text/markdown',
+            'text/csv',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/msword',
+        )
+        or is_dxf
+    )
 
     # Text files skip all preprocessing
     if is_text:
         return {
             PreprocessType.OCR: {'required': False, 'status': PreprocessStatus.SKIPPED},
             PreprocessType.BDA: {'required': False, 'status': PreprocessStatus.SKIPPED},
-            PreprocessType.TRANSCRIBE: {'required': False, 'status': PreprocessStatus.SKIPPED},
-            PreprocessType.WEBCRAWLER: {'required': False, 'status': PreprocessStatus.SKIPPED},
+            PreprocessType.TRANSCRIBE: {
+                'required': False,
+                'status': PreprocessStatus.SKIPPED,
+            },
+            PreprocessType.WEBCRAWLER: {
+                'required': False,
+                'status': PreprocessStatus.SKIPPED,
+            },
         }
 
     return {
         PreprocessType.OCR: {
             'required': (is_pdf or is_image) and not is_webreq and use_ocr,
-            'status': PreprocessStatus.PENDING if ((is_pdf or is_image) and not is_webreq and use_ocr) else PreprocessStatus.SKIPPED
+            'status': PreprocessStatus.PENDING
+            if ((is_pdf or is_image) and not is_webreq and use_ocr)
+            else PreprocessStatus.SKIPPED,
         },
         PreprocessType.BDA: {
             'required': use_bda and not is_webreq,
-            'status': PreprocessStatus.PENDING if (use_bda and not is_webreq) else PreprocessStatus.SKIPPED
+            'status': PreprocessStatus.PENDING
+            if (use_bda and not is_webreq)
+            else PreprocessStatus.SKIPPED,
         },
         PreprocessType.TRANSCRIBE: {
             'required': (is_video or is_audio) and not is_webreq and use_transcribe,
-            'status': PreprocessStatus.PENDING if ((is_video or is_audio) and not is_webreq and use_transcribe) else PreprocessStatus.SKIPPED
+            'status': PreprocessStatus.PENDING
+            if ((is_video or is_audio) and not is_webreq and use_transcribe)
+            else PreprocessStatus.SKIPPED,
         },
         PreprocessType.WEBCRAWLER: {
             'required': is_webreq,
-            'status': PreprocessStatus.PENDING if is_webreq else PreprocessStatus.SKIPPED
-        }
+            'status': PreprocessStatus.PENDING
+            if is_webreq
+            else PreprocessStatus.SKIPPED,
+        },
     }
 
 
@@ -150,6 +173,7 @@ class StepName:
     WEBCRAWLER = 'webcrawler'
     SEGMENT_BUILDER = 'segment_builder'
     SEGMENT_ANALYZER = 'segment_analyzer'
+    GRAPH_BUILDER = 'graph_builder'
     DOCUMENT_SUMMARIZER = 'document_summarizer'
 
     ORDER = [
@@ -161,7 +185,8 @@ class StepName:
         'webcrawler',
         'segment_builder',
         'segment_analyzer',
-        'document_summarizer'
+        'graph_builder',
+        'document_summarizer',
     ]
 
     LABELS = {
@@ -173,7 +198,8 @@ class StepName:
         'webcrawler': 'Web Crawling',
         'segment_builder': 'Building Segments',
         'segment_analyzer': 'Segment Analysis',
-        'document_summarizer': 'Document Summary'
+        'graph_builder': 'Building Knowledge Graph',
+        'document_summarizer': 'Document Summary',
     }
 
 
@@ -200,7 +226,9 @@ def create_workflow(
     entity_prefix = get_entity_prefix(file_type)
 
     # Determine required preprocessors based on file type and options
-    preprocess = determine_preprocess_required(file_type, use_bda, use_ocr, use_transcribe)
+    preprocess = determine_preprocess_required(
+        file_type, use_bda, use_ocr, use_transcribe
+    )
 
     # Add webcrawler metadata if provided
     if source_url:
@@ -228,7 +256,7 @@ def create_workflow(
         'SK': f'WF#{workflow_id}',
         'data': workflow_data,
         'created_at': now,
-        'updated_at': now
+        'updated_at': now,
     }
 
     # Determine which steps should be skipped based on file type and options
@@ -238,13 +266,18 @@ def create_workflow(
     is_audio = file_type.startswith('audio/')
     is_webreq = file_type == 'application/x-webreq'
     is_dxf_file = file_type in (
-        'application/dxf', 'image/vnd.dxf',
+        'application/dxf',
+        'image/vnd.dxf',
     )
 
     skip_conditions = {
         StepName.BDA_PROCESSOR: not use_bda or is_webreq,
-        StepName.PADDLEOCR_PROCESSOR: not (is_pdf or is_image) or is_webreq or not use_ocr,
-        StepName.TRANSCRIBE: not (is_video or is_audio) or is_webreq or not use_transcribe,
+        StepName.PADDLEOCR_PROCESSOR: not (is_pdf or is_image)
+        or is_webreq
+        or not use_ocr,
+        StepName.TRANSCRIBE: not (is_video or is_audio)
+        or is_webreq
+        or not use_transcribe,
         StepName.FORMAT_PARSER: not (is_pdf or is_dxf_file) or is_webreq,
         StepName.WEBCRAWLER: not is_webreq,
         StepName.SEGMENT_ANALYZER: False,
@@ -254,13 +287,13 @@ def create_workflow(
     steps_data = {
         'project_id': project_id,
         'document_id': document_id,
-        'current_step': ''
+        'current_step': '',
     }
     for step_name in StepName.ORDER:
         should_skip = skip_conditions.get(step_name, False)
         steps_data[step_name] = {
             'status': WorkflowStatus.SKIPPED if should_skip else WorkflowStatus.PENDING,
-            'label': StepName.LABELS.get(step_name, step_name)
+            'label': StepName.LABELS.get(step_name, step_name),
         }
 
     steps_item = {
@@ -270,7 +303,7 @@ def create_workflow(
         'GSI1SK': 'pending',
         'data': steps_data,
         'created_at': now,
-        'updated_at': now
+        'updated_at': now,
     }
 
     with table.batch_writer() as batch:
@@ -280,7 +313,13 @@ def create_workflow(
     return workflow_item
 
 
-def update_workflow_status(document_id: str, workflow_id: str, status: str, entity_type: str = EntityType.DOCUMENT, **kwargs) -> dict:
+def update_workflow_status(
+    document_id: str,
+    workflow_id: str,
+    status: str,
+    entity_type: str = EntityType.DOCUMENT,
+    **kwargs,
+) -> dict:
     table = get_table()
     now = now_iso()
 
@@ -293,8 +332,6 @@ def update_workflow_status(document_id: str, workflow_id: str, status: str, enti
     for key, value in kwargs.items():
         data[key] = value
 
-    is_terminal = status in [WorkflowStatus.COMPLETED, WorkflowStatus.FAILED]
-
     update_expr = 'SET #data = :data, updated_at = :updated_at'
     expr_values = {':data': data, ':updated_at': now}
 
@@ -302,7 +339,7 @@ def update_workflow_status(document_id: str, workflow_id: str, status: str, enti
         Key={'PK': f'{entity_type}#{document_id}', 'SK': f'WF#{workflow_id}'},
         UpdateExpression=update_expr,
         ExpressionAttributeNames={'#data': 'data'},
-        ExpressionAttributeValues=expr_values
+        ExpressionAttributeValues=expr_values,
     )
 
     # Also update document status to match workflow status
@@ -324,7 +361,7 @@ def update_document_status(project_id: str, document_id: str, status: str) -> bo
             Key={'PK': f'PROJ#{project_id}', 'SK': f'DOC#{document_id}'},
             UpdateExpression='SET #data.#status = :status, updated_at = :updated_at',
             ExpressionAttributeNames={'#data': 'data', '#status': 'status'},
-            ExpressionAttributeValues={':status': status, ':updated_at': now}
+            ExpressionAttributeValues={':status': status, ':updated_at': now},
         )
         return True
     except Exception as e:
@@ -332,7 +369,9 @@ def update_document_status(project_id: str, document_id: str, status: str) -> bo
         return False
 
 
-def get_workflow(document_id: str, workflow_id: str, entity_type: str = EntityType.DOCUMENT) -> Optional[dict]:
+def get_workflow(
+    document_id: str, workflow_id: str, entity_type: str = EntityType.DOCUMENT
+) -> Optional[dict]:
     table = get_table()
     response = table.get_item(
         Key={'PK': f'{entity_type}#{document_id}', 'SK': f'WF#{workflow_id}'}
@@ -347,7 +386,7 @@ def update_preprocess_status(
     processor: str,
     status: str,
     entity_type: str = EntityType.DOCUMENT,
-    **kwargs
+    **kwargs,
 ) -> dict:
     """Update preprocess status for a specific processor.
 
@@ -387,12 +426,14 @@ def update_preprocess_status(
         UpdateExpression='SET #data = :data, updated_at = :updated_at',
         ExpressionAttributeNames={'#data': 'data'},
         ExpressionAttributeValues={':data': data, ':updated_at': now},
-        ReturnValues='ALL_NEW'
+        ReturnValues='ALL_NEW',
     )
     return decimal_to_python(response.get('Attributes', {}))
 
 
-def is_preprocess_complete(document_id: str, workflow_id: str, entity_type: str = EntityType.DOCUMENT) -> dict:
+def is_preprocess_complete(
+    document_id: str, workflow_id: str, entity_type: str = EntityType.DOCUMENT
+) -> dict:
     """Check if all required preprocessing is complete.
 
     Returns:
@@ -417,22 +458,18 @@ def is_preprocess_complete(document_id: str, workflow_id: str, entity_type: str 
         proc_status = proc_data.get('status', PreprocessStatus.SKIPPED)
         is_required = proc_data.get('required', False)
 
-        status[processor] = {
-            'required': is_required,
-            'status': proc_status
-        }
+        status[processor] = {'required': is_required, 'status': proc_status}
 
         if is_required:
             if proc_status == PreprocessStatus.FAILED:
                 any_failed = True
-            if proc_status not in [PreprocessStatus.COMPLETED, PreprocessStatus.SKIPPED]:
+            if proc_status not in [
+                PreprocessStatus.COMPLETED,
+                PreprocessStatus.SKIPPED,
+            ]:
                 all_completed = False
 
-    return {
-        'all_completed': all_completed,
-        'any_failed': any_failed,
-        'status': status
-    }
+    return {'all_completed': all_completed, 'any_failed': any_failed, 'status': status}
 
 
 def is_analysis_busy(workflow_id: str) -> bool:
@@ -444,7 +481,8 @@ def is_analysis_busy(workflow_id: str) -> bool:
     table = get_table()
     response = table.query(
         IndexName='GSI1',
-        KeyConditionExpression=Key('GSI1PK').eq('STEP#ANALYSIS_STATUS') & Key('GSI1SK').eq('in_progress')
+        KeyConditionExpression=Key('GSI1PK').eq('STEP#ANALYSIS_STATUS')
+        & Key('GSI1SK').eq('in_progress'),
     )
     items = response.get('Items', [])
     return any(item['PK'] != f'WF#{workflow_id}' for item in items)
@@ -453,14 +491,17 @@ def is_analysis_busy(workflow_id: str) -> bool:
 def get_steps(workflow_id: str) -> Optional[dict]:
     """Get workflow steps progress (SK: STEP)"""
     table = get_table()
-    response = table.get_item(
-        Key={'PK': f'WF#{workflow_id}', 'SK': 'STEP'}
-    )
+    response = table.get_item(Key={'PK': f'WF#{workflow_id}', 'SK': 'STEP'})
     item = response.get('Item')
     return decimal_to_python(item) if item else None
 
 
-def update_workflow_total_segments(document_id: str, workflow_id: str, total_segments: int, entity_type: str = EntityType.DOCUMENT) -> dict:
+def update_workflow_total_segments(
+    document_id: str,
+    workflow_id: str,
+    total_segments: int,
+    entity_type: str = EntityType.DOCUMENT,
+) -> dict:
     """Update workflow total_segments count"""
     table = get_table()
     now = now_iso()
@@ -470,7 +511,7 @@ def update_workflow_total_segments(document_id: str, workflow_id: str, total_seg
         UpdateExpression='SET #data.#ts = :ts, updated_at = :updated_at',
         ExpressionAttributeNames={'#data': 'data', '#ts': 'total_segments'},
         ExpressionAttributeValues={':ts': total_segments, ':updated_at': now},
-        ReturnValues='ALL_NEW'
+        ReturnValues='ALL_NEW',
     )
     return decimal_to_python(response.get('Attributes', {}))
 
@@ -506,7 +547,7 @@ def record_step_start(workflow_id: str, step_name: str, **kwargs) -> dict:
         UpdateExpression=update_expr,
         ExpressionAttributeNames=expr_names,
         ExpressionAttributeValues=expr_values,
-        ReturnValues='ALL_NEW'
+        ReturnValues='ALL_NEW',
     )
     return decimal_to_python(response.get('Attributes', {}))
 
@@ -549,7 +590,7 @@ def record_step_complete(workflow_id: str, step_name: str, **kwargs) -> dict:
         UpdateExpression=update_expr,
         ExpressionAttributeNames=expr_names,
         ExpressionAttributeValues=expr_values,
-        ReturnValues='ALL_NEW'
+        ReturnValues='ALL_NEW',
     )
     return decimal_to_python(response.get('Attributes', {}))
 
@@ -583,7 +624,7 @@ def record_step_error(workflow_id: str, step_name: str, error: str) -> dict:
         UpdateExpression=update_expr,
         ExpressionAttributeNames=expr_names,
         ExpressionAttributeValues=expr_values,
-        ReturnValues='ALL_NEW'
+        ReturnValues='ALL_NEW',
     )
     return decimal_to_python(response.get('Attributes', {}))
 
@@ -609,16 +650,13 @@ def record_step_skipped(workflow_id: str, step_name: str, reason: str = '') -> d
         UpdateExpression='SET #data = :data, updated_at = :updated_at',
         ExpressionAttributeNames={'#data': 'data'},
         ExpressionAttributeValues={':data': data, ':updated_at': now},
-        ReturnValues='ALL_NEW'
+        ReturnValues='ALL_NEW',
     )
     return decimal_to_python(response.get('Attributes', {}))
 
 
 def save_segment(
-    workflow_id: str,
-    segment_index: int,
-    s3_key: str = '',
-    image_uri: str = ''
+    workflow_id: str, segment_index: int, s3_key: str = '', image_uri: str = ''
 ) -> dict:
     """Save segment reference to DynamoDB. Actual data is stored in S3."""
     table = get_table()
@@ -631,10 +669,10 @@ def save_segment(
         'data': {
             'segment_index': segment_index,
             's3_key': s3_key,
-            'image_uri': image_uri
+            'image_uri': image_uri,
         },
         'created_at': now,
-        'updated_at': now
+        'updated_at': now,
     }
 
     table.put_item(Item=item)
@@ -659,7 +697,7 @@ def update_segment(workflow_id: str, segment_index: int, **kwargs) -> dict:
         UpdateExpression='SET #data = :data, updated_at = :updated_at',
         ExpressionAttributeNames={'#data': 'data'},
         ExpressionAttributeValues={':data': data, ':updated_at': now},
-        ReturnValues='ALL_NEW'
+        ReturnValues='ALL_NEW',
     )
     return decimal_to_python(response.get('Attributes', {}))
 
@@ -681,7 +719,8 @@ def get_segment(workflow_id: str, segment_index: int) -> Optional[dict]:
 def get_all_segments(workflow_id: str) -> list:
     table = get_table()
     response = table.query(
-        KeyConditionExpression=Key('PK').eq(f'WF#{workflow_id}') & Key('SK').begins_with('SEG#')
+        KeyConditionExpression=Key('PK').eq(f'WF#{workflow_id}')
+        & Key('SK').begins_with('SEG#')
     )
     items = decimal_to_python(response.get('Items', []))
     return [{**item, **item.get('data', {})} for item in items]
@@ -690,17 +729,15 @@ def get_all_segments(workflow_id: str) -> list:
 def get_segment_count(workflow_id: str) -> int:
     table = get_table()
     response = table.query(
-        KeyConditionExpression=Key('PK').eq(f'WF#{workflow_id}') & Key('SK').begins_with('SEG#'),
-        Select='COUNT'
+        KeyConditionExpression=Key('PK').eq(f'WF#{workflow_id}')
+        & Key('SK').begins_with('SEG#'),
+        Select='COUNT',
     )
     return response.get('Count', 0)
 
 
 def add_image_analysis(
-    workflow_id: str,
-    segment_index: int,
-    analysis_query: str,
-    content: str
+    workflow_id: str, segment_index: int, analysis_query: str, content: str
 ) -> dict:
     """Add image analysis result to segment's image_analysis array"""
     table = get_table()
@@ -713,10 +750,7 @@ def add_image_analysis(
 
     data = segment.get('data', {})
     image_analysis = data.get('image_analysis', [])
-    image_analysis.append({
-        'analysis_query': analysis_query,
-        'content': content
-    })
+    image_analysis.append({'analysis_query': analysis_query, 'content': content})
     data['image_analysis'] = image_analysis
 
     response = table.update_item(
@@ -724,7 +758,7 @@ def add_image_analysis(
         UpdateExpression='SET #data = :data, updated_at = :updated_at',
         ExpressionAttributeNames={'#data': 'data'},
         ExpressionAttributeValues={':data': data, ':updated_at': now},
-        ReturnValues='ALL_NEW'
+        ReturnValues='ALL_NEW',
     )
     return decimal_to_python(response.get('Attributes', {}))
 
@@ -746,10 +780,10 @@ def batch_save_segments(workflow_id: str, segments: list) -> int:
                 'data': {
                     'segment_index': segment_index,
                     's3_key': seg.get('s3_key', ''),
-                    'image_uri': seg.get('image_uri', '')
+                    'image_uri': seg.get('image_uri', ''),
                 },
                 'created_at': now,
-                'updated_at': now
+                'updated_at': now,
             }
             batch.put_item(Item=item)
             count += 1
@@ -763,16 +797,14 @@ def delete_workflow_all_items(workflow_id: str) -> int:
     deleted_count = 0
 
     # Query all items with PK = WF#{workflow_id}
-    response = table.query(
-        KeyConditionExpression=Key('PK').eq(f'WF#{workflow_id}')
-    )
+    response = table.query(KeyConditionExpression=Key('PK').eq(f'WF#{workflow_id}'))
     items = response.get('Items', [])
 
     # Handle pagination
     while response.get('LastEvaluatedKey'):
         response = table.query(
             KeyConditionExpression=Key('PK').eq(f'WF#{workflow_id}'),
-            ExclusiveStartKey=response['LastEvaluatedKey']
+            ExclusiveStartKey=response['LastEvaluatedKey'],
         )
         items.extend(response.get('Items', []))
 
@@ -789,15 +821,17 @@ def get_workflows_by_project(project_id: str) -> list:
     """Get all workflow IDs for a project"""
     table = get_table()
     response = table.query(
-        KeyConditionExpression=Key('PK').eq(f'PROJ#{project_id}') & Key('SK').begins_with('WF#')
+        KeyConditionExpression=Key('PK').eq(f'PROJ#{project_id}')
+        & Key('SK').begins_with('WF#')
     )
     items = response.get('Items', [])
 
     # Handle pagination
     while response.get('LastEvaluatedKey'):
         response = table.query(
-            KeyConditionExpression=Key('PK').eq(f'PROJ#{project_id}') & Key('SK').begins_with('WF#'),
-            ExclusiveStartKey=response['LastEvaluatedKey']
+            KeyConditionExpression=Key('PK').eq(f'PROJ#{project_id}')
+            & Key('SK').begins_with('WF#'),
+            ExclusiveStartKey=response['LastEvaluatedKey'],
         )
         items.extend(response.get('Items', []))
 
@@ -808,19 +842,24 @@ def get_documents_by_project(project_id: str) -> list:
     """Get all document IDs for a project"""
     table = get_table()
     response = table.query(
-        KeyConditionExpression=Key('PK').eq(f'PROJ#{project_id}') & Key('SK').begins_with('DOC#')
+        KeyConditionExpression=Key('PK').eq(f'PROJ#{project_id}')
+        & Key('SK').begins_with('DOC#')
     )
     items = response.get('Items', [])
 
     # Handle pagination
     while response.get('LastEvaluatedKey'):
         response = table.query(
-            KeyConditionExpression=Key('PK').eq(f'PROJ#{project_id}') & Key('SK').begins_with('DOC#'),
-            ExclusiveStartKey=response['LastEvaluatedKey']
+            KeyConditionExpression=Key('PK').eq(f'PROJ#{project_id}')
+            & Key('SK').begins_with('DOC#'),
+            ExclusiveStartKey=response['LastEvaluatedKey'],
         )
         items.extend(response.get('Items', []))
 
-    return [{'document_id': item['SK'].replace('DOC#', ''), 'data': item.get('data', {})} for item in items]
+    return [
+        {'document_id': item['SK'].replace('DOC#', ''), 'data': item.get('data', {})}
+        for item in items
+    ]
 
 
 def delete_document_items(project_id: str, document_id: str) -> int:
@@ -848,16 +887,14 @@ def delete_project_all_items(project_id: str) -> int:
     deleted_count = 0
 
     # Query all items with PK = PROJ#{project_id}
-    response = table.query(
-        KeyConditionExpression=Key('PK').eq(f'PROJ#{project_id}')
-    )
+    response = table.query(KeyConditionExpression=Key('PK').eq(f'PROJ#{project_id}'))
     items = response.get('Items', [])
 
     # Handle pagination
     while response.get('LastEvaluatedKey'):
         response = table.query(
             KeyConditionExpression=Key('PK').eq(f'PROJ#{project_id}'),
-            ExclusiveStartKey=response['LastEvaluatedKey']
+            ExclusiveStartKey=response['LastEvaluatedKey'],
         )
         items.extend(response.get('Items', []))
 
@@ -874,7 +911,8 @@ def get_workflow_by_document(project_id: str, document_name: str) -> Optional[st
     """Find workflow_id by document name"""
     table = get_table()
     response = table.query(
-        KeyConditionExpression=Key('PK').eq(f'PROJ#{project_id}') & Key('SK').begins_with('WF#')
+        KeyConditionExpression=Key('PK').eq(f'PROJ#{project_id}')
+        & Key('SK').begins_with('WF#')
     )
 
     for item in response.get('Items', []):
@@ -888,9 +926,7 @@ def get_workflow_by_document(project_id: str, document_name: str) -> Optional[st
 def get_project_language(project_id: str) -> str:
     """Get project language setting. Returns 'en' if not set."""
     table = get_table()
-    response = table.get_item(
-        Key={'PK': f'PROJ#{project_id}', 'SK': 'META'}
-    )
+    response = table.get_item(Key={'PK': f'PROJ#{project_id}', 'SK': 'META'})
     item = response.get('Item')
     if item:
         data = item.get('data', {})
@@ -901,9 +937,7 @@ def get_project_language(project_id: str) -> str:
 def get_project_document_prompt(project_id: str) -> str:
     """Get project document analysis prompt. Returns empty string if not set."""
     table = get_table()
-    response = table.get_item(
-        Key={'PK': f'PROJ#{project_id}', 'SK': 'META'}
-    )
+    response = table.get_item(Key={'PK': f'PROJ#{project_id}', 'SK': 'META'})
     item = response.get('Item')
     if item:
         data = item.get('data', {})
@@ -914,19 +948,14 @@ def get_project_document_prompt(project_id: str) -> str:
 def get_project_ocr_settings(project_id: str) -> dict:
     """Get project OCR settings. Returns default if not set."""
     table = get_table()
-    response = table.get_item(
-        Key={'PK': f'PROJ#{project_id}', 'SK': 'META'}
-    )
+    response = table.get_item(Key={'PK': f'PROJ#{project_id}', 'SK': 'META'})
     item = response.get('Item')
-    defaults = {
-        'ocr_model': 'pp-ocrv5',
-        'ocr_options': {}
-    }
+    defaults = {'ocr_model': 'pp-ocrv5', 'ocr_options': {}}
     if item:
         data = item.get('data', {})
         return {
             'ocr_model': data.get('ocr_model') or defaults['ocr_model'],
-            'ocr_options': data.get('ocr_options') or defaults['ocr_options']
+            'ocr_options': data.get('ocr_options') or defaults['ocr_options'],
         }
     return defaults
 

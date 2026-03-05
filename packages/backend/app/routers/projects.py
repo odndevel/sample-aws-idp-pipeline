@@ -201,7 +201,7 @@ async def create_project(request: ProjectCreate) -> ProjectResponse:
 
 
 @router.put("/{project_id}")
-def update_project(project_id: str, request: ProjectUpdate) -> ProjectResponse:
+async def update_project(project_id: str, request: ProjectUpdate) -> ProjectResponse:
     existing = get_project_item(project_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -223,6 +223,7 @@ def update_project(project_id: str, request: ProjectUpdate) -> ProjectResponse:
         data.ocr_options = request.ocr_options
 
     update_project_data(project_id, data)
+    await invalidate(CacheKey.QUERY_PROJECTS)
 
     return get_project(project_id)
 

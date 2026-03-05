@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Workbook as ExcelWorkbook } from 'exceljs';
+import JSZip from 'jszip';
 import { Workbook } from '@fortune-sheet/react';
 import '@fortune-sheet/react/dist/index.css';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Info } from 'lucide-react';
 
 interface ExcelViewerProps {
   url: string;
@@ -177,46 +179,84 @@ function convertCell(excelCell: any): FSCell | null {
   return cell;
 }
 
-async function convertWorkbookToSheets(data: ArrayBuffer): Promise<FSSheet[]> {
+interface ConvertResult {
+  sheets: FSSheet[];
+  warnings: string[];
+}
+
+function convertWorksheet(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const wb = await new ExcelWorkbook().xlsx.load(data as any);
+  ws: any,
+  idx: number,
+  warnings: string[],
+): FSSheet {
+  const rowCount = ws.rowCount ?? 0;
+  const colCount = ws.columnCount ?? 0;
+  const celldata: FSCellData[] = [];
+  const merge: Record<
+    string,
+    { r: number; c: number; rs: number; cs: number }
+  > = {};
+  const rowlen: Record<string, number> = {};
+  const columnlen: Record<string, number> = {};
 
-  return wb.worksheets.map((ws, idx) => {
-    const rowCount = ws.rowCount;
-    const colCount = ws.columnCount;
-    const celldata: FSCellData[] = [];
-    const merge: Record<
-      string,
-      { r: number; c: number; rs: number; cs: number }
-    > = {};
-    const rowlen: Record<string, number> = {};
-    const columnlen: Record<string, number> = {};
+  // Detect images
+  try {
+    if (typeof ws.getImages === 'function' && ws.getImages().length > 0) {
+      warnings.push('images');
+    }
+  } catch {
+    // getImages() not supported or failed
+  }
 
-    // Convert cells (exceljs is 1-indexed, FortuneSheet is 0-indexed)
-    for (let r = 1; r <= rowCount; r++) {
+  // Detect charts via model
+  try {
+    const model = ws.model;
+    if (model?.charts?.length || model?.drawing?.length) {
+      warnings.push('charts');
+    }
+  } catch {
+    // chart detection not supported
+  }
+
+  // Convert cells (exceljs is 1-indexed, FortuneSheet is 0-indexed)
+  for (let r = 1; r <= rowCount; r++) {
+    try {
       const row = ws.getRow(r);
       if (row.height) {
         rowlen[String(r - 1)] = row.height * 1.33; // pt to px
       }
 
       for (let c = 1; c <= colCount; c++) {
-        const cell = row.getCell(c);
-        const converted = convertCell(cell);
-        if (converted) {
-          celldata.push({ r: r - 1, c: c - 1, v: converted });
+        try {
+          const cell = row.getCell(c);
+          const converted = convertCell(cell);
+          if (converted) {
+            celldata.push({ r: r - 1, c: c - 1, v: converted });
+          }
+        } catch {
+          // Skip cells that fail to convert
         }
       }
+    } catch {
+      // Skip rows that fail to read
     }
+  }
 
-    // Convert column widths
+  // Convert column widths
+  try {
     for (let c = 1; c <= colCount; c++) {
       const col = ws.getColumn(c);
       if (col.width) {
         columnlen[String(c - 1)] = col.width * 7.5; // char width to px
       }
     }
+  } catch {
+    // Skip column width conversion on error
+  }
 
-    // Convert merges
+  // Convert merges
+  try {
     const merges = (ws.model?.merges ?? []) as string[];
     for (const mergeRange of merges) {
       const parts = mergeRange.split(':');
@@ -255,21 +295,140 @@ async function convertWorkbookToSheets(data: ArrayBuffer): Promise<FSSheet[]> {
         }
       }
     }
+  } catch {
+    // Skip merge conversion on error
+  }
 
-    return {
-      name: ws.name,
-      id: String(idx),
-      row: rowCount,
-      column: colCount,
-      celldata,
-      config: {
-        merge,
-        rowlen,
-        columnlen,
-      },
-      status: idx === 0 ? 1 : 0,
-    };
+  return {
+    name: ws.name || `Sheet ${idx + 1}`,
+    id: String(idx),
+    row: Math.max(rowCount, 1),
+    column: Math.max(colCount, 1),
+    celldata,
+    config: {
+      merge,
+      rowlen,
+      columnlen,
+    },
+    status: idx === 0 ? 1 : 0,
+  };
+}
+
+async function stripDrawingsFromXlsx(
+  data: ArrayBuffer,
+): Promise<{ data: ArrayBuffer; warnings: string[] }> {
+  const zip = await JSZip.loadAsync(data);
+  const warnings: string[] = [];
+
+  // 1. Detect and remove drawing/chart/media files
+  const toRemove: string[] = [];
+  zip.forEach((path) => {
+    const p = path.toLowerCase();
+    if (
+      p.startsWith('xl/drawings/') ||
+      p.startsWith('xl/charts/') ||
+      p.startsWith('xl/chartsheets/') ||
+      p.startsWith('xl/media/')
+    ) {
+      toRemove.push(path);
+      if (p.startsWith('xl/drawings/') || p.startsWith('xl/media/'))
+        warnings.push('images');
+      if (p.startsWith('xl/charts/') || p.startsWith('xl/chartsheets/'))
+        warnings.push('charts');
+    }
   });
+
+  if (toRemove.length === 0) {
+    throw new Error('No readable worksheets found');
+  }
+
+  for (const path of toRemove) {
+    zip.remove(path);
+  }
+
+  // 2. Remove drawing/chart references from .rels files
+  const relsFiles: string[] = [];
+  zip.forEach((path) => {
+    if (path.endsWith('.rels')) relsFiles.push(path);
+  });
+
+  for (const relsPath of relsFiles) {
+    const file = zip.file(relsPath);
+    if (!file) continue;
+    const content = await file.async('string');
+    const cleaned = content.replace(
+      /<Relationship\b[^>]*(?:\/drawings\/|\/charts\/|\/media\/|\/chartsheets\/)[^>]*\/?>/gi,
+      '',
+    );
+    if (cleaned !== content) {
+      zip.file(relsPath, cleaned);
+    }
+  }
+
+  // 3. Strip <drawing> and <legacyDrawing> refs from worksheet XML
+  //    so exceljs won't try to resolve them during reconcile
+  const worksheetFiles: string[] = [];
+  zip.forEach((path) => {
+    if (/^xl\/worksheets\/sheet\d+\.xml$/i.test(path)) {
+      worksheetFiles.push(path);
+    }
+  });
+
+  for (const wsPath of worksheetFiles) {
+    const file = zip.file(wsPath);
+    if (!file) continue;
+    const content = await file.async('string');
+    const cleaned = content
+      .replace(/<drawing\b[^>]*\/>/gi, '')
+      .replace(/<drawing\b[^>]*>[\s\S]*?<\/drawing>/gi, '')
+      .replace(/<legacyDrawing\b[^>]*\/>/gi, '')
+      .replace(/<legacyDrawing\b[^>]*>[\s\S]*?<\/legacyDrawing>/gi, '');
+    if (cleaned !== content) {
+      zip.file(wsPath, cleaned);
+    }
+  }
+
+  return {
+    data: await zip.generateAsync({ type: 'arraybuffer' }),
+    warnings: [...new Set(warnings)],
+  };
+}
+
+async function convertWorkbookToSheets(
+  data: ArrayBuffer,
+): Promise<ConvertResult> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let wb: any;
+  let fallbackWarnings: string[] = [];
+
+  try {
+    wb = await new ExcelWorkbook().xlsx.load(data as any);
+  } catch {
+    // exceljs crashes on drawings/charts — strip them and retry
+    const sanitized = await stripDrawingsFromXlsx(data);
+    fallbackWarnings = sanitized.warnings;
+    wb = await new ExcelWorkbook().xlsx.load(sanitized.data as any);
+  }
+
+  const warnings: string[] = [...fallbackWarnings];
+  const sheets: FSSheet[] = [];
+
+  for (let idx = 0; idx < wb.worksheets.length; idx++) {
+    try {
+      const ws = wb.worksheets[idx];
+      if (!ws) continue;
+      sheets.push(convertWorksheet(ws, idx, warnings));
+    } catch {
+      // Skip worksheets that fail entirely (e.g. chart sheets)
+      warnings.push('charts');
+    }
+  }
+
+  if (sheets.length === 0) {
+    throw new Error('No readable worksheets found');
+  }
+
+  return { sheets, warnings: [...new Set(warnings)] };
 }
 
 export default function ExcelViewer({
@@ -277,7 +436,9 @@ export default function ExcelViewer({
   sheetIndex = 0,
   className = '',
 }: ExcelViewerProps) {
+  const { t } = useTranslation();
   const [sheets, setSheets] = useState<FSSheet[] | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -291,6 +452,7 @@ export default function ExcelViewer({
 
     setLoading(true);
     setError(null);
+    setWarnings([]);
 
     fetch(url, { signal: controller.signal })
       .then((res) => {
@@ -299,26 +461,28 @@ export default function ExcelViewer({
       })
       .then(async (buf) => {
         if (controller.signal.aborted) return;
-        const converted = await convertWorkbookToSheets(buf);
+        const { sheets: converted, warnings: w } =
+          await convertWorkbookToSheets(buf);
         // Set the active sheet based on sheetIndex
         const clampedIdx = Math.min(sheetIndex, converted.length - 1);
         for (let i = 0; i < converted.length; i++) {
           converted[i].status = i === clampedIdx ? 1 : 0;
         }
         setSheets(converted);
+        setWarnings(w);
         setLoading(false);
       })
       .catch((err) => {
         if (controller.signal.aborted) return;
         console.error('Failed to load Excel file:', err);
-        setError('Failed to load Excel file');
+        setError(t('artifacts.loadError', 'Failed to load Excel file'));
         setLoading(false);
       });
 
     return () => {
       controller.abort();
     };
-  }, [url, sheetIndex]);
+  }, [url, sheetIndex, t]);
 
   if (loading) {
     return (
@@ -342,14 +506,24 @@ export default function ExcelViewer({
   if (!sheets || sheets.length === 0) return null;
 
   return (
-    <div className={`relative overflow-hidden bg-white ${className}`}>
-      <Workbook
-        data={sheets}
-        allowEdit={false}
-        showToolbar={false}
-        showFormulaBar={false}
-        showSheetTabs={sheets.length > 1}
-      />
+    <div
+      className={`relative flex flex-col overflow-hidden bg-white ${className}`}
+    >
+      {warnings.length > 0 && (
+        <div className="flex items-center gap-2 px-3 py-2 text-xs text-amber-700 bg-amber-50 border-b border-amber-200 shrink-0">
+          <Info className="w-4 h-4 shrink-0" />
+          <span>{t('artifacts.excelNote')}</span>
+        </div>
+      )}
+      <div className="flex-1 min-h-0">
+        <Workbook
+          data={sheets}
+          allowEdit={false}
+          showToolbar={false}
+          showFormulaBar={false}
+          showSheetTabs={sheets.length > 1}
+        />
+      </div>
     </div>
   );
 }

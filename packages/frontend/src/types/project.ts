@@ -142,6 +142,7 @@ export interface ChatMessage {
   isStageResult?: boolean;
   stageName?: string;
   toolName?: string;
+  toolInput?: Record<string, unknown>;
   // Tool use (Voice Chat)
   isToolUse?: boolean;
   toolUseName?: string;

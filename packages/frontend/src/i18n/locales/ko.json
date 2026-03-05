@@ -64,6 +64,7 @@
     "folderColor": "폴더 색상",
     "noProjects": "프로젝트가 없습니다",
     "createFirst": "첫 번째 프로젝트를 만들어 시작하세요",
+    "emptyWelcome": "환영합니다!",
     "clickToCreate": "클릭하여 생성",
     "documents": "문서",
     "advancedSettings": "고급 설정",
@@ -190,6 +191,7 @@
       "transcription": "음성 변환",
       "buildingSegments": "세그먼트 구성",
       "segmentAiAnalysis": "AI 분석",
+      "graphBuilder": "지식 그래프 구축",
       "documentSummary": "문서 요약"
     },
     "inProgress": "처리 중...",
@@ -204,7 +206,23 @@
     "processingOptions": "처리 옵션",
     "documentPrompt": "문서 프롬프트",
     "sourceUrl": "소스 URL",
-    "crawlInstruction": "크롤링 지시사항"
+    "crawlInstruction": "크롤링 지시사항",
+    "graph": {
+      "noData": "그래프 데이터가 없습니다",
+      "noMatchingNodes": "일치하는 노드가 없습니다",
+      "filters": "필터",
+      "groups": "그룹",
+      "display": "표시",
+      "searchPlaceholder": "노드 검색...",
+      "depth": "깊이",
+      "page": "페이지",
+      "allPages": "전체",
+      "incomingLinks": "들어오는 링크",
+      "outgoingLinks": "나가는 링크",
+      "edgeLabels": "엣지 라벨",
+      "noEntityTypes": "엔티티 유형 없음",
+      "noLinkTypes": "링크 유형 없음"
+    }
   },
   "ocr": {
     "title": "OCR 설정",
@@ -397,7 +415,12 @@
       "plan_agent": "계획",
       "write_agent": "작성 결과",
       "pptx_agent": "프레젠테이션"
-    }
+    },
+    "graphSearch": "그래프 검색",
+    "graphSearching": "그래프 검색 중",
+    "graphSourcesFound": "추가 발견된 페이지 {{count}}건",
+    "graphNoAdditionalSources": "추가 발견된 페이지 없음",
+    "viewGraph": "그래프 보기"
   },
   "viewer": {
     "zoomIn": "확대",
@@ -439,7 +462,8 @@
     "unsupportedType": "이 파일 형식은 미리보기를 지원하지 않습니다",
     "loadError": "아티팩트를 불러오는데 실패했습니다",
     "noPreview": "미리보기를 사용할 수 없습니다",
-    "pptxNote": "일부 글꼴이나 요소가 올바르게 표시되지 않을 수 있습니다. 정확한 내용을 보려면 파일을 다운로드하세요."
+    "pptxNote": "일부 글꼴이나 요소가 올바르게 표시되지 않을 수 있습니다. 정확한 내용을 보려면 파일을 다운로드하세요.",
+    "excelNote": "일부 요소(이미지, 차트)는 미리보기에서 표시할 수 없습니다. 전체 내용을 보려면 파일을 다운로드하세요."
   },
   "languages": {
     "ko": "한국어",

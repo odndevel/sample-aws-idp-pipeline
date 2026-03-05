@@ -9,6 +9,7 @@ import {
   MessageSquare,
   File,
   Sparkles,
+  Network,
   type LucideIcon,
 } from 'lucide-react';
 import type { ToolRegistryEntry } from './types';
@@ -74,6 +75,12 @@ const TOOL_REGISTRY: Record<string, ToolRegistryEntry> = {
     resultLabel: 'chat.webSearch',
     loadingLabel: 'chat.webSearch',
     renderAsMarkdown: true,
+  },
+  graph___graph_search: {
+    icon: Network,
+    resultLabel: 'chat.graphSearch',
+    loadingLabel: 'chat.graphSearching',
+    renderAsGraph: true,
   },
 };
 

@@ -121,53 +121,11 @@ def generate_page_description(segment_data: dict, page_number: int, language: st
         return ''
 
 
-def build_content_combined(segment_data: dict) -> str:
-    """Build combined content string for LanceDB.
-
-    Currently only includes AI analysis results. Raw extraction results are
-    used as context for AI analysis but not stored in LanceDB directly.
-    """
-    parts = []
-
-    # NOTE: Raw extraction results are commented out.
-    # AI now extracts and verifies original text in Phase 1, so these are redundant.
-    # Uncomment if you need to include raw extraction results in LanceDB.
-
-    # bda_indexer = segment_data.get('bda_indexer', '')
-    # if bda_indexer:
-    #     parts.append(f'## BDA Indexer\n{bda_indexer}')
-
-    # paddleocr = segment_data.get('paddleocr', '')
-    # if paddleocr:
-    #     parts.append(f'## PaddleOCR\n{paddleocr}')
-
-    # format_parser = segment_data.get('format_parser', '')
-    # if format_parser:
-    #     parts.append(f'## Format Parser\n{format_parser}')
-
-    # webcrawler_content = segment_data.get('webcrawler_content', '')
-    # if webcrawler_content:
-    #     parts.append(f'## Web Crawler\n{webcrawler_content}')
-
-    # transcribe_segments = segment_data.get('transcribe_segments', [])
-    # if transcribe_segments:
-    #     segments_text = []
-    #     for seg in transcribe_segments:
-    #         start = seg.get('start_time', '')
-    #         end = seg.get('end_time', '')
-    #         transcript = seg.get('transcript', '')
-    #         segments_text.append(f'[{start}s - {end}s] {transcript}')
-    #     parts.append(f'## Transcribe Segments\n' + '\n'.join(segments_text))
-
-    ai_analysis = segment_data.get('ai_analysis', [])
-    for analysis in ai_analysis:
-        query = analysis.get('analysis_query', '')
-        content = analysis.get('content', '')
-        if content:
-            header = f'## AI Analysis: {query}' if query else '## AI Analysis'
-            parts.append(f'{header}\n{content}')
-
-    return '\n\n'.join(parts)
+def build_qa_content(analysis_query: str, content: str) -> str:
+    """Build content string for a single QA pair."""
+    if analysis_query:
+        return f'{analysis_query}\n{content}'
+    return content
 
 
 def handler(event, _context):
@@ -185,13 +143,14 @@ def handler(event, _context):
     if isinstance(segment_index, dict):
         segment_index = segment_index.get('segment_index', 0)
 
-    # For re-analysis, delete existing LanceDB record first
+    # For re-analysis, delete all existing QA records for this segment
     if is_reanalysis:
-        print(f'Re-analysis mode: deleting existing record for segment {segment_index}')
+        print(f'Re-analysis mode: deleting existing records for segment {segment_index}')
         delete_result = invoke_lancedb('delete_record', {
             'project_id': project_id,
             'workflow_id': workflow_id,
-            'segment_index': segment_index
+            'segment_index': segment_index,
+            'qa_index': None
         })
         print(f'Delete result: {delete_result}')
 
@@ -215,33 +174,46 @@ def handler(event, _context):
         update_segment_analysis(file_uri, segment_index, page_description=page_description)
         print(f'Saved page_description to segment {segment_index}')
 
-    # Build combined content for LanceDB
-    content_combined = build_content_combined(segment_data)
     image_uri = segment_data.get('image_uri', '')
 
     # Update status to FINALIZING
     update_segment_status(file_uri, segment_index, SegmentStatus.FINALIZING)
 
-    message = {
-        'workflow_id': workflow_id,
-        'document_id': document_id,
-        'project_id': project_id,
-        'segment_index': segment_index,
-        'content_combined': content_combined,
-        'file_uri': file_uri,
-        'file_type': file_type,
-        'image_uri': image_uri,
-        'created_at': datetime.now(timezone.utc).isoformat()
-    }
+    # Send per-QA pair messages to SQS
+    ai_analysis = segment_data.get('ai_analysis', [])
+    created_at = datetime.now(timezone.utc).isoformat()
+    sent_count = 0
 
     try:
         client = get_sqs_client()
-        response = client.send_message(
-            QueueUrl=LANCEDB_WRITE_QUEUE_URL,
-            MessageBody=json.dumps(message)
-        )
 
-        print(f'Sent segment {segment_index} to SQS, MessageId: {response["MessageId"]}')
+        for qa_index, analysis in enumerate(ai_analysis):
+            analysis_query = analysis.get('analysis_query', '')
+            content = analysis.get('content', '')
+            if not content:
+                continue
+
+            qa_content = build_qa_content(analysis_query, content)
+            message = {
+                'workflow_id': workflow_id,
+                'document_id': document_id,
+                'project_id': project_id,
+                'segment_index': segment_index,
+                'qa_index': qa_index,
+                'question': analysis_query,
+                'content_combined': qa_content,
+                'file_uri': file_uri,
+                'file_type': file_type,
+                'image_uri': image_uri,
+                'created_at': created_at
+            }
+
+            response = client.send_message(
+                QueueUrl=LANCEDB_WRITE_QUEUE_URL,
+                MessageBody=json.dumps(message)
+            )
+            sent_count += 1
+            print(f'Sent segment {segment_index} QA {qa_index} to SQS, MessageId: {response["MessageId"]}')
 
         # Update status to COMPLETED
         update_segment_status(file_uri, segment_index, SegmentStatus.COMPLETED)
@@ -250,9 +222,8 @@ def handler(event, _context):
             'workflow_id': workflow_id,
             'segment_index': segment_index,
             'status': 'queued',
-            'content_length': len(content_combined),
+            'qa_count': sent_count,
             'page_description_length': len(page_description),
-            'sqs_message_id': response['MessageId']
         }
 
     except Exception as e:

@@ -64,6 +64,7 @@
     "folderColor": "Folder Color",
     "noProjects": "No projects yet",
     "createFirst": "Create your first project to get started",
+    "emptyWelcome": "Welcome!",
     "clickToCreate": "Click to create",
     "documents": "documents",
     "advancedSettings": "Advanced Settings",
@@ -190,6 +191,7 @@
       "transcription": "Transcription",
       "buildingSegments": "Building Segments",
       "segmentAiAnalysis": "AI Analysis",
+      "graphBuilder": "Knowledge Graph",
       "documentSummary": "Document Summary"
     },
     "inProgress": "Processing...",
@@ -204,7 +206,23 @@
     "processingOptions": "Processing Options",
     "documentPrompt": "Document Prompt",
     "sourceUrl": "Source URL",
-    "crawlInstruction": "Crawl Instruction"
+    "crawlInstruction": "Crawl Instruction",
+    "graph": {
+      "noData": "No graph data available",
+      "noMatchingNodes": "No matching nodes",
+      "filters": "Filters",
+      "groups": "Groups",
+      "display": "Display",
+      "searchPlaceholder": "Search nodes...",
+      "depth": "Depth",
+      "page": "Page",
+      "allPages": "All",
+      "incomingLinks": "Incoming links",
+      "outgoingLinks": "Outgoing links",
+      "edgeLabels": "Edge labels",
+      "noEntityTypes": "No entity types",
+      "noLinkTypes": "No link types"
+    }
   },
   "ocr": {
     "title": "OCR Settings",
@@ -397,7 +415,12 @@
       "plan_agent": "Plan",
       "write_agent": "Writing Results",
       "pptx_agent": "Presentation"
-    }
+    },
+    "graphSearch": "Graph Search",
+    "graphSearching": "Searching graph",
+    "graphSourcesFound": "{{count}} additional pages discovered",
+    "graphNoAdditionalSources": "No additional pages discovered",
+    "viewGraph": "View graph"
   },
   "viewer": {
     "zoomIn": "Zoom In",
@@ -439,7 +462,8 @@
     "unsupportedType": "Preview not available for this file type",
     "loadError": "Failed to load artifact",
     "noPreview": "Preview not available",
-    "pptxNote": "Some fonts or elements may not display correctly. Download the file for the best experience."
+    "pptxNote": "Some fonts or elements may not display correctly. Download the file for the best experience.",
+    "excelNote": "Some elements (images, charts) cannot be displayed in the preview. Download the file for the full content."
   },
   "languages": {
     "ko": "Korean",

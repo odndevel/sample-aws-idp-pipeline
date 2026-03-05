@@ -6,6 +6,7 @@ import {
   SearchMcp,
   ImageMcp,
   QaMcp,
+  GraphMcp,
   SSM_KEYS,
 } from ':idp-v2/common-constructs';
 import * as agentcore from '@aws-cdk/aws-bedrock-agentcore-alpha';
@@ -14,6 +15,7 @@ import * as path from 'path';
 export class McpStack extends Stack {
   public readonly searchMcp: SearchMcp;
   public readonly qaMcp: QaMcp;
+  public readonly graphMcp: GraphMcp;
   public readonly imageMcp?: ImageMcp;
   public readonly gateway: agentcore.Gateway;
 
@@ -74,6 +76,24 @@ export class McpStack extends Stack {
     });
     this.qaMcp.function.grantInvoke(this.gateway.role);
     qaTarget.node.addDependency(this.gateway.role);
+
+    // GraphMcp - knowledge graph search
+    this.graphMcp = new GraphMcp(this, 'GraphMcp');
+
+    const graphTarget = this.gateway.addLambdaTarget('GraphMcpTarget', {
+      gatewayTargetName: 'graph',
+      description:
+        'Search for related document segments using knowledge graph traversal. Use when the user asks about connections between concepts or needs comprehensive information spanning multiple pages.',
+      lambdaFunction: this.graphMcp.function,
+      toolSchema: agentcore.ToolSchema.fromLocalAsset(
+        path.resolve(
+          process.cwd(),
+          '../../packages/lambda/graph-mcp/schema.json',
+        ),
+      ),
+    });
+    this.graphMcp.function.grantInvoke(this.gateway.role);
+    graphTarget.node.addDependency(this.gateway.role);
 
     // ImageMcp is optional - enable with context: enableImageMcp=true in cdk.json
     if (this.node.tryGetContext('enableImageMcp')) {

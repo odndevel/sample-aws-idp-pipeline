@@ -2,5 +2,8 @@
   "name": "@idp-v2/frontend",
   "version": "0.2.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "framer-motion": "^12.35.0"
+  }
 }

@@ -8,6 +8,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import { Platform } from 'aws-cdk-lib/aws-ecr-assets';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -215,6 +216,55 @@ export class WorkflowStack extends Stack {
     );
 
     // ========================================
+    // GraphService (Neptune DB Serverless Gateway Lambda)
+    // ========================================
+
+    const neptuneEndpoint = ssm.StringParameter.valueForStringParameter(
+      this,
+      SSM_KEYS.NEPTUNE_CLUSTER_ENDPOINT,
+    );
+    const neptunePort = ssm.StringParameter.valueForStringParameter(
+      this,
+      SSM_KEYS.NEPTUNE_CLUSTER_PORT,
+    );
+    // Import VPC for graph-service Lambda (valueFromLookup resolves at synth time)
+    const vpcId = ssm.StringParameter.valueFromLookup(this, SSM_KEYS.VPC_ID);
+    const vpc = ec2.Vpc.fromLookup(this, 'GraphServiceVpc', { vpcId });
+
+    // Security group for graph-service Lambda
+    const graphServiceSg = new ec2.SecurityGroup(this, 'GraphServiceSG', {
+      vpc,
+      description: 'Security group for graph-service Lambda',
+      allowAllOutbound: true,
+    });
+
+    const graphService = new lambda.Function(this, 'GraphService', {
+      functionName: 'idp-v2-graph-service',
+      runtime: lambda.Runtime.PYTHON_3_14,
+      handler: 'index.handler',
+      code: lambda.Code.fromAsset(
+        path.join(__dirname, '../functions/graph-service'),
+      ),
+      timeout: Duration.minutes(5),
+      memorySize: 1024,
+      vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+      securityGroups: [graphServiceSg],
+      environment: {
+        NEPTUNE_ENDPOINT: neptuneEndpoint,
+        NEPTUNE_PORT: neptunePort,
+      },
+    });
+
+    // Grant Neptune DB access (IAM auth)
+    graphService.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['neptune-db:*'],
+        resources: ['*'],
+      }),
+    );
+
+    // ========================================
     // Lambda Functions
     // ========================================
 
@@ -343,7 +393,7 @@ export class WorkflowStack extends Stack {
         ...commonLambdaProps.environment,
         LANCEDB_WRITE_QUEUE_URL: lancedbWriteQueue.queueUrl,
         LANCEDB_FUNCTION_NAME: lancedbService.functionName,
-        PAGE_DESCRIPTION_MODEL_ID: models.summarizer,
+        PAGE_DESCRIPTION_MODEL_ID: models.describer,
       },
     });
 
@@ -360,9 +410,30 @@ export class WorkflowStack extends Stack {
       environment: {
         ...commonLambdaProps.environment,
         LANCEDB_FUNCTION_NAME: lancedbService.functionName,
-        SUMMARIZER_MODEL_ID: models.summarizer,
+        SUMMARIZER_MODEL_ID: models.docSummarizer,
       },
     });
+
+    // GraphBuilder Lambda (builds knowledge graph after segment analysis)
+    const graphBuilder = new lambda.Function(this, 'GraphBuilder', {
+      ...commonLambdaProps,
+      functionName: 'idp-v2-graph-builder',
+      handler: 'index.handler',
+      timeout: Duration.minutes(15),
+      memorySize: 1024,
+      code: lambda.Code.fromAsset(
+        path.join(__dirname, '../functions/step-functions/graph-builder'),
+      ),
+      layers: [coreLayer, strandsLayer, sharedLayer],
+      environment: {
+        ...commonLambdaProps.environment,
+        GRAPH_SERVICE_FUNCTION_NAME: graphService.functionName,
+        GRAPH_BUILDER_MODEL_ID: models.extractor,
+      },
+    });
+
+    // Grant GraphService invoke to GraphBuilder
+    graphService.grantInvoke(graphBuilder);
 
     // LanceDB Writer Lambda (consumes from SQS, concurrency=1)
     const lancedbWriter = new lambda.Function(this, 'LanceDBWriter', {
@@ -417,11 +488,15 @@ export class WorkflowStack extends Stack {
         ...commonLambdaProps.environment,
         BEDROCK_MODEL_ID: models.analysis,
         LANCEDB_FUNCTION_NAME: lancedbService.functionName,
+        GRAPH_SERVICE_FUNCTION_NAME: graphService.functionName,
+        GRAPH_BUILDER_FUNCTION_NAME: graphBuilder.functionName,
       },
     });
 
     // Grant LanceDB invoke to QA Regenerator
     lancedbService.grantInvoke(qaRegenerator);
+    graphService.grantInvoke(qaRegenerator);
+    graphBuilder.grantInvoke(qaRegenerator);
 
     // SQS trigger for LanceDB Writer
     lancedbWriter.addEventSourceMapping('LanceDBWriteQueueTrigger', {
@@ -498,6 +573,15 @@ export class WorkflowStack extends Stack {
       },
     );
 
+    const graphBuilderTask = new tasks.LambdaInvoke(
+      this,
+      'BuildKnowledgeGraph',
+      {
+        lambdaFunction: graphBuilder,
+        outputPath: '$.Payload',
+      },
+    );
+
     const errorHandlerTask = new tasks.LambdaInvoke(
       this,
       'HandleWorkflowError',
@@ -523,6 +607,7 @@ export class WorkflowStack extends Stack {
     checkPreprocessStatusTask.addCatch(errorHandlerTask, catchConfig);
     segmentBuilderTask.addCatch(errorHandlerTask, catchConfig);
     reanalysisPrepTask.addCatch(errorHandlerTask, catchConfig);
+    graphBuilderTask.addCatch(errorHandlerTask, catchConfig);
     documentSummarizerTask.addCatch(errorHandlerTask, catchConfig);
 
     // ========================================
@@ -591,9 +676,10 @@ export class WorkflowStack extends Stack {
     waitForPreprocess.next(checkPreprocessStatusTask);
     checkPreprocessStatusTask.next(preprocessStatusChoice);
 
-    // Chain: SegmentBuilder → Map(Analyze) → Summarize
+    // Chain: SegmentBuilder → Map(Analyze) → GraphBuilder → Summarize
     segmentBuilderTask
       .next(parallelSegmentProcessing)
+      .next(graphBuilderTask)
       .next(documentSummarizerTask);
 
     // ========================================
@@ -692,6 +778,7 @@ export class WorkflowStack extends Stack {
       segmentAnalyzer,
       analysisFinalizer,
       documentSummarizer,
+      graphBuilder,
       workflowErrorHandler,
       triggerFunction,
       lancedbService,
@@ -781,6 +868,11 @@ export class WorkflowStack extends Stack {
     new ssm.StringParameter(this, 'LanceDBFunctionArn', {
       parameterName: SSM_KEYS.LANCEDB_FUNCTION_ARN,
       stringValue: lancedbService.functionArn,
+    });
+
+    new ssm.StringParameter(this, 'GraphServiceFunctionArn', {
+      parameterName: SSM_KEYS.GRAPH_SERVICE_FUNCTION_ARN,
+      stringValue: graphService.functionArn,
     });
   }
 }

@@ -15,6 +15,8 @@ from shared.s3_analysis import get_segment_analysis, save_segment_analysis
 
 BEDROCK_MODEL_ID = os.environ['BEDROCK_MODEL_ID']
 LANCEDB_FUNCTION_NAME = os.environ.get('LANCEDB_FUNCTION_NAME', 'idp-v2-lancedb-service')
+GRAPH_SERVICE_FUNCTION_NAME = os.environ.get('GRAPH_SERVICE_FUNCTION_NAME', '')
+GRAPH_BUILDER_FUNCTION_NAME = os.environ.get('GRAPH_BUILDER_FUNCTION_NAME', '')
 
 s3_client = None
 bedrock_client = None
@@ -141,41 +143,11 @@ def _build_previous_qa(ai_analysis: list, qa_index: int) -> str:
     return '\n\n'.join(lines) if lines else 'No other Q&A items.'
 
 
-def _build_content_combined(segment_data: dict) -> str:
-    """Rebuild content_combined from segment data (same logic as analysis-finalizer)."""
-    parts = []
-
-    bda_indexer = segment_data.get('bda_indexer', '')
-    if bda_indexer:
-        parts.append(f'## BDA Indexer\n{bda_indexer}')
-
-    paddleocr = segment_data.get('paddleocr', '')
-    if paddleocr:
-        parts.append(f'## PaddleOCR\n{paddleocr}')
-
-    format_parser = segment_data.get('format_parser', '')
-    if format_parser:
-        parts.append(f'## Format Parser\n{format_parser}')
-
-    transcribe_segments = segment_data.get('transcribe_segments', [])
-    if transcribe_segments:
-        segments_text = []
-        for seg in transcribe_segments:
-            start = seg.get('start_time', '')
-            end = seg.get('end_time', '')
-            transcript = seg.get('transcript', '')
-            segments_text.append(f'[{start}s - {end}s] {transcript}')
-        parts.append(f'## Transcribe Segments\n' + '\n'.join(segments_text))
-
-    ai_analysis = segment_data.get('ai_analysis', [])
-    for analysis in ai_analysis:
-        query = analysis.get('analysis_query', '')
-        content = analysis.get('content', '')
-        if content:
-            header = f'## AI Analysis: {query}' if query else '## AI Analysis'
-            parts.append(f'{header}\n{content}')
-
-    return '\n\n'.join(parts)
+def _build_qa_content(analysis_query: str, content: str) -> str:
+    """Build content string for a single QA pair."""
+    if analysis_query:
+        return f'{analysis_query}\n{content}'
+    return content
 
 
 def invoke_lancedb(action: str, params: dict) -> dict:
@@ -190,6 +162,43 @@ def invoke_lancedb(action: str, params: dict) -> dict:
         print(f'LanceDB Lambda error: {response["FunctionError"]}, payload: {payload}')
         return {'statusCode': 500, 'error': f'Lambda error: {payload}'}
     return json.loads(payload)
+
+
+def invoke_graph_builder(params: dict) -> dict:
+    if not GRAPH_BUILDER_FUNCTION_NAME:
+        return {}
+    try:
+        client = get_lambda_client()
+        response = client.invoke(
+            FunctionName=GRAPH_BUILDER_FUNCTION_NAME,
+            InvocationType='Event',
+            Payload=json.dumps({**params, 'mode': 'extract_entities'}),
+        )
+        print(f'Graph builder invoked (async): status={response.get("StatusCode")}')
+        return {'success': True}
+    except Exception as e:
+        print(f'Graph builder invoke failed: {e}')
+        return {}
+
+
+def invoke_graph_service(action: str, params: dict) -> dict:
+    if not GRAPH_SERVICE_FUNCTION_NAME:
+        return {}
+    try:
+        client = get_lambda_client()
+        response = client.invoke(
+            FunctionName=GRAPH_SERVICE_FUNCTION_NAME,
+            InvocationType='RequestResponse',
+            Payload=json.dumps({'action': action, 'params': params}),
+        )
+        payload = json.loads(response['Payload'].read())
+        if response.get('FunctionError') or payload.get('statusCode') != 200:
+            print(f'GraphService error: {payload.get("error", "Unknown")}')
+            return payload
+        return payload
+    except Exception as e:
+        print(f'GraphService invoke failed: {e}')
+        return {}
 
 
 def _set_qa_regen_status(workflow_id: str, segment_index: int, status: str):
@@ -253,27 +262,22 @@ def handler(event, _context):
         segment_data['ai_analysis'] = ai_analysis
         save_segment_analysis(file_uri, segment_index, segment_data)
 
-        # Rebuild content_combined and update LanceDB
-        content_combined = _build_content_combined(segment_data)
+        # Delete the specific QA record from LanceDB
         delete_result = invoke_lancedb('delete_record', {
             'project_id': project_id,
             'workflow_id': workflow_id,
-            'segment_index': segment_index
+            'segment_index': segment_index,
+            'qa_index': qa_index
         })
         print(f'LanceDB delete result: {delete_result}')
 
-        add_result = invoke_lancedb('add_record', {
-            'workflow_id': workflow_id,
-            'document_id': document_id,
+        # Delete Analysis node and connected MENTIONED_IN edges from Neptune
+        analysis_id = f'{workflow_id}_{segment_index:04d}_{qa_index:02d}'
+        graph_result = invoke_graph_service('delete_analysis', {
             'project_id': project_id,
-            'segment_index': segment_index,
-            'content_combined': content_combined,
-            'file_uri': file_uri,
-            'file_type': file_type,
-            'image_uri': segment_data.get('image_uri', ''),
-            'created_at': datetime.now(timezone.utc).isoformat()
+            'analysis_id': analysis_id,
         })
-        print(f'LanceDB add result: {add_result}')
+        print(f'Graph delete result: {graph_result}')
 
         return {
             'statusCode': 200,
@@ -357,30 +361,61 @@ def handler(event, _context):
     segment_data['ai_analysis'] = ai_analysis
     save_segment_analysis(file_uri, segment_index, segment_data)
 
-    # 9. Rebuild content_combined and update LanceDB
-    content_combined = _build_content_combined(segment_data)
-
-    # Delete existing record
+    # 9. Update LanceDB: delete old QA record, add new one
     delete_result = invoke_lancedb('delete_record', {
         'project_id': project_id,
         'workflow_id': workflow_id,
-        'segment_index': segment_index
+        'segment_index': segment_index,
+        'qa_index': qa_index
     })
     print(f'LanceDB delete result: {delete_result}')
 
-    # Add updated record
+    qa_content = _build_qa_content(question, answer[:3000])
     add_result = invoke_lancedb('add_record', {
         'workflow_id': workflow_id,
         'document_id': document_id,
         'project_id': project_id,
         'segment_index': segment_index,
-        'content_combined': content_combined,
+        'qa_index': qa_index,
+        'question': question,
+        'content_combined': qa_content,
         'file_uri': file_uri,
         'file_type': file_type,
         'image_uri': image_uri,
         'created_at': datetime.now(timezone.utc).isoformat()
     })
     print(f'LanceDB add result: {add_result}')
+
+    # 10. Update Neptune graph
+    if mode == 'regenerate':
+        # Delete old Analysis node (and its MENTIONED_IN edges)
+        analysis_id = f'{workflow_id}_{segment_index:04d}_{qa_index:02d}'
+        invoke_graph_service('delete_analysis', {
+            'project_id': project_id,
+            'analysis_id': analysis_id,
+        })
+
+    # Create Analysis node + BELONGS_TO edge to Segment
+    invoke_graph_service('add_analyses', {
+        'project_id': project_id,
+        'workflow_id': workflow_id,
+        'document_id': document_id,
+        'analyses': [{
+            'segment_index': segment_index,
+            'qa_index': qa_index,
+            'question': question,
+        }],
+    })
+    print(f'Graph analysis node created: seg={segment_index}, qa={qa_index}')
+
+    # Re-extract entities for this segment (async)
+    invoke_graph_builder({
+        'project_id': project_id,
+        'workflow_id': workflow_id,
+        'file_uri': file_uri,
+        'segment_index': segment_index,
+        'language': language,
+    })
 
     return {
         'statusCode': 200,

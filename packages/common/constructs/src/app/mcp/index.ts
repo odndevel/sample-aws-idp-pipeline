@@ -5,3 +5,4 @@ export * from './docx-mcp.js';
 export * from './pptx-mcp.js';
 export * from './image-mcp.js';
 export * from './qa-mcp.js';
+export * from './graph-mcp.js';

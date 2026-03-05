@@ -106,6 +106,7 @@ export function useDocuments({
       transcribe: t('workflow.steps.transcription'),
       segment_builder: t('workflow.steps.buildingSegments'),
       segment_analyzer: t('workflow.steps.segmentAiAnalysis'),
+      graph_builder: t('workflow.steps.graphBuilder'),
       document_summarizer: t('workflow.steps.documentSummary'),
     }),
     [t],

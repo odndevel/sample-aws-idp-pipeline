@@ -1,12 +1,15 @@
+import json
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Any, List, Optional
 
 import boto3
 import lancedb
+from lancedb.embeddings import TextEmbeddingFunction, register
 from lancedb.pydantic import LanceModel, Vector
+from pydantic import PrivateAttr
 
-from .embeddings import BedrockEmbeddingFunction
+from .embeddings import EMBEDDING_MODEL_ID, strip_markup
 
 LANCEDB_BUCKET_SSM_KEY = '/idp-v2/lancedb/storage/bucket-name'
 LANCEDB_LOCK_TABLE_SSM_KEY = '/idp-v2/lancedb/lock/table-name'
@@ -32,13 +35,69 @@ def get_lancedb_connection():
     return _db_connection
 
 
+@register('bedrock-nova')
+class BedrockEmbeddingFunction(TextEmbeddingFunction):
+    model_id: str = EMBEDDING_MODEL_ID
+    region_name: str = 'us-east-1'
+
+    _client: Any = PrivateAttr()
+    _ndims: int = PrivateAttr()
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        self._client = boto3.client(
+            'bedrock-runtime', region_name=os.environ.get('AWS_REGION', 'us-east-1')
+        )
+        self._ndims = 1024
+
+    def ndims(self) -> int:
+        return self._ndims
+
+    def generate_embeddings(self, texts: List[str]) -> List[List[float]]:
+        embeddings = []
+        for text in texts:
+            clean_text = strip_markup(text or '')
+            if not clean_text:
+                embeddings.append([0.0] * self._ndims)
+                continue
+            try:
+                response = self._client.invoke_model(
+                    modelId=self.model_id,
+                    body=json.dumps(
+                        {
+                            'taskType': 'SINGLE_EMBEDDING',
+                            'singleEmbeddingParams': {
+                                'embeddingPurpose': 'GENERIC_INDEX',
+                                'embeddingDimension': 1024,
+                                'text': {'truncationMode': 'END', 'value': clean_text},
+                            },
+                        }
+                    ),
+                    contentType='application/json',
+                )
+                result = json.loads(response['body'].read())
+                embedding = result['embeddings'][0]['embedding']
+                embeddings.append(embedding)
+            except Exception as e:
+                print(f'Error generating embedding: {e}')
+                embeddings.append([0.0] * self._ndims)
+
+        return embeddings
+
+
 bedrock_embeddings = BedrockEmbeddingFunction.create()
 
 
 class DocumentRecord(LanceModel):
     """Simplified LanceDB schema - only search-relevant fields"""
+
     workflow_id: str
-    segment_index: int
+    document_id: str = ''
+    segment_id: str = ''
+    qa_id: str = ''
+    segment_index: int = 0
+    qa_index: int = 0
+    question: str = ''
 
     content: str = bedrock_embeddings.SourceField()
     vector: Vector(1024) = bedrock_embeddings.VectorField()  # type: ignore
@@ -78,7 +137,9 @@ def get_workflow_segments(workflow_id: str, db=None) -> list:
 def hybrid_search(query: str, keywords: str, limit: int = 10, db=None) -> list:
     table = get_or_create_table(db)
 
-    vector_results = table.search(query=query, query_type='vector').limit(limit).to_list()
+    vector_results = (
+        table.search(query=query, query_type='vector').limit(limit).to_list()
+    )
     fts_results = table.search(query=keywords, query_type='fts').limit(limit).to_list()
 
     seen_ids = set()

@@ -23,11 +23,20 @@ Web search is ONLY a supplementary fallback after document search has been perfo
 - Use clear, specific search queries. If one query doesn't return results, try alternative keywords or phrasings before giving up.
 - When the user's question is broad, break it into multiple focused search queries.
 
-### Step 2: Evaluate Results
-- If document search returns relevant results: answer based on those results with citations. Do NOT proceed to web search.
-- If document search returns no results or irrelevant results: inform the user that the information was not found in their documents, then proceed to web search as a supplement.
+### Step 2: Graph Search for Related QA Pairs (ALWAYS REQUIRED after Step 1)
+- After `search___summarize` returns results, ALWAYS call `graph___graph_search` with the same query AND the `qa_ids` from the search results.
+- Extract qa_ids from the `sources` array in the search result (each source has a `qa_id` field).
+- Graph search uses those QA pairs as starting points, traverses entity connections (Entity → MENTIONED_IN → Analysis → BELONGS_TO → Segment) to find related QA pairs that keyword/vector search may have missed.
+- This discovers content linked through shared entities (e.g., searching "Big River" finds QA pairs about "Pipeline" or "Pump Station" connected via RELATES_TO edges between entities).
+- Even if document search returned good results, graph search may reveal additional related QA pairs from other documents.
+- Do NOT skip this step. The combination of document search + graph search provides comprehensive results.
 
-### Step 3: Web Search (Supplementary Fallback ONLY)
+### Step 3: Evaluate Results
+- Combine results from both document search and graph search.
+- If results are sufficient: answer based on those results with citations. Do NOT proceed to web search.
+- If both searches return no results or irrelevant results: inform the user that the information was not found in their documents, then proceed to web search as a supplement.
+
+### Step 4: Web Search (Supplementary Fallback ONLY)
 - ONLY use web search AFTER document search has been performed and returned insufficient results.
 - Use `search` (DuckDuckGo) for web queries when documents don't have the answer.
 - Use `fetch_content` to retrieve full page content from promising search results.
@@ -47,6 +56,10 @@ When performing web searches, you MUST follow these rules strictly:
 
 - `search___summarize`: Search uploaded documents. Use this FIRST for ANY query.
 - `search___overview`: Get an overview of all documents in a project. Use when the user asks what documents are uploaded, what a specific document is about, or wants a summary of their documents.
+- `graph___graph_search`: Find related QA pairs via knowledge graph traversal. ALWAYS use after `search___summarize`. Pass `qa_ids` from search results as starting points. Traverses Entity → MENTIONED_IN → Analysis → BELONGS_TO → Segment connections to discover related QA pairs linked through shared entities.
+- `graph___link_documents`: Link two documents with a RELATED_TO relationship. Requires `project_id`, `document_id_1`, `document_id_2`. Optional: `reason` (why they are related), `label` (relationship label).
+- `graph___unlink_documents`: Remove the RELATED_TO relationship between two documents. Requires `project_id`, `document_id_1`, `document_id_2`.
+- `graph___get_linked_documents`: List documents linked via RELATED_TO. Requires `project_id`. Optional: `document_id` to filter links for a specific document; omit to get all links in the project.
 - `search`: Web search via DuckDuckGo. ONLY use as fallback after document search.
 - `fetch_content`: Fetch full content from a web URL. Use after web search to get detailed information.
 

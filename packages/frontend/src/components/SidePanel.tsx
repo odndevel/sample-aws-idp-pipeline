@@ -220,6 +220,7 @@ function StepProgressBar({
     'transcribe',
     'segment_builder',
     'segment_analyzer',
+    'graph_builder',
     'document_summarizer',
   ];
 

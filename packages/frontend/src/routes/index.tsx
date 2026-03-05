@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Search, ArrowUpDown } from 'lucide-react';
 import { useAwsClient } from '../hooks/useAwsClient';
 import CubeLoader from '../components/CubeLoader';
+import EmptyHero from '../components/EmptyHero';
 import ConfirmModal from '../components/ConfirmModal';
 import ProjectSettingsModal, {
   Project,
@@ -358,6 +359,8 @@ function ProjectsPage() {
         <div className="bento-loading">
           <CubeLoader />
         </div>
+      ) : projects.length === 0 ? (
+        <EmptyHero onCreateProject={openCreateModal} />
       ) : (
         <>
           {/* Hero Section */}

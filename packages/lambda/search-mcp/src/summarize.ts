@@ -25,6 +25,7 @@ export async function summarizeWithHaiku(
   const sources = results.map((r) => ({
     document_id: r.document_id,
     segment_id: r.segment_id,
+    qa_id: r.qa_id,
   }));
 
   return { answer, sources };

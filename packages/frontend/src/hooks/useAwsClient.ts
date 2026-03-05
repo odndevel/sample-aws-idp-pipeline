@@ -67,6 +67,7 @@ export interface StreamEvent {
   content?: string | ToolResultContent[];
   name?: string;
   tool_use_id?: string;
+  input?: string;
   stage?: string;
   result?: string;
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -14,6 +14,9 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
+  Network,
+  ChevronDown,
+  Search,
 } from 'lucide-react';
 import { WorkflowDetail, SegmentData, AnalysisPopup } from '../types/project';
 import ConfirmModal from './ConfirmModal';
@@ -24,6 +27,9 @@ import DocumentScanner from './ui/document-scanner';
 import { useAwsClient } from '../hooks/useAwsClient';
 import { useModal } from '../hooks/useModal';
 import { useDragPan } from '../hooks/useDragPan';
+import GraphView from './GraphView/GraphView';
+import type { GraphData } from './GraphView/useGraphData';
+import { getEntityColor, LINK_TYPE_COLORS } from './GraphView/constants';
 import {
   isTextFileType,
   isMarkdownFileType,
@@ -117,8 +123,51 @@ const markdownComponents = {
   ),
 };
 
+function ToggleSwitch({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <button
+      onClick={onChange}
+      className={`relative w-8 h-[18px] rounded-full transition-colors flex-shrink-0 cursor-pointer ${
+        checked ? 'bg-blue-500' : 'bg-slate-300 dark:bg-[#363b50]'
+      }`}
+    >
+      <span
+        className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow-sm transition-transform ${
+          checked ? 'left-[16px]' : 'left-[2px]'
+        }`}
+      />
+    </button>
+  );
+}
+
+function ToggleRow({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-[12px] text-slate-600 dark:text-slate-300">
+        {label}
+      </span>
+      <ToggleSwitch checked={checked} onChange={() => onChange(!checked)} />
+    </div>
+  );
+}
+
 interface WorkflowDetailModalProps {
   workflow: WorkflowDetail;
+  projectId: string;
   projectColor: number;
   loadingWorkflow: boolean;
   onClose: () => void;
@@ -145,6 +194,7 @@ interface WorkflowDetailModalProps {
 
 export default function WorkflowDetailModal({
   workflow,
+  projectId,
   projectColor,
   loadingWorkflow,
   onClose,
@@ -157,7 +207,27 @@ export default function WorkflowDetailModal({
   onLoadSegment,
 }: WorkflowDetailModalProps) {
   const { t } = useTranslation();
-  const { getPresignedDownloadUrl } = useAwsClient();
+  const { getPresignedDownloadUrl, fetchApi } = useAwsClient();
+  const [viewMode, setViewMode] = useState<'document' | 'graph'>('document');
+  const [graphData, setGraphData] = useState<GraphData | null>(null);
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [graphHiddenTypes, setGraphHiddenTypes] = useState<Set<string>>(
+    new Set(),
+  );
+  const [graphHiddenLinkTypes, setGraphHiddenLinkTypes] = useState<Set<string>>(
+    new Set(),
+  );
+  const [graphShowIncoming, setGraphShowIncoming] = useState(true);
+  const [graphShowOutgoing, setGraphShowOutgoing] = useState(true);
+  const [graphSearchFilter, setGraphSearchFilter] = useState('');
+  const [graphDepth, setGraphDepth] = useState(3);
+  const [graphFocusPage, setGraphFocusPage] = useState<number | null>(null);
+  const [graphShowEdgeLabels, setGraphShowEdgeLabels] = useState(true);
+  const [graphPanelSections, setGraphPanelSections] = useState({
+    filters: true,
+    groups: false,
+    display: false,
+  });
   const [currentSegmentIndex, setCurrentSegmentIndex] =
     useState(initialSegmentIndex);
   const [imageLoading, setImageLoading] = useState(false);
@@ -182,6 +252,7 @@ export default function WorkflowDetailModal({
     userInstructions: string;
   } | null>(null);
   const [addingQa, setAddingQa] = useState(false);
+  const pendingQaScrollRef = useRef<number | null>(null);
   const [deletingIndex, setDeletingIndex] = useState<number | null>(null);
   const [deleteConfirmIndex, setDeleteConfirmIndex] = useState<number | null>(
     null,
@@ -190,6 +261,78 @@ export default function WorkflowDetailModal({
   const [imageZoom, setImageZoom] = useState(1);
   const imageScrollRef = useDragPan<HTMLDivElement>();
   const [imageNaturalWidth, setImageNaturalWidth] = useState(0);
+
+  // Fetch graph data when switching to graph view
+  useEffect(() => {
+    if (viewMode !== 'graph' || graphData) return;
+    let cancelled = false;
+    setGraphLoading(true);
+    fetchApi<GraphData>(
+      `projects/${projectId}/graph/documents/${workflow.document_id}`,
+    )
+      .then((data) => {
+        if (!cancelled) setGraphData(data);
+      })
+      .catch(() => {
+        if (!cancelled) setGraphData({ nodes: [], edges: [] });
+      })
+      .finally(() => {
+        if (!cancelled) setGraphLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewMode, graphData, fetchApi, projectId, workflow.document_id]);
+
+  // Derive entity types and link types from graph data
+  const graphEntityTypes = useMemo(() => {
+    if (!graphData) return [];
+    const types = new Set<string>();
+    for (const node of graphData.nodes) {
+      if (node.type === 'entity') {
+        types.add((node.properties?.entity_type as string) ?? 'CONCEPT');
+      }
+    }
+    return Array.from(types).sort();
+  }, [graphData]);
+
+  const graphLinkTypes = useMemo(() => {
+    if (!graphData) return [];
+    const types = new Set<string>();
+    for (const edge of graphData.edges) {
+      types.add(edge.label);
+    }
+    return Array.from(types).sort();
+  }, [graphData]);
+
+  const graphMaxPage = useMemo(() => {
+    if (!graphData) return 0;
+    let max = 0;
+    for (const node of graphData.nodes) {
+      if (node.type === 'segment' && node.properties?.segment_index != null) {
+        max = Math.max(max, node.properties.segment_index as number);
+      }
+    }
+    return max;
+  }, [graphData]);
+
+  const toggleGraphEntityType = useCallback((type: string) => {
+    setGraphHiddenTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  }, []);
+
+  const toggleGraphLinkType = useCallback((type: string) => {
+    setGraphHiddenLinkTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  }, []);
 
   // Load Excel presigned URL for Excel files
   const isExcel = isExcelFileType(workflow.file_type);
@@ -471,6 +614,16 @@ export default function WorkflowDetailModal({
             question: a.analysis_query,
             answer: a.content,
           })) || [];
+        // Scroll to pending QA item after DOM renders
+        if (pendingQaScrollRef.current != null && qaItems.length > 0) {
+          const idx = pendingQaScrollRef.current;
+          pendingQaScrollRef.current = null;
+          setTimeout(() => {
+            document
+              .getElementById(`qa-item-${idx}`)
+              ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 200);
+        }
         return {
           ...prev,
           title: `AI Analysis - Segment ${currentSegmentIndex + 1}`,
@@ -534,11 +687,17 @@ export default function WorkflowDetailModal({
 
         {/* Left Panel - Document Details */}
         <div
-          className={`bg-transparent dark:bg-[#0d1117]/50 flex flex-col flex-shrink-0 border-r border-black/[0.08] dark:border-[#2a2f45] transition-all duration-300 ${analysisPopup.type ? 'w-[600px]' : 'w-[400px]'}`}
+          className={`flex flex-col flex-shrink-0 border-r border-black/[0.08] dark:border-[#2a2f45] bg-transparent dark:bg-[#0d1117]/50 transition-all duration-300 ${
+            viewMode === 'graph'
+              ? 'w-[280px]'
+              : analysisPopup.type
+                ? 'w-[600px]'
+                : 'w-[400px]'
+          }`}
         >
           {/* Header */}
           <div className="flex items-center gap-3 p-4 border-b border-black/[0.08] dark:border-[#2a2f45] bg-transparent">
-            <div className="p-2 bg-black/[0.06] dark:bg-[#1e2235] rounded-lg">
+            <div className="p-2 rounded-lg bg-black/[0.06] dark:bg-[#1e2235]">
               <svg
                 className="h-5 w-5 text-slate-600 dark:text-slate-300"
                 fill="none"
@@ -556,30 +715,1027 @@ export default function WorkflowDetailModal({
             <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
               {t('workflow.documentDetails')}
             </h2>
+            <div className="flex-1" />
+            <div className="flex items-center gap-0.5 p-0.5 rounded bg-slate-200/60 dark:bg-white/[0.08]">
+              <button
+                onClick={() => setViewMode('document')}
+                title={t('workflow.segment', 'Document')}
+                className={`p-1 rounded transition-all ${
+                  viewMode === 'document'
+                    ? 'bg-white dark:bg-white/[0.15] text-slate-700 dark:text-slate-200 shadow-sm'
+                    : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setViewMode('graph')}
+                title="Graph"
+                className={`p-1 rounded transition-all ${
+                  viewMode === 'graph'
+                    ? 'bg-white dark:bg-white/[0.15] text-slate-700 dark:text-slate-200 shadow-sm'
+                    : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'
+                }`}
+              >
+                <Network className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto p-5">
-            {loadingWorkflow ? (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-slate-500">{t('common.loading')}</div>
+          {viewMode === 'graph' ? (
+            <div className="flex-1 overflow-y-auto">
+              {/* Filters section */}
+              <div className="border-b border-black/[0.08] dark:border-[#363b50]">
+                <button
+                  onClick={() =>
+                    setGraphPanelSections((s) => ({
+                      ...s,
+                      filters: !s.filters,
+                    }))
+                  }
+                  className="flex items-center justify-between w-full px-4 py-2.5 text-[13px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-black/[0.03] dark:hover:bg-white/[0.03] transition-colors"
+                >
+                  {t('workflow.graph.filters')}
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 text-slate-400 dark:text-slate-500 transition-transform ${graphPanelSections.filters ? '' : '-rotate-90'}`}
+                  />
+                </button>
+                {graphPanelSections.filters && (
+                  <div className="px-4 pb-4 space-y-3">
+                    {/* Search */}
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
+                      <input
+                        type="text"
+                        placeholder={t('workflow.graph.searchPlaceholder')}
+                        value={graphSearchFilter}
+                        onChange={(e) => setGraphSearchFilter(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 text-[12px] bg-slate-100 dark:bg-[#1e2235] border border-slate-200 dark:border-[#363b50] rounded-md text-slate-700 dark:text-slate-300 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:border-blue-400 dark:focus:border-[#4a5070]"
+                      />
+                    </div>
+                    {/* Depth */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[12px] text-slate-500 dark:text-slate-400">
+                          {t('workflow.graph.depth')}
+                        </span>
+                        <span className="text-[11px] text-slate-400 dark:text-slate-500 tabular-nums">
+                          {graphDepth}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={1}
+                        max={6}
+                        value={graphDepth}
+                        onChange={(e) => setGraphDepth(Number(e.target.value))}
+                        className="w-full h-1 appearance-none bg-slate-200 dark:bg-[#363b50] rounded-full cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:cursor-pointer"
+                      />
+                    </div>
+                    {/* Focus page */}
+                    {graphMaxPage > 0 && (
+                      <div>
+                        <span className="text-[12px] text-slate-500 dark:text-slate-400">
+                          {t('workflow.graph.page')}
+                        </span>
+                        <div className="flex items-center gap-3 mt-1.5">
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="graphPageMode"
+                              checked={graphFocusPage == null}
+                              onChange={() => setGraphFocusPage(null)}
+                              className="w-3 h-3 accent-blue-500"
+                            />
+                            <span className="text-[12px] text-slate-600 dark:text-slate-300">
+                              {t('workflow.graph.allPages')}
+                            </span>
+                          </label>
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="graphPageMode"
+                              checked={graphFocusPage != null}
+                              onChange={() => setGraphFocusPage(0)}
+                              className="w-3 h-3 accent-blue-500"
+                            />
+                            <span className="text-[12px] text-slate-600 dark:text-slate-300">
+                              {t('workflow.graph.page')}
+                            </span>
+                          </label>
+                          {graphFocusPage != null && (
+                            <input
+                              type="number"
+                              min={1}
+                              max={graphMaxPage + 1}
+                              value={graphFocusPage + 1}
+                              onChange={(e) => {
+                                const v = Math.max(
+                                  0,
+                                  Math.min(
+                                    Number(e.target.value) - 1,
+                                    graphMaxPage,
+                                  ),
+                                );
+                                setGraphFocusPage(v);
+                              }}
+                              className="w-16 px-2 py-1 text-[12px] text-center bg-slate-100 dark:bg-[#1e2235] border border-slate-200 dark:border-[#363b50] rounded-md text-slate-700 dark:text-slate-300 focus:outline-none focus:border-blue-400 dark:focus:border-[#4a5070]"
+                            />
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {/* Toggle rows */}
+                    <ToggleRow
+                      label={t('workflow.graph.incomingLinks')}
+                      checked={graphShowIncoming}
+                      onChange={setGraphShowIncoming}
+                    />
+                    <ToggleRow
+                      label={t('workflow.graph.outgoingLinks')}
+                      checked={graphShowOutgoing}
+                      onChange={setGraphShowOutgoing}
+                    />
+                  </div>
+                )}
               </div>
-            ) : analysisPopup.type ? (
-              /* Analysis Content View */
-              <div className="flex flex-col h-full">
-                {/* Navigation */}
-                <div className="flex items-center gap-2 mb-4">
+
+              {/* Groups section - entity type toggles */}
+              <div className="border-b border-black/[0.08] dark:border-[#363b50]">
+                <button
+                  onClick={() =>
+                    setGraphPanelSections((s) => ({
+                      ...s,
+                      groups: !s.groups,
+                    }))
+                  }
+                  className="flex items-center justify-between w-full px-4 py-2.5 text-[13px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-black/[0.03] dark:hover:bg-white/[0.03] transition-colors"
+                >
+                  {t('workflow.graph.groups')}
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 text-slate-400 dark:text-slate-500 transition-transform ${graphPanelSections.groups ? '' : '-rotate-90'}`}
+                  />
+                </button>
+                {graphPanelSections.groups && (
+                  <div className="px-4 pb-3 space-y-1">
+                    {graphEntityTypes.map((type) => {
+                      const color = getEntityColor(type);
+                      const active = !graphHiddenTypes.has(type);
+                      return (
+                        <div
+                          key={type}
+                          className="flex items-center justify-between py-1"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: color }}
+                            />
+                            <span className="text-[12px] text-slate-600 dark:text-slate-300">
+                              {type}
+                            </span>
+                          </div>
+                          <ToggleSwitch
+                            checked={active}
+                            onChange={() => toggleGraphEntityType(type)}
+                          />
+                        </div>
+                      );
+                    })}
+                    {graphEntityTypes.length === 0 && (
+                      <p className="text-[11px] text-slate-400 dark:text-slate-600 py-1">
+                        {t('workflow.graph.noEntityTypes')}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Display section - link type toggles */}
+              <div className="border-b border-black/[0.08] dark:border-[#363b50]">
+                <button
+                  onClick={() =>
+                    setGraphPanelSections((s) => ({
+                      ...s,
+                      display: !s.display,
+                    }))
+                  }
+                  className="flex items-center justify-between w-full px-4 py-2.5 text-[13px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-black/[0.03] dark:hover:bg-white/[0.03] transition-colors"
+                >
+                  {t('workflow.graph.display')}
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 text-slate-400 dark:text-slate-500 transition-transform ${graphPanelSections.display ? '' : '-rotate-90'}`}
+                  />
+                </button>
+                {graphPanelSections.display && (
+                  <div className="px-4 pb-3 space-y-1">
+                    <ToggleRow
+                      label={t('workflow.graph.edgeLabels')}
+                      checked={graphShowEdgeLabels}
+                      onChange={setGraphShowEdgeLabels}
+                    />
+                    {graphLinkTypes.length > 0 && (
+                      <div className="pt-2 border-t border-black/[0.06] dark:border-[#363b50] mt-2 space-y-1">
+                        {graphLinkTypes.map((type) => {
+                          const color = LINK_TYPE_COLORS[type] ?? '#6b7280';
+                          const active = !graphHiddenLinkTypes.has(type);
+                          return (
+                            <div
+                              key={type}
+                              className="flex items-center justify-between py-1"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className="w-2.5 h-0.5 rounded-full flex-shrink-0"
+                                  style={{ backgroundColor: color }}
+                                />
+                                <span className="text-[12px] text-slate-600 dark:text-slate-300">
+                                  {type}
+                                </span>
+                              </div>
+                              <ToggleSwitch
+                                checked={active}
+                                onChange={() => toggleGraphLinkType(type)}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto p-5">
+              {loadingWorkflow ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-slate-500">{t('common.loading')}</div>
+                </div>
+              ) : analysisPopup.type ? (
+                /* Analysis Content View */
+                <div className="flex flex-col h-full">
+                  {/* Navigation */}
+                  <div className="flex items-center gap-2 mb-4">
+                    <button
+                      onClick={() =>
+                        setAnalysisPopup({
+                          type: null,
+                          content: '',
+                          title: '',
+                          qaItems: [],
+                        })
+                      }
+                      className="p-2 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg transition-colors"
+                      title={t('workflow.backToDetails')}
+                    >
+                      <svg
+                        className="h-4 w-4 text-slate-600 dark:text-slate-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15 19l-7-7 7-7"
+                        />
+                      </svg>
+                    </button>
+                    <div className="flex gap-1 flex-1">
+                      {['Web', 'BDA', 'OCR', 'Parser', 'STT', 'AI']
+                        .filter((type) => {
+                          if (type === 'Web')
+                            return !!currentSegment?.webcrawler_content;
+                          if (type === 'BDA')
+                            return !!currentSegment?.bda_indexer;
+                          if (type === 'OCR')
+                            return !!currentSegment?.paddleocr_blocks?.blocks
+                              ?.length;
+                          if (type === 'Parser')
+                            return !!currentSegment?.format_parser;
+                          if (type === 'STT')
+                            return (
+                              (currentSegment?.transcribe_segments?.length ??
+                                0) > 0
+                            );
+                          if (type === 'AI')
+                            return (
+                              (currentSegment?.ai_analysis?.length ?? 0) > 0
+                            );
+                          return false;
+                        })
+                        .map((type) => (
+                          <button
+                            key={type}
+                            onClick={() => {
+                              if (type === 'AI') {
+                                const qaItems =
+                                  currentSegment?.ai_analysis?.map((a) => ({
+                                    question: a.analysis_query,
+                                    answer: a.content,
+                                  })) || [];
+                                setAnalysisPopup({
+                                  type: 'ai',
+                                  content: '',
+                                  title: `AI Analysis - Segment ${currentSegmentIndex + 1}`,
+                                  qaItems,
+                                });
+                              } else if (type === 'OCR') {
+                                setAnalysisPopup({
+                                  type: 'ocr',
+                                  content: '',
+                                  title: `OCR Content - Segment ${currentSegmentIndex + 1}`,
+                                  qaItems: [],
+                                });
+                              } else if (type === 'STT') {
+                                setAnalysisPopup({
+                                  type: 'stt',
+                                  content: '',
+                                  title: `Transcribe - Segment ${currentSegmentIndex + 1}`,
+                                  qaItems: [],
+                                });
+                              } else if (type === 'Web') {
+                                setAnalysisPopup({
+                                  type: 'web',
+                                  content:
+                                    currentSegment?.webcrawler_content || '',
+                                  title: `Web Crawler - Segment ${currentSegmentIndex + 1}`,
+                                  qaItems: [],
+                                });
+                              } else {
+                                const contentMap: Record<string, string> = {
+                                  BDA: currentSegment?.bda_indexer || '',
+                                  Parser: currentSegment?.format_parser || '',
+                                };
+                                setAnalysisPopup({
+                                  type: 'bda',
+                                  content: contentMap[type],
+                                  title: `${type} Content - Segment ${currentSegmentIndex + 1}`,
+                                  qaItems: [],
+                                });
+                              }
+                            }}
+                            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                              (type === 'AI' && analysisPopup.type === 'ai') ||
+                              (type === 'OCR' &&
+                                analysisPopup.type === 'ocr') ||
+                              (type === 'STT' &&
+                                analysisPopup.type === 'stt') ||
+                              (type === 'Web' &&
+                                analysisPopup.type === 'web') ||
+                              (type !== 'AI' &&
+                                type !== 'OCR' &&
+                                type !== 'STT' &&
+                                type !== 'Web' &&
+                                analysisPopup.title.includes(type))
+                                ? 'bg-blue-500 text-white'
+                                : 'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/20'
+                            }`}
+                          >
+                            {type}
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+
+                  {/* Title */}
+                  <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4">
+                    {analysisPopup.title}
+                  </h3>
+
+                  {/* Content */}
+                  <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
+                    {analysisPopup.type === 'ocr' &&
+                    currentSegment?.paddleocr_blocks?.blocks?.length ? (
+                      <OcrDocumentView
+                        blocks={currentSegment?.paddleocr_blocks}
+                        imageUrl={currentSegment?.image_url}
+                      />
+                    ) : analysisPopup.type === 'ai' && analysisPopup.qaItems ? (
+                      analysisPopup.qaItems.length === 0 ? (
+                        <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+                          <svg
+                            className="h-12 w-12 mb-3"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={1.5}
+                              d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                          <p className="text-sm font-medium">
+                            {t('workflow.noAiAnalysis')}
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          {/* Question Navigator */}
+                          <div className="flex-shrink-0 flex flex-wrap gap-2 mb-4 pb-3 border-b border-slate-200 dark:border-white/[0.08]">
+                            {analysisPopup.qaItems.map((_, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => {
+                                  document
+                                    .getElementById(`qa-item-${idx}`)
+                                    ?.scrollIntoView({ behavior: 'smooth' });
+                                }}
+                                className="w-8 h-8 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center transition-colors"
+                              >
+                                Q{idx + 1}
+                              </button>
+                            ))}
+                            {onAddQa && (
+                              <button
+                                onClick={() =>
+                                  setAddQaTarget({
+                                    question: '',
+                                    userInstructions: '',
+                                  })
+                                }
+                                disabled={
+                                  addingQa || regeneratingIndex !== null
+                                }
+                                className="w-8 h-8 border-2 border-dashed border-slate-300 dark:border-white/20 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-slate-400 hover:text-blue-500 text-xs font-bold rounded-full flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                title={t('workflow.addQa')}
+                              >
+                                {addingQa ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Plus className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Q&A Cards */}
+                          <div className="flex-1 overflow-y-auto space-y-4">
+                            {analysisPopup.qaItems.map((item, idx) => (
+                              <div
+                                key={idx}
+                                id={`qa-item-${idx}`}
+                                className="bg-white/30 dark:bg-white/[0.04] rounded-lg border border-black/[0.08] dark:border-white/[0.08] overflow-hidden scroll-mt-2"
+                              >
+                                {/* Question */}
+                                <div className="bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800/30 px-4 py-3">
+                                  <div className="flex items-start gap-2">
+                                    <span className="flex-shrink-0 w-6 h-6 bg-blue-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                                      Q{idx + 1}
+                                    </span>
+                                    <p className="text-sm font-medium text-slate-800 dark:text-slate-200 flex-1">
+                                      {item.question}
+                                    </p>
+                                    {onRegenerateQa && (
+                                      <button
+                                        onClick={() =>
+                                          setRegenerateTarget({
+                                            qaIndex: idx,
+                                            question: item.question,
+                                            userInstructions: '',
+                                          })
+                                        }
+                                        disabled={
+                                          regeneratingIndex !== null ||
+                                          deletingIndex !== null
+                                        }
+                                        className="flex-shrink-0 p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors disabled:opacity-30"
+                                        title={t('workflow.regenerateQa')}
+                                      >
+                                        {regeneratingIndex === idx ? (
+                                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        ) : (
+                                          <Sparkles className="h-3.5 w-3.5" />
+                                        )}
+                                      </button>
+                                    )}
+                                    {onDeleteQa && (
+                                      <button
+                                        onClick={() =>
+                                          setDeleteConfirmIndex(idx)
+                                        }
+                                        disabled={
+                                          regeneratingIndex !== null ||
+                                          deletingIndex !== null
+                                        }
+                                        className="flex-shrink-0 p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors disabled:opacity-30"
+                                        title={t('workflow.deleteQa')}
+                                      >
+                                        {deletingIndex === idx ? (
+                                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        ) : (
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        )}
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                                {/* Answer */}
+                                <div className="px-4 py-3">
+                                  {regeneratingIndex === idx ? (
+                                    <div className="flex items-center justify-center py-8 text-slate-400">
+                                      <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                                      <span className="text-sm">
+                                        {t('workflow.regeneratingQa')}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <div className="prose prose-slate dark:prose-invert prose-sm max-w-none prose-p:my-1.5 prose-headings:mt-3 prose-headings:mb-1 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-hr:my-3 prose-hr:border-slate-300 dark:prose-hr:border-white/[0.12] prose-table:border-collapse prose-th:border prose-th:border-slate-300 dark:prose-th:border-white/[0.12] prose-th:bg-slate-100 dark:prose-th:bg-white/[0.06] prose-th:p-2 prose-td:border prose-td:border-slate-300 dark:prose-td:border-white/[0.12] prose-td:p-2">
+                                      <Markdown
+                                        remarkPlugins={[remarkGfm]}
+                                        components={markdownComponents}
+                                        urlTransform={(url) => url}
+                                      >
+                                        {item.answer}
+                                      </Markdown>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )
+                    ) : analysisPopup.type === 'stt' &&
+                      currentSegment?.transcribe_segments?.length ? (
+                      <div className="flex-1 overflow-y-auto space-y-2">
+                        {currentSegment.transcribe_segments.map((seg, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => seekVideo(seg.start_time)}
+                            className="w-full text-left bg-white/30 dark:bg-white/[0.04] rounded-lg border border-black/[0.08] dark:border-white/[0.08] p-3 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:border-purple-300 dark:hover:border-purple-800/40 transition-colors cursor-pointer"
+                          >
+                            <div className="inline-flex items-center gap-1.5 px-2 py-1 mb-1.5 bg-purple-50 dark:bg-purple-900/30 rounded">
+                              <span className="text-xs font-mono text-purple-600 dark:text-purple-400">
+                                {seg.start_time.toFixed(1)}s
+                              </span>
+                              <span className="text-xs text-purple-300 dark:text-purple-500">
+                                ~
+                              </span>
+                              <span className="text-xs font-mono text-purple-400 dark:text-purple-500">
+                                {seg.end_time.toFixed(1)}s
+                              </span>
+                            </div>
+                            <p className="text-sm text-slate-800 dark:text-slate-200">
+                              {seg.transcript}
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    ) : analysisPopup.type === 'web' &&
+                      analysisPopup.content ? (
+                      <div className="flex-1 overflow-y-auto">
+                        {(currentSegment?.source_url ||
+                          currentSegment?.page_title) && (
+                          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/30 rounded-lg">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate flex-1">
+                                {currentSegment?.page_title ||
+                                  currentSegment?.source_url}
+                              </p>
+                              {currentSegment?.source_url && (
+                                <a
+                                  href={currentSegment.source_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex-shrink-0 p-1 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+                                  title={currentSegment.source_url}
+                                >
+                                  <Link className="h-4 w-4" />
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        <div className="prose prose-slate dark:prose-invert prose-sm max-w-none prose-p:my-1.5 prose-headings:mt-3 prose-headings:mb-1 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-hr:my-3 prose-hr:border-slate-300 dark:prose-hr:border-white/[0.12] prose-table:border-collapse prose-th:border prose-th:border-slate-300 dark:prose-th:border-white/[0.12] prose-th:bg-slate-100 dark:prose-th:bg-white/[0.06] prose-th:p-2 prose-td:border prose-td:border-slate-300 dark:prose-td:border-white/[0.12] prose-td:p-2">
+                          <Markdown
+                            remarkPlugins={[remarkGfm]}
+                            components={markdownComponents}
+                            urlTransform={(url) => url}
+                          >
+                            {analysisPopup.content}
+                          </Markdown>
+                        </div>
+                      </div>
+                    ) : isSpreadsheetFileType(workflow.file_type) &&
+                      analysisPopup.title.includes('Parser') ? (
+                      <div className="flex-1 overflow-auto">
+                        <div className="overflow-x-auto">
+                          <div className="prose prose-slate dark:prose-invert prose-sm max-w-none prose-table:border-collapse prose-table:w-max prose-th:border prose-th:border-slate-300 dark:prose-th:border-white/[0.12] prose-th:bg-slate-100 dark:prose-th:bg-white/[0.06] prose-th:p-2 prose-th:whitespace-nowrap prose-td:border prose-td:border-slate-300 dark:prose-td:border-white/[0.12] prose-td:p-2 prose-td:whitespace-nowrap">
+                            <Markdown
+                              remarkPlugins={[remarkGfm]}
+                              components={markdownComponents}
+                            >
+                              {sanitizeMarkdownTable(analysisPopup.content)}
+                            </Markdown>
+                          </div>
+                        </div>
+                      </div>
+                    ) : !analysisPopup.content ? (
+                      isProcessing ? (
+                        <DocumentScanner
+                          fileType={workflow.file_type}
+                          label={t('workflow.processingInProgress')}
+                        />
+                      ) : (
+                        <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+                          <svg
+                            className="h-12 w-12 mb-3"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={1.5}
+                              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                            />
+                          </svg>
+                          <p className="text-sm font-medium">
+                            {t('workflow.noContent')}
+                          </p>
+                        </div>
+                      )
+                    ) : (
+                      <div className="prose prose-slate dark:prose-invert prose-sm max-w-none prose-p:my-1.5 prose-headings:mt-3 prose-headings:mb-1 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-hr:my-3 prose-hr:border-slate-300 dark:prose-hr:border-white/[0.12] prose-table:border-collapse prose-th:border prose-th:border-slate-300 dark:prose-th:border-white/[0.12] prose-th:bg-slate-100 dark:prose-th:bg-white/[0.06] prose-th:p-2 prose-td:border prose-td:border-slate-300 dark:prose-td:border-white/[0.12] prose-td:p-2">
+                        <Markdown
+                          remarkPlugins={[remarkGfm]}
+                          components={markdownComponents}
+                          urlTransform={(url) => url}
+                        >
+                          {analysisPopup.content}
+                        </Markdown>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Basic Information */}
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {t('workflow.fileName')}
+                        </p>
+                        {canReanalyze && (
+                          <button
+                            onClick={() => setShowReanalyzeModal(true)}
+                            disabled={reanalyzing}
+                            className="flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {reanalyzing ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3 w-3" />
+                            )}
+                            {t('workflow.reanalyze')}
+                          </button>
+                        )}
+                      </div>
+                      <p
+                        className="text-sm text-slate-800 dark:text-slate-200 truncate"
+                        title={workflow.file_name}
+                      >
+                        {workflow.file_name}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
+                          {t('workflow.fileType')}
+                        </p>
+                        <span className="inline-block px-2 py-1 bg-slate-200 dark:bg-white/10 text-slate-700 dark:text-slate-300 text-xs font-medium rounded">
+                          {getFileTypeLabel(workflow.file_type)}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
+                          {t('workflow.totalSegments')}
+                        </p>
+                        <p className="text-sm text-slate-800 dark:text-slate-200">
+                          {workflow.total_segments}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
+                        {t('workflow.analysisLanguage')}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <span className="inline-block px-2 py-1 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs rounded font-medium">
+                          {LANGUAGES.find(
+                            (l) => l.code === (workflow.language || 'en'),
+                          )?.flag || 'EN'}
+                        </span>
+                        <span className="text-sm text-slate-800 dark:text-slate-200">
+                          {LANGUAGES.find(
+                            (l) => l.code === (workflow.language || 'en'),
+                          )?.name || 'English'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
+                        {t('workflow.status')}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                        <span className="text-sm text-slate-800 dark:text-slate-200">
+                          {workflow.status}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
+                        {t('workflow.created')}
+                      </p>
+                      <p className="text-sm text-slate-800 dark:text-slate-200">
+                        {new Date(workflow.created_at).toLocaleString('ko-KR')}
+                      </p>
+                    </div>
+
+                    {workflow.file_type === 'application/x-webreq' &&
+                      (workflow.source_url || workflow.crawl_instruction) && (
+                        <div className="space-y-3">
+                          {workflow.source_url && (
+                            <div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
+                                {t('workflow.sourceUrl', 'Source URL')}
+                              </p>
+                              <a
+                                href={workflow.source_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 hover:underline break-all"
+                              >
+                                <Globe className="h-3.5 w-3.5 flex-shrink-0" />
+                                {workflow.source_url}
+                              </a>
+                            </div>
+                          )}
+                          {workflow.crawl_instruction && (
+                            <div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
+                                {t(
+                                  'workflow.crawlInstruction',
+                                  'Crawl Instruction',
+                                )}
+                              </p>
+                              <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap">
+                                {workflow.crawl_instruction}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                    {workflow.file_type !== 'application/x-webreq' &&
+                      (workflow.use_bda ||
+                        workflow.use_ocr ||
+                        workflow.use_transcribe ||
+                        workflow.document_prompt) && (
+                        <div className="space-y-3">
+                          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                            {t(
+                              'workflow.processingOptions',
+                              'Processing Options',
+                            )}
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {workflow.use_bda && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                                BDA
+                              </span>
+                            )}
+                            {workflow.use_ocr && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                                OCR
+                                {workflow.ocr_model && (
+                                  <span className="opacity-70">
+                                    ({workflow.ocr_model})
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                            {workflow.use_transcribe &&
+                              (() => {
+                                const opts = workflow.transcribe_options as
+                                  | Record<string, string>
+                                  | undefined;
+                                const mode = opts?.language_mode;
+                                const modeLabel = mode
+                                  ? t(
+                                      `transcribe.summary${mode.charAt(0).toUpperCase()}${mode.slice(1)}`,
+                                      mode,
+                                    )
+                                  : null;
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                                    Transcribe
+                                    {modeLabel && (
+                                      <span className="opacity-70">
+                                        ({modeLabel})
+                                      </span>
+                                    )}
+                                  </span>
+                                );
+                              })()}
+                          </div>
+                          {workflow.document_prompt && (
+                            <div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
+                                {t(
+                                  'workflow.documentPrompt',
+                                  'Document Prompt',
+                                )}
+                              </p>
+                              <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap">
+                                {workflow.document_prompt}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                  </div>
+
+                  <hr className="border-black/[0.08] dark:border-white/[0.08]" />
+
+                  {/* Analysis Summary */}
+                  {workflow.total_segments > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-4">
+                        {t('workflow.segmentAiAnalysis', 'Segment AI Analysis')}
+                      </h3>
+                      <p className="text-xs text-slate-400 mb-3">
+                        {t('workflow.clickToView')}
+                      </p>
+                      {segmentLoading && !currentSegment ? (
+                        <div className="flex gap-2">
+                          {['Web', 'BDA', 'OCR', 'Parser', 'STT', 'AI'].map(
+                            (label) => (
+                              <div
+                                key={label}
+                                className="flex-1 bg-white/30 dark:bg-white/[0.04] border border-black/[0.08] dark:border-white/[0.08] rounded-lg p-3 text-center animate-pulse"
+                              >
+                                <div className="h-3 w-8 bg-slate-200 dark:bg-white/10 rounded mx-auto mb-2" />
+                                <div className="h-6 w-6 bg-slate-200 dark:bg-white/10 rounded mx-auto" />
+                              </div>
+                            ),
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex gap-2">
+                          {[
+                            {
+                              type: 'web',
+                              label: 'Web',
+                              content: currentSegment?.webcrawler_content,
+                            },
+                            {
+                              type: 'bda',
+                              label: 'BDA',
+                              content: currentSegment?.bda_indexer,
+                            },
+                            {
+                              type: 'ocr',
+                              label: 'OCR',
+                              hasBlocks:
+                                !!currentSegment?.paddleocr_blocks?.blocks
+                                  ?.length,
+                              content: currentSegment?.paddleocr_blocks?.blocks
+                                ?.length
+                                ? 'blocks'
+                                : '',
+                            },
+                            {
+                              type: 'bda',
+                              label: 'Parser',
+                              content: currentSegment?.format_parser,
+                            },
+                            {
+                              type: 'stt',
+                              label: 'STT',
+                              content:
+                                (currentSegment?.transcribe_segments?.length ??
+                                  0) > 0
+                                  ? 'stt'
+                                  : '',
+                              count:
+                                currentSegment?.transcribe_segments?.length ??
+                                0,
+                            },
+                            {
+                              type: 'ai',
+                              label: 'AI',
+                              content:
+                                (currentSegment?.ai_analysis?.length ?? 0) > 0
+                                  ? 'ai'
+                                  : '',
+                              count: currentSegment?.ai_analysis?.length ?? 0,
+                            },
+                          ]
+                            .filter(({ content }) => !!content)
+                            .map(
+                              ({ type, label, content, hasBlocks, count }) => (
+                                <button
+                                  key={label}
+                                  onClick={() => {
+                                    if (type === 'ai') {
+                                      const qaItems =
+                                        currentSegment?.ai_analysis?.map(
+                                          (a) => ({
+                                            question: a.analysis_query,
+                                            answer: a.content,
+                                          }),
+                                        ) || [];
+                                      setAnalysisPopup({
+                                        type: 'ai',
+                                        content: '',
+                                        title: `AI Analysis - Segment ${currentSegmentIndex + 1}`,
+                                        qaItems,
+                                      });
+                                    } else if (type === 'ocr') {
+                                      setAnalysisPopup({
+                                        type: 'ocr',
+                                        content: hasBlocks
+                                          ? ''
+                                          : (content as string),
+                                        title: `OCR Content - Segment ${currentSegmentIndex + 1}`,
+                                        qaItems: [],
+                                      });
+                                    } else if (type === 'stt') {
+                                      setAnalysisPopup({
+                                        type: 'stt',
+                                        content: '',
+                                        title: `Transcribe - Segment ${currentSegmentIndex + 1}`,
+                                        qaItems: [],
+                                      });
+                                    } else if (type === 'web') {
+                                      setAnalysisPopup({
+                                        type: 'web',
+                                        content:
+                                          currentSegment?.webcrawler_content ||
+                                          '',
+                                        title: `Web Crawler - Segment ${currentSegmentIndex + 1}`,
+                                        qaItems: [],
+                                      });
+                                    } else {
+                                      setAnalysisPopup({
+                                        type: type as 'bda',
+                                        content: content as string,
+                                        title: `${label} Content - Segment ${currentSegmentIndex + 1}`,
+                                        qaItems: [],
+                                      });
+                                    }
+                                  }}
+                                  className="flex-1 bg-white/30 dark:bg-white/[0.04] border border-black/[0.08] dark:border-white/[0.08] rounded-lg p-3 text-center hover:bg-white/50 dark:hover:bg-white/[0.08] hover:border-black/[0.12] dark:hover:border-white/20 transition-colors"
+                                >
+                                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                                    {label}
+                                  </p>
+                                  <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+                                    {type === 'ai' || type === 'stt'
+                                      ? count
+                                      : 1}
+                                  </p>
+                                </button>
+                              ),
+                            )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Right Panel - Image Viewer / Graph */}
+        <div className="flex-1 flex flex-col bg-transparent dark:bg-[#0d1117]/30 min-w-0">
+          {/* View Mode Tabs + Navigation */}
+          <div className="flex items-center justify-between min-h-[68px] p-4 pr-16 border-b border-black/[0.08] dark:border-[#2a2f45] bg-transparent">
+            <div className="flex items-center gap-2">
+              {viewMode === 'document' && (
+                <>
                   <button
-                    onClick={() =>
-                      setAnalysisPopup({
-                        type: null,
-                        content: '',
-                        title: '',
-                        qaItems: [],
-                      })
-                    }
-                    className="p-2 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg transition-colors"
-                    title={t('workflow.backToDetails')}
+                    onClick={() => {
+                      setImageLoading(true);
+                      setCurrentSegmentIndex((prev) => Math.max(0, prev - 1));
+                    }}
+                    disabled={currentSegmentIndex === 0}
+                    className="p-2 hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     <svg
                       className="h-4 w-4 text-slate-600 dark:text-slate-400"
@@ -595,781 +1751,65 @@ export default function WorkflowDetailModal({
                       />
                     </svg>
                   </button>
-                  <div className="flex gap-1 flex-1">
-                    {['Web', 'BDA', 'OCR', 'Parser', 'STT', 'AI']
-                      .filter((type) => {
-                        if (type === 'Web')
-                          return !!currentSegment?.webcrawler_content;
-                        if (type === 'BDA')
-                          return !!currentSegment?.bda_indexer;
-                        if (type === 'OCR')
-                          return !!currentSegment?.paddleocr_blocks?.blocks
-                            ?.length;
-                        if (type === 'Parser')
-                          return !!currentSegment?.format_parser;
-                        if (type === 'STT')
-                          return (
-                            (currentSegment?.transcribe_segments?.length ?? 0) >
-                            0
-                          );
-                        if (type === 'AI')
-                          return (currentSegment?.ai_analysis?.length ?? 0) > 0;
-                        return false;
-                      })
-                      .map((type) => (
-                        <button
-                          key={type}
-                          onClick={() => {
-                            if (type === 'AI') {
-                              const qaItems =
-                                currentSegment?.ai_analysis?.map((a) => ({
-                                  question: a.analysis_query,
-                                  answer: a.content,
-                                })) || [];
-                              setAnalysisPopup({
-                                type: 'ai',
-                                content: '',
-                                title: `AI Analysis - Segment ${currentSegmentIndex + 1}`,
-                                qaItems,
-                              });
-                            } else if (type === 'OCR') {
-                              setAnalysisPopup({
-                                type: 'ocr',
-                                content: '',
-                                title: `OCR Content - Segment ${currentSegmentIndex + 1}`,
-                                qaItems: [],
-                              });
-                            } else if (type === 'STT') {
-                              setAnalysisPopup({
-                                type: 'stt',
-                                content: '',
-                                title: `Transcribe - Segment ${currentSegmentIndex + 1}`,
-                                qaItems: [],
-                              });
-                            } else if (type === 'Web') {
-                              setAnalysisPopup({
-                                type: 'web',
-                                content:
-                                  currentSegment?.webcrawler_content || '',
-                                title: `Web Crawler - Segment ${currentSegmentIndex + 1}`,
-                                qaItems: [],
-                              });
-                            } else {
-                              const contentMap: Record<string, string> = {
-                                BDA: currentSegment?.bda_indexer || '',
-                                Parser: currentSegment?.format_parser || '',
-                              };
-                              setAnalysisPopup({
-                                type: 'bda',
-                                content: contentMap[type],
-                                title: `${type} Content - Segment ${currentSegmentIndex + 1}`,
-                                qaItems: [],
-                              });
-                            }
-                          }}
-                          className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                            (type === 'AI' && analysisPopup.type === 'ai') ||
-                            (type === 'OCR' && analysisPopup.type === 'ocr') ||
-                            (type === 'STT' && analysisPopup.type === 'stt') ||
-                            (type === 'Web' && analysisPopup.type === 'web') ||
-                            (type !== 'AI' &&
-                              type !== 'OCR' &&
-                              type !== 'STT' &&
-                              type !== 'Web' &&
-                              analysisPopup.title.includes(type))
-                              ? 'bg-blue-500 text-white'
-                              : 'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/20'
-                          }`}
-                        >
-                          {type}
-                        </button>
-                      ))}
-                  </div>
-                </div>
 
-                {/* Title */}
-                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-4">
-                  {analysisPopup.title}
-                </h3>
+                  <select
+                    value={currentSegmentIndex}
+                    onChange={(e) => {
+                      setImageLoading(true);
+                      setCurrentSegmentIndex(Number(e.target.value));
+                    }}
+                    className="bg-transparent dark:bg-white/[0.06] border border-black/10 dark:border-white/[0.12] text-slate-800 dark:text-slate-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {Array.from(
+                      { length: workflow.total_segments },
+                      (_, idx) => (
+                        <option key={idx} value={idx}>
+                          {`${t('workflow.segment')} ${idx + 1}`}
+                        </option>
+                      ),
+                    )}
+                  </select>
 
-                {/* Content */}
-                <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
-                  {analysisPopup.type === 'ocr' &&
-                  currentSegment?.paddleocr_blocks?.blocks?.length ? (
-                    <OcrDocumentView
-                      blocks={currentSegment?.paddleocr_blocks}
-                      imageUrl={currentSegment?.image_url}
-                    />
-                  ) : analysisPopup.type === 'ai' && analysisPopup.qaItems ? (
-                    analysisPopup.qaItems.length === 0 ? (
-                      <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
-                        <svg
-                          className="h-12 w-12 mb-3"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={1.5}
-                            d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                          />
-                        </svg>
-                        <p className="text-sm font-medium">
-                          {t('workflow.noAiAnalysis')}
-                        </p>
-                      </div>
-                    ) : (
-                      <>
-                        {/* Question Navigator */}
-                        <div className="flex-shrink-0 flex flex-wrap gap-2 mb-4 pb-3 border-b border-slate-200 dark:border-white/[0.08]">
-                          {analysisPopup.qaItems.map((_, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => {
-                                document
-                                  .getElementById(`qa-item-${idx}`)
-                                  ?.scrollIntoView({ behavior: 'smooth' });
-                              }}
-                              className="w-8 h-8 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center transition-colors"
-                            >
-                              Q{idx + 1}
-                            </button>
-                          ))}
-                          {onAddQa && (
-                            <button
-                              onClick={() =>
-                                setAddQaTarget({
-                                  question: '',
-                                  userInstructions: '',
-                                })
-                              }
-                              disabled={addingQa || regeneratingIndex !== null}
-                              className="w-8 h-8 border-2 border-dashed border-slate-300 dark:border-white/20 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-slate-400 hover:text-blue-500 text-xs font-bold rounded-full flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                              title={t('workflow.addQa')}
-                            >
-                              {addingQa ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Plus className="h-3.5 w-3.5" />
-                              )}
-                            </button>
-                          )}
-                        </div>
+                  <span className="text-sm text-slate-500">
+                    {currentSegmentIndex + 1}/{workflow.total_segments}
+                  </span>
 
-                        {/* Q&A Cards */}
-                        <div className="flex-1 overflow-y-auto space-y-4">
-                          {analysisPopup.qaItems.map((item, idx) => (
-                            <div
-                              key={idx}
-                              id={`qa-item-${idx}`}
-                              className="bg-white/30 dark:bg-white/[0.04] rounded-lg border border-black/[0.08] dark:border-white/[0.08] overflow-hidden scroll-mt-2"
-                            >
-                              {/* Question */}
-                              <div className="bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800/30 px-4 py-3">
-                                <div className="flex items-start gap-2">
-                                  <span className="flex-shrink-0 w-6 h-6 bg-blue-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
-                                    Q{idx + 1}
-                                  </span>
-                                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200 flex-1">
-                                    {item.question}
-                                  </p>
-                                  {onRegenerateQa && (
-                                    <button
-                                      onClick={() =>
-                                        setRegenerateTarget({
-                                          qaIndex: idx,
-                                          question: item.question,
-                                          userInstructions: '',
-                                        })
-                                      }
-                                      disabled={
-                                        regeneratingIndex !== null ||
-                                        deletingIndex !== null
-                                      }
-                                      className="flex-shrink-0 p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors disabled:opacity-30"
-                                      title={t('workflow.regenerateQa')}
-                                    >
-                                      {regeneratingIndex === idx ? (
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                      ) : (
-                                        <Sparkles className="h-3.5 w-3.5" />
-                                      )}
-                                    </button>
-                                  )}
-                                  {onDeleteQa && (
-                                    <button
-                                      onClick={() => setDeleteConfirmIndex(idx)}
-                                      disabled={
-                                        regeneratingIndex !== null ||
-                                        deletingIndex !== null
-                                      }
-                                      className="flex-shrink-0 p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors disabled:opacity-30"
-                                      title={t('workflow.deleteQa')}
-                                    >
-                                      {deletingIndex === idx ? (
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                      ) : (
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      )}
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                              {/* Answer */}
-                              <div className="px-4 py-3">
-                                {regeneratingIndex === idx ? (
-                                  <div className="flex items-center justify-center py-8 text-slate-400">
-                                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                                    <span className="text-sm">
-                                      {t('workflow.regeneratingQa')}
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <div className="prose prose-slate dark:prose-invert prose-sm max-w-none prose-p:my-1.5 prose-headings:mt-3 prose-headings:mb-1 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-hr:my-3 prose-hr:border-slate-300 dark:prose-hr:border-white/[0.12] prose-table:border-collapse prose-th:border prose-th:border-slate-300 dark:prose-th:border-white/[0.12] prose-th:bg-slate-100 dark:prose-th:bg-white/[0.06] prose-th:p-2 prose-td:border prose-td:border-slate-300 dark:prose-td:border-white/[0.12] prose-td:p-2">
-                                    <Markdown
-                                      remarkPlugins={[remarkGfm]}
-                                      components={markdownComponents}
-                                      urlTransform={(url) => url}
-                                    >
-                                      {item.answer}
-                                    </Markdown>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </>
-                    )
-                  ) : analysisPopup.type === 'stt' &&
-                    currentSegment?.transcribe_segments?.length ? (
-                    <div className="flex-1 overflow-y-auto space-y-2">
-                      {currentSegment.transcribe_segments.map((seg, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => seekVideo(seg.start_time)}
-                          className="w-full text-left bg-white/30 dark:bg-white/[0.04] rounded-lg border border-black/[0.08] dark:border-white/[0.08] p-3 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:border-purple-300 dark:hover:border-purple-800/40 transition-colors cursor-pointer"
-                        >
-                          <div className="inline-flex items-center gap-1.5 px-2 py-1 mb-1.5 bg-purple-50 dark:bg-purple-900/30 rounded">
-                            <span className="text-xs font-mono text-purple-600 dark:text-purple-400">
-                              {seg.start_time.toFixed(1)}s
-                            </span>
-                            <span className="text-xs text-purple-300 dark:text-purple-500">
-                              ~
-                            </span>
-                            <span className="text-xs font-mono text-purple-400 dark:text-purple-500">
-                              {seg.end_time.toFixed(1)}s
-                            </span>
-                          </div>
-                          <p className="text-sm text-slate-800 dark:text-slate-200">
-                            {seg.transcript}
-                          </p>
-                        </button>
-                      ))}
-                    </div>
-                  ) : analysisPopup.type === 'web' && analysisPopup.content ? (
-                    <div className="flex-1 overflow-y-auto">
-                      {(currentSegment?.source_url ||
-                        currentSegment?.page_title) && (
-                        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/30 rounded-lg">
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate flex-1">
-                              {currentSegment?.page_title ||
-                                currentSegment?.source_url}
-                            </p>
-                            {currentSegment?.source_url && (
-                              <a
-                                href={currentSegment.source_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex-shrink-0 p-1 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
-                                title={currentSegment.source_url}
-                              >
-                                <Link className="h-4 w-4" />
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                      <div className="prose prose-slate dark:prose-invert prose-sm max-w-none prose-p:my-1.5 prose-headings:mt-3 prose-headings:mb-1 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-hr:my-3 prose-hr:border-slate-300 dark:prose-hr:border-white/[0.12] prose-table:border-collapse prose-th:border prose-th:border-slate-300 dark:prose-th:border-white/[0.12] prose-th:bg-slate-100 dark:prose-th:bg-white/[0.06] prose-th:p-2 prose-td:border prose-td:border-slate-300 dark:prose-td:border-white/[0.12] prose-td:p-2">
-                        <Markdown
-                          remarkPlugins={[remarkGfm]}
-                          components={markdownComponents}
-                          urlTransform={(url) => url}
-                        >
-                          {analysisPopup.content}
-                        </Markdown>
-                      </div>
-                    </div>
-                  ) : isSpreadsheetFileType(workflow.file_type) &&
-                    analysisPopup.title.includes('Parser') ? (
-                    <div className="flex-1 overflow-auto">
-                      <div className="overflow-x-auto">
-                        <div className="prose prose-slate dark:prose-invert prose-sm max-w-none prose-table:border-collapse prose-table:w-max prose-th:border prose-th:border-slate-300 dark:prose-th:border-white/[0.12] prose-th:bg-slate-100 dark:prose-th:bg-white/[0.06] prose-th:p-2 prose-th:whitespace-nowrap prose-td:border prose-td:border-slate-300 dark:prose-td:border-white/[0.12] prose-td:p-2 prose-td:whitespace-nowrap">
-                          <Markdown
-                            remarkPlugins={[remarkGfm]}
-                            components={markdownComponents}
-                          >
-                            {sanitizeMarkdownTable(analysisPopup.content)}
-                          </Markdown>
-                        </div>
-                      </div>
-                    </div>
-                  ) : !analysisPopup.content ? (
-                    isProcessing ? (
-                      <DocumentScanner
-                        fileType={workflow.file_type}
-                        label={t('workflow.processingInProgress')}
-                      />
-                    ) : (
-                      <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
-                        <svg
-                          className="h-12 w-12 mb-3"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={1.5}
-                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                          />
-                        </svg>
-                        <p className="text-sm font-medium">
-                          {t('workflow.noContent')}
-                        </p>
-                      </div>
-                    )
-                  ) : (
-                    <div className="prose prose-slate dark:prose-invert prose-sm max-w-none prose-p:my-1.5 prose-headings:mt-3 prose-headings:mb-1 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-hr:my-3 prose-hr:border-slate-300 dark:prose-hr:border-white/[0.12] prose-table:border-collapse prose-th:border prose-th:border-slate-300 dark:prose-th:border-white/[0.12] prose-th:bg-slate-100 dark:prose-th:bg-white/[0.06] prose-th:p-2 prose-td:border prose-td:border-slate-300 dark:prose-td:border-white/[0.12] prose-td:p-2">
-                      <Markdown
-                        remarkPlugins={[remarkGfm]}
-                        components={markdownComponents}
-                        urlTransform={(url) => url}
-                      >
-                        {analysisPopup.content}
-                      </Markdown>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {/* Basic Information */}
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {t('workflow.fileName')}
-                      </p>
-                      {canReanalyze && (
-                        <button
-                          onClick={() => setShowReanalyzeModal(true)}
-                          disabled={reanalyzing}
-                          className="flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {reanalyzing ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <RefreshCw className="h-3 w-3" />
-                          )}
-                          {t('workflow.reanalyze')}
-                        </button>
-                      )}
-                    </div>
-                    <p
-                      className="text-sm text-slate-800 dark:text-slate-200 truncate"
-                      title={workflow.file_name}
+                  <span className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs rounded-full border border-green-200 dark:border-green-800/40">
+                    {workflow.status}
+                  </span>
+
+                  <button
+                    onClick={() => {
+                      setImageLoading(true);
+                      setCurrentSegmentIndex((prev) =>
+                        Math.min(workflow.total_segments - 1, prev + 1),
+                      );
+                    }}
+                    disabled={
+                      currentSegmentIndex >= workflow.total_segments - 1
+                    }
+                    className="p-2 hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    <svg
+                      className="h-4 w-4 text-slate-600 dark:text-slate-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
                     >
-                      {workflow.file_name}
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
-                        {t('workflow.fileType')}
-                      </p>
-                      <span className="inline-block px-2 py-1 bg-slate-200 dark:bg-white/10 text-slate-700 dark:text-slate-300 text-xs font-medium rounded">
-                        {getFileTypeLabel(workflow.file_type)}
-                      </span>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
-                        {t('workflow.totalSegments')}
-                      </p>
-                      <p className="text-sm text-slate-800 dark:text-slate-200">
-                        {workflow.total_segments}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
-                      {t('workflow.analysisLanguage')}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <span className="inline-block px-2 py-1 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs rounded font-medium">
-                        {LANGUAGES.find(
-                          (l) => l.code === (workflow.language || 'en'),
-                        )?.flag || 'EN'}
-                      </span>
-                      <span className="text-sm text-slate-800 dark:text-slate-200">
-                        {LANGUAGES.find(
-                          (l) => l.code === (workflow.language || 'en'),
-                        )?.name || 'English'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
-                      {t('workflow.status')}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                      <span className="text-sm text-slate-800 dark:text-slate-200">
-                        {workflow.status}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
-                      {t('workflow.created')}
-                    </p>
-                    <p className="text-sm text-slate-800 dark:text-slate-200">
-                      {new Date(workflow.created_at).toLocaleString('ko-KR')}
-                    </p>
-                  </div>
-
-                  {workflow.file_type === 'application/x-webreq' &&
-                    (workflow.source_url || workflow.crawl_instruction) && (
-                      <div className="space-y-3">
-                        {workflow.source_url && (
-                          <div>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
-                              {t('workflow.sourceUrl', 'Source URL')}
-                            </p>
-                            <a
-                              href={workflow.source_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 hover:underline break-all"
-                            >
-                              <Globe className="h-3.5 w-3.5 flex-shrink-0" />
-                              {workflow.source_url}
-                            </a>
-                          </div>
-                        )}
-                        {workflow.crawl_instruction && (
-                          <div>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
-                              {t(
-                                'workflow.crawlInstruction',
-                                'Crawl Instruction',
-                              )}
-                            </p>
-                            <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap">
-                              {workflow.crawl_instruction}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                  {workflow.file_type !== 'application/x-webreq' &&
-                    (workflow.use_bda ||
-                      workflow.use_ocr ||
-                      workflow.use_transcribe ||
-                      workflow.document_prompt) && (
-                      <div className="space-y-3">
-                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                          {t(
-                            'workflow.processingOptions',
-                            'Processing Options',
-                          )}
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {workflow.use_bda && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
-                              BDA
-                            </span>
-                          )}
-                          {workflow.use_ocr && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                              OCR
-                              {workflow.ocr_model && (
-                                <span className="opacity-70">
-                                  ({workflow.ocr_model})
-                                </span>
-                              )}
-                            </span>
-                          )}
-                          {workflow.use_transcribe &&
-                            (() => {
-                              const opts = workflow.transcribe_options as
-                                | Record<string, string>
-                                | undefined;
-                              const mode = opts?.language_mode;
-                              const modeLabel = mode
-                                ? t(
-                                    `transcribe.summary${mode.charAt(0).toUpperCase()}${mode.slice(1)}`,
-                                    mode,
-                                  )
-                                : null;
-                              return (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-                                  Transcribe
-                                  {modeLabel && (
-                                    <span className="opacity-70">
-                                      ({modeLabel})
-                                    </span>
-                                  )}
-                                </span>
-                              );
-                            })()}
-                        </div>
-                        {workflow.document_prompt && (
-                          <div>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
-                              {t('workflow.documentPrompt', 'Document Prompt')}
-                            </p>
-                            <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap">
-                              {workflow.document_prompt}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                </div>
-
-                <hr className="border-black/[0.08] dark:border-white/[0.08]" />
-
-                {/* Analysis Summary */}
-                {workflow.total_segments > 0 && (
-                  <div>
-                    <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-4">
-                      {t('workflow.segmentAiAnalysis', 'Segment AI Analysis')}
-                    </h3>
-                    <p className="text-xs text-slate-400 mb-3">
-                      {t('workflow.clickToView')}
-                    </p>
-                    {segmentLoading && !currentSegment ? (
-                      <div className="flex gap-2">
-                        {['Web', 'BDA', 'OCR', 'Parser', 'STT', 'AI'].map(
-                          (label) => (
-                            <div
-                              key={label}
-                              className="flex-1 bg-white/30 dark:bg-white/[0.04] border border-black/[0.08] dark:border-white/[0.08] rounded-lg p-3 text-center animate-pulse"
-                            >
-                              <div className="h-3 w-8 bg-slate-200 dark:bg-white/10 rounded mx-auto mb-2" />
-                              <div className="h-6 w-6 bg-slate-200 dark:bg-white/10 rounded mx-auto" />
-                            </div>
-                          ),
-                        )}
-                      </div>
-                    ) : (
-                      <div className="flex gap-2">
-                        {[
-                          {
-                            type: 'web',
-                            label: 'Web',
-                            content: currentSegment?.webcrawler_content,
-                          },
-                          {
-                            type: 'bda',
-                            label: 'BDA',
-                            content: currentSegment?.bda_indexer,
-                          },
-                          {
-                            type: 'ocr',
-                            label: 'OCR',
-                            hasBlocks:
-                              !!currentSegment?.paddleocr_blocks?.blocks
-                                ?.length,
-                            content: currentSegment?.paddleocr_blocks?.blocks
-                              ?.length
-                              ? 'blocks'
-                              : '',
-                          },
-                          {
-                            type: 'bda',
-                            label: 'Parser',
-                            content: currentSegment?.format_parser,
-                          },
-                          {
-                            type: 'stt',
-                            label: 'STT',
-                            content:
-                              (currentSegment?.transcribe_segments?.length ??
-                                0) > 0
-                                ? 'stt'
-                                : '',
-                            count:
-                              currentSegment?.transcribe_segments?.length ?? 0,
-                          },
-                          {
-                            type: 'ai',
-                            label: 'AI',
-                            content:
-                              (currentSegment?.ai_analysis?.length ?? 0) > 0
-                                ? 'ai'
-                                : '',
-                            count: currentSegment?.ai_analysis?.length ?? 0,
-                          },
-                        ]
-                          .filter(({ content }) => !!content)
-                          .map(({ type, label, content, hasBlocks, count }) => (
-                            <button
-                              key={label}
-                              onClick={() => {
-                                if (type === 'ai') {
-                                  const qaItems =
-                                    currentSegment?.ai_analysis?.map((a) => ({
-                                      question: a.analysis_query,
-                                      answer: a.content,
-                                    })) || [];
-                                  setAnalysisPopup({
-                                    type: 'ai',
-                                    content: '',
-                                    title: `AI Analysis - Segment ${currentSegmentIndex + 1}`,
-                                    qaItems,
-                                  });
-                                } else if (type === 'ocr') {
-                                  setAnalysisPopup({
-                                    type: 'ocr',
-                                    content: hasBlocks
-                                      ? ''
-                                      : (content as string),
-                                    title: `OCR Content - Segment ${currentSegmentIndex + 1}`,
-                                    qaItems: [],
-                                  });
-                                } else if (type === 'stt') {
-                                  setAnalysisPopup({
-                                    type: 'stt',
-                                    content: '',
-                                    title: `Transcribe - Segment ${currentSegmentIndex + 1}`,
-                                    qaItems: [],
-                                  });
-                                } else if (type === 'web') {
-                                  setAnalysisPopup({
-                                    type: 'web',
-                                    content:
-                                      currentSegment?.webcrawler_content || '',
-                                    title: `Web Crawler - Segment ${currentSegmentIndex + 1}`,
-                                    qaItems: [],
-                                  });
-                                } else {
-                                  setAnalysisPopup({
-                                    type: type as 'bda',
-                                    content: content as string,
-                                    title: `${label} Content - Segment ${currentSegmentIndex + 1}`,
-                                    qaItems: [],
-                                  });
-                                }
-                              }}
-                              className="flex-1 bg-white/30 dark:bg-white/[0.04] border border-black/[0.08] dark:border-white/[0.08] rounded-lg p-3 text-center hover:bg-white/50 dark:hover:bg-white/[0.08] hover:border-black/[0.12] dark:hover:border-white/20 transition-colors"
-                            >
-                              <p className="text-xs text-slate-500 dark:text-slate-400">
-                                {label}
-                              </p>
-                              <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-                                {type === 'ai' || type === 'stt' ? count : 1}
-                              </p>
-                            </button>
-                          ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Right Panel - Image Viewer */}
-        <div className="flex-1 flex flex-col bg-transparent dark:bg-[#0d1117]/30 min-w-0">
-          {/* Segment Navigation */}
-          <div className="flex items-center justify-between p-4 pr-16 border-b border-black/[0.08] dark:border-[#2a2f45] bg-transparent">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  setImageLoading(true);
-                  setCurrentSegmentIndex((prev) => Math.max(0, prev - 1));
-                }}
-                disabled={currentSegmentIndex === 0}
-                className="p-2 hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <svg
-                  className="h-4 w-4 text-slate-600 dark:text-slate-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 19l-7-7 7-7"
-                  />
-                </svg>
-              </button>
-
-              <select
-                value={currentSegmentIndex}
-                onChange={(e) => {
-                  setImageLoading(true);
-                  setCurrentSegmentIndex(Number(e.target.value));
-                }}
-                className="bg-transparent dark:bg-white/[0.06] border border-black/10 dark:border-white/[0.12] text-slate-800 dark:text-slate-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {Array.from({ length: workflow.total_segments }, (_, idx) => (
-                  <option key={idx} value={idx}>
-                    {`${t('workflow.segment')} ${idx + 1}`}
-                  </option>
-                ))}
-              </select>
-
-              <span className="text-sm text-slate-500">
-                {currentSegmentIndex + 1}/{workflow.total_segments}
-              </span>
-
-              <span className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs rounded-full border border-green-200 dark:border-green-800/40">
-                {workflow.status}
-              </span>
-
-              <button
-                onClick={() => {
-                  setImageLoading(true);
-                  setCurrentSegmentIndex((prev) =>
-                    Math.min(workflow.total_segments - 1, prev + 1),
-                  );
-                }}
-                disabled={currentSegmentIndex >= workflow.total_segments - 1}
-                className="p-2 hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <svg
-                  className="h-4 w-4 text-slate-600 dark:text-slate-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-              </button>
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 5l7 7-7 7"
+                      />
+                    </svg>
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Zoom Controls - image segments only */}
-            {currentSegment?.image_url && (
+            {viewMode === 'document' && currentSegment?.image_url && (
               <div className="flex items-center gap-1">
                 <button
                   onClick={() =>
@@ -1403,276 +1843,358 @@ export default function WorkflowDetailModal({
             )}
           </div>
 
-          {/* Media Display */}
-          <div className="flex-1 flex items-center justify-center p-6 overflow-auto relative min-w-0">
-            {workflow.total_segments === 0 ? (
-              isProcessing ? (
-                <DocumentScanner
-                  fileType={workflow.file_type}
-                  label={t('workflow.processingInProgress')}
+          {/* Media Display / Graph View */}
+          {viewMode === 'graph' ? (
+            <div className="flex-1 min-w-0">
+              {graphLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+                </div>
+              ) : graphData && graphData.nodes.length > 0 ? (
+                <GraphView
+                  data={graphData}
+                  hiddenTypes={graphHiddenTypes}
+                  hiddenLinkTypes={graphHiddenLinkTypes}
+                  searchFilter={graphSearchFilter}
+                  depth={graphDepth}
+                  focusPage={graphFocusPage}
+                  showEdgeLabels={graphShowEdgeLabels}
+                  linkDirection={
+                    graphShowOutgoing && graphShowIncoming
+                      ? 'both'
+                      : graphShowOutgoing
+                        ? 'outgoing'
+                        : graphShowIncoming
+                          ? 'incoming'
+                          : 'both'
+                  }
+                  onNodeClick={(nodeId, nodeType) => {
+                    if (nodeType === 'segment' || nodeType === 'analysis') {
+                      const node = graphData.nodes.find((n) => n.id === nodeId);
+                      if (node?.properties?.segment_index != null) {
+                        const segIdx = node.properties.segment_index as number;
+                        setCurrentSegmentIndex(segIdx);
+                        if (nodeType === 'analysis') {
+                          const qaIdx =
+                            (node.properties?.qa_index as number) ?? 0;
+                          const cached = segmentCache.get(segIdx);
+                          const qaItems =
+                            cached?.ai_analysis?.map((a) => ({
+                              question: a.analysis_query,
+                              answer: a.content,
+                            })) || [];
+                          setAnalysisPopup({
+                            type: 'ai',
+                            content: '',
+                            title: `AI Analysis - Segment ${segIdx + 1}`,
+                            qaItems,
+                          });
+                          if (qaItems.length > 0) {
+                            // Segment cached: scroll after DOM renders
+                            setTimeout(() => {
+                              document
+                                .getElementById(`qa-item-${qaIdx}`)
+                                ?.scrollIntoView({
+                                  behavior: 'smooth',
+                                  block: 'start',
+                                });
+                            }, 300);
+                          } else {
+                            // Segment not cached: wait for load via ref
+                            pendingQaScrollRef.current = qaIdx;
+                          }
+                        }
+                        // Set viewMode last so other states are ready
+                        setViewMode('document');
+                      }
+                    }
+                  }}
                 />
               ) : (
-                <div className="text-slate-500">{t('workflow.noSegments')}</div>
-              )
-            ) : segmentLoading && !currentSegment ? (
-              <div className="flex flex-col items-center gap-3">
-                <svg
-                  className="h-8 w-8 text-slate-400 animate-spin"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
+                <div className="flex items-center justify-center h-full text-slate-500">
+                  {t('workflow.graph.noData')}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center p-6 overflow-auto relative min-w-0">
+              {workflow.total_segments === 0 ? (
+                isProcessing ? (
+                  <DocumentScanner
+                    fileType={workflow.file_type}
+                    label={t('workflow.processingInProgress')}
                   />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
-                <p className="text-sm text-slate-500">
-                  {t('workflow.loadingSegment', 'Loading segment...')}
-                </p>
-              </div>
-            ) : (
-              (() => {
-                const isVideoSegment =
-                  currentSegment?.segment_type === 'VIDEO' ||
-                  currentSegment?.segment_type === 'CHAPTER';
-                const isTextSegment = currentSegment?.segment_type === 'TEXT';
-                const isWebSegment = currentSegment?.segment_type === 'WEB';
-                const isTextFile = isTextFileType(workflow.file_type);
-                const isMarkdownFile = isMarkdownFileType(workflow.file_type);
-                const isSpreadsheet = isSpreadsheetFileType(workflow.file_type);
-
-                if (isVideoSegment && currentSegment?.video_url) {
-                  return (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <video
-                        ref={videoRef}
-                        key={currentSegment.video_url}
-                        controls
-                        className="max-w-full max-h-full rounded-lg shadow-lg"
-                        preload="metadata"
-                        src={currentSegment.video_url}
-                      >
-                        Your browser does not support video playback.
-                      </video>
-                    </div>
-                  );
-                }
-
-                // Excel document preview
-                if (isExcel && excelUrl) {
-                  return (
-                    <ExcelViewer
-                      url={excelUrl}
-                      sheetIndex={currentSegmentIndex}
-                      className="w-full h-full"
+                ) : (
+                  <div className="text-slate-500">
+                    {t('workflow.noSegments')}
+                  </div>
+                )
+              ) : segmentLoading && !currentSegment ? (
+                <div className="flex flex-col items-center gap-3">
+                  <svg
+                    className="h-8 w-8 text-slate-400 animate-spin"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
                     />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                  <p className="text-sm text-slate-500">
+                    {t('workflow.loadingSegment', 'Loading segment...')}
+                  </p>
+                </div>
+              ) : (
+                (() => {
+                  const isVideoSegment =
+                    currentSegment?.segment_type === 'VIDEO' ||
+                    currentSegment?.segment_type === 'CHAPTER';
+                  const isTextSegment = currentSegment?.segment_type === 'TEXT';
+                  const isWebSegment = currentSegment?.segment_type === 'WEB';
+                  const isTextFile = isTextFileType(workflow.file_type);
+                  const isMarkdownFile = isMarkdownFileType(workflow.file_type);
+                  const isSpreadsheet = isSpreadsheetFileType(
+                    workflow.file_type,
                   );
-                }
 
-                if (isExcel && excelUrlLoading) {
-                  return (
-                    <div className="flex flex-col items-center gap-3">
-                      <Loader2 className="h-8 w-8 text-slate-400 animate-spin" />
-                      <p className="text-sm text-slate-500">Loading Excel...</p>
-                    </div>
-                  );
-                }
-
-                // Text-based document preview (DOCX, Markdown, TXT, CSV)
-                if (
-                  isTextSegment ||
-                  (isTextFile && !currentSegment?.image_url)
-                ) {
-                  const textContent =
-                    currentSegment?.text_content ||
-                    currentSegment?.format_parser ||
-                    '';
-                  return (
-                    <div className="w-full h-full overflow-auto bg-white/30 dark:bg-white/[0.04] rounded-lg shadow-lg p-6">
-                      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-black/[0.08] dark:border-white/[0.08]">
-                        <FileText className="h-5 w-5 text-slate-500 dark:text-slate-400" />
-                        <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                          {t('workflow.textPreview', 'Text Preview')} -{' '}
-                          {t('workflow.chunk', 'Chunk')}{' '}
-                          {currentSegmentIndex + 1}
-                        </span>
+                  if (isVideoSegment && currentSegment?.video_url) {
+                    return (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <video
+                          ref={videoRef}
+                          key={currentSegment.video_url}
+                          controls
+                          className="max-w-full max-h-full rounded-lg shadow-lg"
+                          preload="metadata"
+                          src={currentSegment.video_url}
+                        >
+                          Your browser does not support video playback.
+                        </video>
                       </div>
-                      {textContent ? (
-                        isMarkdownFile || isSpreadsheet ? (
-                          <div className="overflow-x-auto">
-                            <div className="prose prose-slate dark:prose-invert prose-sm max-w-none prose-table:border-collapse prose-table:w-max prose-th:border prose-th:border-slate-300 dark:prose-th:border-white/[0.12] prose-th:bg-slate-100 dark:prose-th:bg-white/[0.06] prose-th:p-2 prose-th:whitespace-nowrap prose-td:border prose-td:border-slate-300 dark:prose-td:border-white/[0.12] prose-td:p-2 prose-td:whitespace-nowrap">
-                              <Markdown
-                                remarkPlugins={[remarkGfm]}
-                                components={markdownComponents}
-                              >
-                                {isSpreadsheet
-                                  ? sanitizeMarkdownTable(textContent)
-                                  : textContent}
-                              </Markdown>
+                    );
+                  }
+
+                  // Excel document preview
+                  if (isExcel && excelUrl) {
+                    return (
+                      <ExcelViewer
+                        url={excelUrl}
+                        sheetIndex={currentSegmentIndex}
+                        className="w-full h-full"
+                      />
+                    );
+                  }
+
+                  if (isExcel && excelUrlLoading) {
+                    return (
+                      <div className="flex flex-col items-center gap-3">
+                        <Loader2 className="h-8 w-8 text-slate-400 animate-spin" />
+                        <p className="text-sm text-slate-500">
+                          Loading Excel...
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  // Text-based document preview (DOCX, Markdown, TXT, CSV)
+                  if (
+                    isTextSegment ||
+                    (isTextFile && !currentSegment?.image_url)
+                  ) {
+                    const textContent =
+                      currentSegment?.text_content ||
+                      currentSegment?.format_parser ||
+                      '';
+                    return (
+                      <div className="w-full h-full overflow-auto bg-white/30 dark:bg-white/[0.04] rounded-lg shadow-lg p-6">
+                        <div className="flex items-center gap-2 mb-4 pb-3 border-b border-black/[0.08] dark:border-white/[0.08]">
+                          <FileText className="h-5 w-5 text-slate-500 dark:text-slate-400" />
+                          <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                            {t('workflow.textPreview', 'Text Preview')} -{' '}
+                            {t('workflow.chunk', 'Chunk')}{' '}
+                            {currentSegmentIndex + 1}
+                          </span>
+                        </div>
+                        {textContent ? (
+                          isMarkdownFile || isSpreadsheet ? (
+                            <div className="overflow-x-auto">
+                              <div className="prose prose-slate dark:prose-invert prose-sm max-w-none prose-table:border-collapse prose-table:w-max prose-th:border prose-th:border-slate-300 dark:prose-th:border-white/[0.12] prose-th:bg-slate-100 dark:prose-th:bg-white/[0.06] prose-th:p-2 prose-th:whitespace-nowrap prose-td:border prose-td:border-slate-300 dark:prose-td:border-white/[0.12] prose-td:p-2 prose-td:whitespace-nowrap">
+                                <Markdown
+                                  remarkPlugins={[remarkGfm]}
+                                  components={markdownComponents}
+                                >
+                                  {isSpreadsheet
+                                    ? sanitizeMarkdownTable(textContent)
+                                    : textContent}
+                                </Markdown>
+                              </div>
                             </div>
-                          </div>
+                          ) : (
+                            <pre className="whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300 font-mono leading-relaxed">
+                              {textContent}
+                            </pre>
+                          )
                         ) : (
-                          <pre className="whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300 font-mono leading-relaxed">
-                            {textContent}
-                          </pre>
-                        )
-                      ) : (
-                        <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                          <FileText className="h-12 w-12 mb-3" />
-                          <p className="text-sm">
-                            {t(
-                              'workflow.noTextContent',
-                              'No text content available',
-                            )}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
-
-                // Web segment preview
-                if (isWebSegment) {
-                  const webContent = currentSegment?.webcrawler_content || '';
-                  return (
-                    <div className="w-full h-full overflow-auto bg-white/30 dark:bg-white/[0.04] rounded-lg shadow-lg p-6">
-                      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-black/[0.08] dark:border-white/[0.08]">
-                        <Globe className="h-5 w-5 text-blue-500 dark:text-blue-400" />
-                        <span className="text-sm font-medium text-slate-600 dark:text-slate-300 truncate">
-                          {currentSegment?.page_title ||
-                            `${t('workflow.segment')} ${currentSegmentIndex + 1}`}
-                        </span>
-                        {currentSegment?.source_url && (
-                          <a
-                            href={currentSegment.source_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex-shrink-0 p-1 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
-                            title={currentSegment.source_url}
-                          >
-                            <Link className="h-4 w-4" />
-                          </a>
-                        )}
-                      </div>
-                      {webContent ? (
-                        <div className="prose prose-slate dark:prose-invert prose-sm max-w-none prose-p:my-1.5 prose-headings:mt-3 prose-headings:mb-1 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-hr:my-3 prose-hr:border-slate-300 dark:prose-hr:border-white/[0.12] prose-table:border-collapse prose-th:border prose-th:border-slate-300 dark:prose-th:border-white/[0.12] prose-th:bg-slate-100 dark:prose-th:bg-white/[0.06] prose-th:p-2 prose-td:border prose-td:border-slate-300 dark:prose-td:border-white/[0.12] prose-td:p-2">
-                          <Markdown
-                            remarkPlugins={[remarkGfm]}
-                            components={markdownComponents}
-                            urlTransform={(url) => url}
-                          >
-                            {webContent}
-                          </Markdown>
-                        </div>
-                      ) : isProcessing ? (
-                        <DocumentScanner
-                          fileType={workflow.file_type}
-                          label={t('workflow.processingInProgress')}
-                        />
-                      ) : (
-                        <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                          <Globe className="h-12 w-12 mb-3" />
-                          <p className="text-sm">
-                            {t(
-                              'workflow.noWebContent',
-                              'No web content available',
-                            )}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
-
-                if (currentSegment?.image_url) {
-                  return (
-                    <div
-                      ref={imageContainerRef}
-                      className="w-full h-full relative flex flex-col"
-                    >
-                      {imageLoading && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-slate-100 dark:bg-white/[0.04] z-20">
-                          <div className="flex flex-col items-center gap-3">
-                            <Loader2 className="h-8 w-8 text-slate-400 animate-spin" />
-                            <p className="text-sm text-slate-500">
-                              {t('workflow.loadingImage')}
+                          <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                            <FileText className="h-12 w-12 mb-3" />
+                            <p className="text-sm">
+                              {t(
+                                'workflow.noTextContent',
+                                'No text content available',
+                              )}
                             </p>
                           </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
+                    );
+                  }
 
-                      <div
-                        ref={imageScrollRef}
-                        className={`flex-1 overflow-auto ${imageZoom > 1 ? 'cursor-grab' : ''}`}
-                      >
-                        <div className="inline-flex min-w-full min-h-full items-center justify-center">
-                          <img
-                            src={currentSegment.image_url}
-                            alt={`Segment ${currentSegmentIndex + 1}`}
-                            className={`rounded-lg shadow-lg transition-opacity ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
-                            style={{
-                              width:
-                                imageNaturalWidth > 0
-                                  ? `${imageNaturalWidth * imageZoom}px`
-                                  : undefined,
-                              maxWidth: imageZoom <= 1 ? '100%' : 'none',
-                              maxHeight: imageZoom <= 1 ? '100%' : 'none',
-                              objectFit: 'contain',
-                            }}
-                            onLoad={(e) => {
-                              setImageNaturalWidth(e.currentTarget.clientWidth);
-                              setImageLoading(false);
-                            }}
+                  // Web segment preview
+                  if (isWebSegment) {
+                    const webContent = currentSegment?.webcrawler_content || '';
+                    return (
+                      <div className="w-full h-full overflow-auto bg-white/30 dark:bg-white/[0.04] rounded-lg shadow-lg p-6">
+                        <div className="flex items-center gap-2 mb-4 pb-3 border-b border-black/[0.08] dark:border-white/[0.08]">
+                          <Globe className="h-5 w-5 text-blue-500 dark:text-blue-400" />
+                          <span className="text-sm font-medium text-slate-600 dark:text-slate-300 truncate">
+                            {currentSegment?.page_title ||
+                              `${t('workflow.segment')} ${currentSegmentIndex + 1}`}
+                          </span>
+                          {currentSegment?.source_url && (
+                            <a
+                              href={currentSegment.source_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-shrink-0 p-1 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+                              title={currentSegment.source_url}
+                            >
+                              <Link className="h-4 w-4" />
+                            </a>
+                          )}
+                        </div>
+                        {webContent ? (
+                          <div className="prose prose-slate dark:prose-invert prose-sm max-w-none prose-p:my-1.5 prose-headings:mt-3 prose-headings:mb-1 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-hr:my-3 prose-hr:border-slate-300 dark:prose-hr:border-white/[0.12] prose-table:border-collapse prose-th:border prose-th:border-slate-300 dark:prose-th:border-white/[0.12] prose-th:bg-slate-100 dark:prose-th:bg-white/[0.06] prose-th:p-2 prose-td:border prose-td:border-slate-300 dark:prose-td:border-white/[0.12] prose-td:p-2">
+                            <Markdown
+                              remarkPlugins={[remarkGfm]}
+                              components={markdownComponents}
+                              urlTransform={(url) => url}
+                            >
+                              {webContent}
+                            </Markdown>
+                          </div>
+                        ) : isProcessing ? (
+                          <DocumentScanner
+                            fileType={workflow.file_type}
+                            label={t('workflow.processingInProgress')}
                           />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                            <Globe className="h-12 w-12 mb-3" />
+                            <p className="text-sm">
+                              {t(
+                                'workflow.noWebContent',
+                                'No web content available',
+                              )}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  if (currentSegment?.image_url) {
+                    return (
+                      <div
+                        ref={imageContainerRef}
+                        className="w-full h-full relative flex flex-col"
+                      >
+                        {imageLoading && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-slate-100 dark:bg-white/[0.04] z-20">
+                            <div className="flex flex-col items-center gap-3">
+                              <Loader2 className="h-8 w-8 text-slate-400 animate-spin" />
+                              <p className="text-sm text-slate-500">
+                                {t('workflow.loadingImage')}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        <div
+                          ref={imageScrollRef}
+                          className={`flex-1 overflow-auto ${imageZoom > 1 ? 'cursor-grab' : ''}`}
+                        >
+                          <div className="inline-flex min-w-full min-h-full items-center justify-center">
+                            <img
+                              src={currentSegment.image_url}
+                              alt={`Segment ${currentSegmentIndex + 1}`}
+                              className={`rounded-lg shadow-lg transition-opacity ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
+                              style={{
+                                width:
+                                  imageNaturalWidth > 0
+                                    ? `${imageNaturalWidth * imageZoom}px`
+                                    : undefined,
+                                maxWidth: imageZoom <= 1 ? '100%' : 'none',
+                                maxHeight: imageZoom <= 1 ? '100%' : 'none',
+                                objectFit: 'contain',
+                              }}
+                              onLoad={(e) => {
+                                setImageNaturalWidth(
+                                  e.currentTarget.clientWidth,
+                                );
+                                setImageLoading(false);
+                              }}
+                            />
+                          </div>
                         </div>
                       </div>
+                    );
+                  }
+
+                  if (isProcessing) {
+                    return (
+                      <DocumentScanner
+                        fileType={workflow.file_type}
+                        label={t('workflow.processingInProgress')}
+                      />
+                    );
+                  }
+
+                  return (
+                    <div className="flex flex-col items-center gap-4 text-slate-400">
+                      <svg
+                        className="h-16 w-16"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={1}
+                          d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                        />
+                      </svg>
+                      <p>
+                        {isVideoSegment
+                          ? t('workflow.noVideoAvailable')
+                          : t('workflow.noImageAvailable')}
+                      </p>
                     </div>
                   );
-                }
-
-                if (isProcessing) {
-                  return (
-                    <DocumentScanner
-                      fileType={workflow.file_type}
-                      label={t('workflow.processingInProgress')}
-                    />
-                  );
-                }
-
-                return (
-                  <div className="flex flex-col items-center gap-4 text-slate-400">
-                    <svg
-                      className="h-16 w-16"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={1}
-                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                      />
-                    </svg>
-                    <p>
-                      {isVideoSegment
-                        ? t('workflow.noVideoAvailable')
-                        : t('workflow.noImageAvailable')}
-                    </p>
-                  </div>
-                );
-              })()
-            )}
-          </div>
+                })()
+              )}
+            </div>
+          )}
         </div>
       </div>
 

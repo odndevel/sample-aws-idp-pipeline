@@ -115,6 +115,10 @@ export class Backend extends Construct {
       this,
       SSM_KEYS.LANCEDB_FUNCTION_ARN,
     );
+    const graphServiceFunctionArn = StringParameter.valueForStringParameter(
+      this,
+      SSM_KEYS.GRAPH_SERVICE_FUNCTION_ARN,
+    );
 
     this.service = new ApplicationLoadBalancedFargateService(this, 'Service', {
       cluster,
@@ -138,6 +142,7 @@ export class Backend extends Construct {
           STEP_FUNCTION_ARN: stepFunctionArn,
           QA_REGENERATOR_FUNCTION_ARN: qaRegeneratorFunctionArn,
           LANCEDB_FUNCTION_NAME: lancedbFunctionArn,
+          GRAPH_SERVICE_FUNCTION_NAME: graphServiceFunctionArn,
         },
       },
       runtimePlatform: {
@@ -199,7 +204,11 @@ export class Backend extends Construct {
     taskRole.addToPrincipalPolicy(
       new PolicyStatement({
         actions: ['lambda:InvokeFunction'],
-        resources: [qaRegeneratorFunctionArn, lancedbFunctionArn],
+        resources: [
+          qaRegeneratorFunctionArn,
+          lancedbFunctionArn,
+          graphServiceFunctionArn,
+        ],
       }),
     );
 

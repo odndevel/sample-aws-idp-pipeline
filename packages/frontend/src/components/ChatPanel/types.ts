@@ -32,6 +32,7 @@ export type StreamingBlock =
       type: 'tool_use';
       name: string;
       toolUseId?: string;
+      input?: Record<string, unknown>;
       status?: 'running' | 'success' | 'error';
     }
   | {
@@ -42,6 +43,7 @@ export type StreamingBlock =
       sources?: ToolResultSource[];
       toolName?: string;
       toolUseId?: string;
+      toolInput?: Record<string, unknown>;
     }
   | { type: 'stage_start'; stage: string }
   | { type: 'stage_complete'; stage: string; result: string }
@@ -94,6 +96,25 @@ export interface ToolRegistryEntry {
   renderAsWebSearch?: boolean;
   renderAsFetchPreview?: boolean;
   renderAsMarkdown?: boolean;
+  renderAsGraph?: boolean;
+}
+
+export interface GraphSearchResult {
+  answer?: string;
+  sources: Array<{
+    document_id: string;
+    segment_id: string;
+    qa_id?: string;
+    segment_index: number;
+    qa_index?: number;
+    match_type?: string;
+    source: string;
+  }>;
+  entities: Array<{
+    name: string;
+    type: string;
+    description?: string;
+  }>;
 }
 
 export interface WebSearchResult {

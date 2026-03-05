@@ -32,6 +32,7 @@ class ToolUseContent(BaseModel):
     type: str = "tool_use"
     tool_use_id: str
     name: str
+    input: dict | None = None
 
 
 class ToolResultContent(BaseModel):
@@ -140,6 +141,7 @@ def parse_content_items(content_items: list[ContentItemDict]) -> list[ContentIte
                 ToolUseContent(
                     tool_use_id=tool_use.get("toolUseId", ""),
                     name=tool_use.get("name", ""),
+                    input=tool_use.get("input"),
                 )
             )
         elif "toolResult" in item and item["toolResult"]:

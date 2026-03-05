@@ -485,6 +485,7 @@ function ProjectDetailPage() {
       {documentsHook.selectedWorkflow && (
         <WorkflowDetailModal
           workflow={documentsHook.selectedWorkflow}
+          projectId={projectId}
           projectColor={projectData.project?.color ?? 0}
           loadingWorkflow={documentsHook.loadingWorkflow}
           onClose={() => {

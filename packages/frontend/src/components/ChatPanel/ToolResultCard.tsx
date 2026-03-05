@@ -8,6 +8,7 @@ import {
   FileText,
   Globe,
   Loader2,
+  Network,
   Sparkles,
 } from 'lucide-react';
 import { getToolEntry } from './toolRegistry';
@@ -25,6 +26,7 @@ import type {
   ChatArtifact,
   ChatAttachment,
   Document,
+  GraphSearchResult,
 } from './types';
 
 interface ToolResultCardProps {
@@ -35,6 +37,7 @@ interface ToolResultCardProps {
   artifact?: ChatArtifact;
   sources?: ToolResultSource[];
   attachments?: ChatAttachment[];
+  toolInput?: Record<string, unknown>;
   expandKeyPrefix: string;
   expandedSources: Set<string>;
   onToggleExpand: (key: string) => void;
@@ -45,6 +48,7 @@ interface ToolResultCardProps {
   loadingSourceKey?: string | null;
   onImageClick?: (img: { src: string; alt: string }) => void;
   onViewDetails?: (content: string) => void;
+  onGraphView?: (data: GraphSearchResult) => void;
   documents?: Document[];
 }
 
@@ -56,6 +60,7 @@ export default function ToolResultCard({
   artifact,
   sources,
   attachments,
+  toolInput,
   expandKeyPrefix,
   expandedSources,
   onToggleExpand,
@@ -66,6 +71,7 @@ export default function ToolResultCard({
   loadingSourceKey,
   onImageClick,
   onViewDetails,
+  onGraphView,
   documents = [],
 }: ToolResultCardProps) {
   const { t } = useTranslation();
@@ -89,6 +95,15 @@ export default function ToolResultCard({
         <div className="flex-1" />
         <Sparkles className="w-4 h-4 text-slate-300 dark:text-blue-400/50" />
       </div>
+
+      {/* Tool input query */}
+      {typeof toolInput?.query === 'string' && toolInput.query && (
+        <div className="relative px-4 pt-2.5 pb-0">
+          <span className="text-xs text-slate-500 dark:text-slate-400 italic">
+            &quot;{toolInput.query}&quot;
+          </span>
+        </div>
+      )}
 
       {/* Content */}
       <div className="relative p-4 space-y-3">
@@ -231,11 +246,17 @@ export default function ToolResultCard({
           </div>
         )}
 
+        {/* Graph search result - show graph button */}
+        {entry.renderAsGraph && content && (
+          <GraphSearchSection content={content} onGraphView={onGraphView} />
+        )}
+
         {/* View details button - shown for generic tools (not search, fetch, markdown) */}
         {content &&
           !entry.renderAsWebSearch &&
           !entry.renderAsFetchPreview &&
-          !entry.renderAsMarkdown && (
+          !entry.renderAsMarkdown &&
+          !entry.renderAsGraph && (
             <button
               onClick={() => onViewDetails?.(content)}
               className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-blue-400 hover:text-slate-800 dark:hover:text-blue-300 transition-colors"
@@ -490,6 +511,59 @@ function FetchPreviewSection({
             {t('chat.viewDetails', 'View details')}
           </button>
         </div>
+      )}
+    </div>
+  );
+}
+
+function GraphSearchSection({
+  content,
+  onGraphView,
+}: {
+  content: string;
+  onGraphView?: (data: GraphSearchResult) => void;
+}) {
+  const { t } = useTranslation();
+
+  let parsed: GraphSearchResult | null = null;
+  try {
+    parsed = JSON.parse(content) as GraphSearchResult;
+  } catch {
+    return null;
+  }
+
+  if (!parsed) return null;
+
+  const hasSources = parsed.sources?.length > 0;
+
+  return (
+    <div className="space-y-2">
+      {hasSources ? (
+        <>
+          {/* Sources count */}
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {t(
+              'chat.graphSourcesFound',
+              '{{count}} additional pages discovered',
+              { count: parsed.sources.length },
+            )}
+          </p>
+
+          {/* View graph button */}
+          {onGraphView && (
+            <button
+              onClick={() => onGraphView(parsed)}
+              className="flex items-center gap-1.5 text-xs font-medium text-violet-600 dark:text-violet-400 hover:text-violet-800 dark:hover:text-violet-300 transition-colors"
+            >
+              <Network className="w-3.5 h-3.5" />
+              {t('chat.viewGraph', 'View graph')}
+            </button>
+          )}
+        </>
+      ) : (
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          {t('chat.graphNoAdditionalSources', 'No additional pages discovered')}
+        </p>
       )}
     </div>
   );

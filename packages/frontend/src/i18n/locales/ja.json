@@ -64,6 +64,7 @@
     "folderColor": "フォルダの色",
     "noProjects": "プロジェクトがありません",
     "createFirst": "最初のプロジェクトを作成して始めましょう",
+    "emptyWelcome": "ようこそ！",
     "clickToCreate": "クリックして作成",
     "documents": "ドキュメント",
     "advancedSettings": "詳細設定",
@@ -190,6 +191,7 @@
       "transcription": "音声変換",
       "buildingSegments": "セグメント構築",
       "segmentAiAnalysis": "AI分析",
+      "graphBuilder": "ナレッジグラフ構築",
       "documentSummary": "ドキュメント要約"
     },
     "inProgress": "処理中...",
@@ -204,7 +206,23 @@
     "processingOptions": "処理オプション",
     "documentPrompt": "ドキュメントプロンプト",
     "sourceUrl": "ソースURL",
-    "crawlInstruction": "クロール指示"
+    "crawlInstruction": "クロール指示",
+    "graph": {
+      "noData": "グラフデータがありません",
+      "noMatchingNodes": "一致するノードがありません",
+      "filters": "フィルター",
+      "groups": "グループ",
+      "display": "表示",
+      "searchPlaceholder": "ノードを検索...",
+      "depth": "深度",
+      "page": "ページ",
+      "allPages": "すべて",
+      "incomingLinks": "受信リンク",
+      "outgoingLinks": "送信リンク",
+      "edgeLabels": "エッジラベル",
+      "noEntityTypes": "エンティティタイプなし",
+      "noLinkTypes": "リンクタイプなし"
+    }
   },
   "ocr": {
     "title": "OCR設定",
@@ -397,7 +415,12 @@
       "plan_agent": "計画",
       "write_agent": "作成結果",
       "pptx_agent": "プレゼンテーション"
-    }
+    },
+    "graphSearch": "グラフ検索",
+    "graphSearching": "グラフ検索中",
+    "graphSourcesFound": "追加発見ページ {{count}}件",
+    "graphNoAdditionalSources": "追加発見ページなし",
+    "viewGraph": "グラフを見る"
   },
   "viewer": {
     "zoomIn": "拡大",
@@ -439,7 +462,8 @@
     "unsupportedType": "このファイル形式はプレビューに対応していません",
     "loadError": "アーティファクトの読み込みに失敗しました",
     "noPreview": "プレビューは利用できません",
-    "pptxNote": "一部のフォントや要素が正しく表示されない場合があります。正確な内容を確認するにはファイルをダウンロードしてください。"
+    "pptxNote": "一部のフォントや要素が正しく表示されない場合があります。正確な内容を確認するにはファイルをダウンロードしてください。",
+    "excelNote": "一部の要素（画像、チャート）はプレビューで表示できません。完全な内容を確認するにはファイルをダウンロードしてください。"
   },
   "languages": {
     "ko": "韓国語",

@@ -1,0 +1,48 @@
+system: |
+  You are an entity and relationship extraction system. Extract named entities and relationships from document segments.
+
+  Rules:
+  - Use canonical forms: "the transformer model" -> "Transformer"
+  - Skip generic references: "Figure 1", "Table 2", "the author", "this section"
+  - Assign a concise uppercase entity type (e.g. PERSON, ORG, CONCEPT, PRODUCT, LOCATION, EVENT, TECH, REGULATION, DISEASE, CHEMICAL, METHOD, METRIC, etc.)
+  - Choose the most specific type that fits; do not force into a fixed set
+  - Relationships should be meaningful and specific
+  - If an entity already exists in the provided list, reuse its exact name
+  - CRITICAL: The "name", "context", and "relationship" fields MUST be written in the specified language. Entity type stays uppercase English.
+  - Each mention must include qa_index and context. Context should explain WHY this entity is mentioned in that specific QA pair (not a verbatim quote).
+  - CRITICAL: Every QA pair MUST have at least one entity mentioned_in it. If an entity appears in multiple QA pairs, list ALL of them in mentioned_in - do NOT skip duplicates. No QA pair should be left without any entity connection.
+
+  Output valid JSON only. No markdown, no explanation.
+
+user: |
+  Language: {language}
+  IMPORTANT: Write all entity names, context, and relationship labels in {language}. Only entity type stays in uppercase English.
+
+  Existing entities (reuse these names if the same entity appears):
+  {existing_entities}
+
+  Document segments to analyze:
+  {segments}
+
+  Extract entities and relationships. Every QA pair in the input MUST be referenced by at least one entity's mentioned_in list. Return JSON:
+  {{
+    "entities": [
+      {{
+        "name": "Canonical Name",
+        "type": "CONCEPT",
+        "mentioned_in": [
+          {{"segment_index": 0, "qa_index": 0, "confidence": 0.9, "context": "semantic explanation of why this entity is relevant in this QA pair"}}
+        ]
+      }}
+    ],
+    "relationships": [
+      {{
+        "source": "Entity A",
+        "source_type": "CONCEPT",
+        "target": "Entity B",
+        "target_type": "TECH",
+        "relationship": "uses",
+        "mentioned_in_segments": [0, 1]
+      }}
+    ]
+  }}

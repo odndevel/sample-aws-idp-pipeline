@@ -80,6 +80,9 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const pendingMessagesRef = useRef<ChatMessage[]>([]);
   const toolUseMapRef = useRef<Map<string, string>>(new Map());
+  const toolInputMapRef = useRef<Map<string, Record<string, unknown>>>(
+    new Map(),
+  );
   const forceNewTextBlockRef = useRef(false);
   const chatScrollPositionRef = useRef(0);
   const streamingBlocksRef = useRef<StreamingBlock[]>([]);
@@ -230,6 +233,7 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
               s3_url?: string | null;
               name?: string;
               tool_use_id?: string;
+              input?: Record<string, unknown>;
               content?: {
                 type: string;
                 text?: string;
@@ -256,10 +260,14 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
             'shell',
           ];
           const toolIdToName = new Map<string, string>();
+          const toolIdToInput = new Map<string, Record<string, unknown>>();
           for (const msg of response.messages) {
             for (const item of msg.content) {
               if (item.type === 'tool_use' && item.tool_use_id && item.name) {
                 toolIdToName.set(item.tool_use_id, item.name);
+                if (item.input) {
+                  toolIdToInput.set(item.tool_use_id, item.input);
+                }
               }
             }
           }
@@ -370,7 +378,8 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
                   }
 
                   let displayContent = textContent;
-                  if (sources) {
+                  const isGraphResult = toolName?.includes('graph_search');
+                  if (sources && !isGraphResult) {
                     try {
                       const parsed = JSON.parse(textContent);
                       displayContent = parsed.answer || textContent;
@@ -397,6 +406,9 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
                     artifact,
                     sources,
                     toolName: toolName || undefined,
+                    toolInput:
+                      toolIdToInput.get(toolResultItem.tool_use_id || '') ||
+                      undefined,
                   });
                 }
                 // Return first result (others handled via flatMap below)
@@ -608,6 +620,16 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
           toolUseMapRef.current.set(toolUseId, toolName);
         }
 
+        // Try to parse the streamed input (comes as an incrementally built JSON string)
+        if (toolUseId && typeof event.input === 'string') {
+          try {
+            const parsed = JSON.parse(event.input) as Record<string, unknown>;
+            toolInputMapRef.current.set(toolUseId, parsed);
+          } catch {
+            // Incomplete JSON - ignore until complete
+          }
+        }
+
         // Hide internal tools from the UI
         const HIDDEN_TOOLS = ['file_read', 'file_write', 'file_list'];
         if (HIDDEN_TOOLS.includes(toolName)) {
@@ -711,7 +733,8 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
         if (!textContent && imageAttachments.length === 0) break;
 
         let displayContent: string | undefined;
-        if (toolResultType === 'text' && sources) {
+        const isGraphTool = capturedToolName?.includes('graph_search');
+        if (toolResultType === 'text' && sources && !isGraphTool) {
           try {
             const parsed = JSON.parse(textContent);
             displayContent = parsed.answer || textContent;
@@ -733,6 +756,9 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
             matchIdx >= 0
               ? [...prev.slice(0, matchIdx), ...prev.slice(matchIdx + 1)]
               : prev;
+          const toolInput = resultToolUseId
+            ? toolInputMapRef.current.get(resultToolUseId)
+            : undefined;
           return [
             ...withoutToolUse,
             {
@@ -751,10 +777,14 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
               sources,
               toolName: capturedToolName || undefined,
               toolUseId: resultToolUseId || undefined,
+              toolInput,
             },
           ];
         });
 
+        const savedToolInput = resultToolUseId
+          ? toolInputMapRef.current.get(resultToolUseId)
+          : undefined;
         const toolResultMessage: ChatMessage = {
           id: crypto.randomUUID(),
           role: 'assistant',
@@ -768,6 +798,7 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
           artifact,
           sources,
           toolName: capturedToolName || undefined,
+          toolInput: savedToolInput,
         };
         pendingMessagesRef.current.push(toolResultMessage);
         break;
@@ -842,6 +873,7 @@ export function useChatSession({ projectId }: UseChatSessionOptions) {
       streamingBlocksRef.current = [];
       pendingMessagesRef.current = [];
       toolUseMapRef.current.clear();
+      toolInputMapRef.current.clear();
       forceNewTextBlockRef.current = false;
 
       try {

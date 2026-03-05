@@ -10,12 +10,18 @@ import { useAwsClient } from '../../hooks/useAwsClient';
 import { useToast } from '../Toast';
 import ImageModal from '../ImageModal';
 import ToolResultDetailModal from '../ToolResultDetailModal';
+import GraphSearchResultModal from '../GraphSearchResultModal';
 import ConfirmModal from '../ConfirmModal';
 import ChatInputBox from './ChatInputBox';
 import VoiceChatPanel from './VoiceChatPanel';
 import MessageList from './MessageList';
 import WelcomeScreen from './WelcomeScreen';
-import type { ChatPanelProps, AttachedFile, ChatArtifact } from './types';
+import type {
+  ChatPanelProps,
+  AttachedFile,
+  ChatArtifact,
+  GraphSearchResult,
+} from './types';
 
 // Re-exports for backward compatibility
 export type { AttachedFile, StreamingBlock } from './types';
@@ -65,6 +71,8 @@ export default function ChatPanel({
     src: string;
     alt: string;
   } | null>(null);
+  const [graphSearchData, setGraphSearchData] =
+    useState<GraphSearchResult | null>(null);
   const [downloadingArtifact, setDownloadingArtifact] = useState<string | null>(
     null,
   );
@@ -400,6 +408,7 @@ export default function ChatPanel({
             loadingSourceKey={loadingSourceKey}
             onImageClick={(img) => setModalImage(img)}
             onViewDetails={(content) => setToolResultDetail({ content })}
+            onGraphView={(data) => setGraphSearchData(data)}
             documents={documents}
             chatEndRef={chatEndRef}
           />
@@ -454,6 +463,14 @@ export default function ChatPanel({
         onClose={() => setToolResultDetail(null)}
         content={toolResultDetail?.content ?? ''}
       />
+      {/* Graph Search Result Modal */}
+      {graphSearchData && (
+        <GraphSearchResultModal
+          isOpen={!!graphSearchData}
+          onClose={() => setGraphSearchData(null)}
+          data={graphSearchData}
+        />
+      )}
       <ConfirmModal
         isOpen={showRemoveAgentConfirm}
         onClose={() => {
