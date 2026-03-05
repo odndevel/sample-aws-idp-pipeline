@@ -38,9 +38,7 @@ deploy.sh 実行 (CloudShell)
 
 AWS Console上部のCloudShellアイコンをクリックするか、検索バーで「CloudShell」と入力してアクセスします。
 
-<p align="center">
-  <img src="../assets/quick-deploy-cloudshell.png" alt="CloudShell" width="800">
-</p>
+![CloudShell](../assets/quick-deploy-cloudshell.png)
 
 ### Step 2. デプロイスクリプトの実行
 
@@ -116,9 +114,7 @@ Phase: BUILD
 
 > **AWS Console** > **CodeBuild** > **Build projects** > **sample-aws-idp-pipeline-deploy**
 
-<p align="center">
-  <img src="../assets/quick-deploy-codebuild.png" alt="CodeBuild Console" width="800">
-</p>
+![CodeBuild Console](../assets/quick-deploy-codebuild.png)
 
 ### CodeBuild ビルドフェーズ
 
@@ -164,9 +160,7 @@ Phase: BUILD
 3. 一時パスワード`TempPass123!`でログインします
 4. 初回ログイン時にパスワード変更が求められます
 
-<p align="center">
-  <img src="../assets/quick-deploy-login.png" alt="Login Screen" width="800">
-</p>
+![Login Screen](../assets/quick-deploy-login.png)
 
 ---
 

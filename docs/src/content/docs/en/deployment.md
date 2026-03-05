@@ -38,9 +38,7 @@ Deployment is recommended in the following regions:
 
 Click the CloudShell icon at the top of the AWS Console, or search for "CloudShell" in the search bar.
 
-<p align="center">
-  <img src="../assets/quick-deploy-cloudshell.png" alt="CloudShell" width="800">
-</p>
+![CloudShell](../assets/quick-deploy-cloudshell.png)
 
 ### Step 2. Run the Deploy Script
 
@@ -116,9 +114,7 @@ For detailed logs, check the CodeBuild project directly in the AWS Console.
 
 > **AWS Console** > **CodeBuild** > **Build projects** > **sample-aws-idp-pipeline-deploy**
 
-<p align="center">
-  <img src="../assets/quick-deploy-codebuild.png" alt="CodeBuild Console" width="800">
-</p>
+![CodeBuild Console](../assets/quick-deploy-codebuild.png)
 
 ### CodeBuild Build Phases
 
@@ -164,9 +160,7 @@ When deployment completes successfully, the following information is displayed.
 3. Log in with the temporary password `TempPass123!`
 4. You will be prompted to change your password on first login
 
-<p align="center">
-  <img src="../assets/quick-deploy-login.png" alt="Login Screen" width="800">
-</p>
+![Login Screen](../assets/quick-deploy-login.png)
 
 ---
 

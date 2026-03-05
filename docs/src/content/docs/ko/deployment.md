@@ -38,9 +38,7 @@ deploy.sh 실행 (CloudShell)
 
 AWS Console 상단의 CloudShell 아이콘을 클릭하거나, 검색창에 "CloudShell"을 입력하여 접속합니다.
 
-<p align="center">
-  <img src="../assets/quick-deploy-cloudshell.png" alt="CloudShell" width="800">
-</p>
+![CloudShell](../assets/quick-deploy-cloudshell.png)
 
 ### Step 2. 배포 스크립트 실행
 
@@ -116,9 +114,7 @@ Phase: BUILD
 
 > **AWS Console** > **CodeBuild** > **Build projects** > **sample-aws-idp-pipeline-deploy**
 
-<p align="center">
-  <img src="../assets/quick-deploy-codebuild.png" alt="CodeBuild Console" width="800">
-</p>
+![CodeBuild Console](../assets/quick-deploy-codebuild.png)
 
 ### CodeBuild 빌드 단계
 
@@ -164,9 +160,7 @@ Phase: BUILD
 3. 임시 비밀번호 `TempPass123!`으로 로그인합니다
 4. 최초 로그인 시 비밀번호 변경이 요구됩니다
 
-<p align="center">
-  <img src="../assets/quick-deploy-login.png" alt="Login Screen" width="800">
-</p>
+![Login Screen](../assets/quick-deploy-login.png)
 
 ---
 
