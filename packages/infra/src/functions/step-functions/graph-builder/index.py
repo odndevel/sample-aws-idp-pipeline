@@ -1,4 +1,3 @@
-import hashlib
 import json
 import os
 import traceback
@@ -16,12 +15,12 @@ from shared.ddb_client import (
     get_document,
     StepName,
 )
-from shared.s3_analysis import get_all_segment_analyses
+from shared.s3_analysis import get_all_segment_analyses, get_segment_analysis
 
 import boto3
 
 GRAPH_SERVICE_FUNCTION_NAME = os.environ.get('GRAPH_SERVICE_FUNCTION_NAME', '')
-ENTITY_BATCH_SIZE = 10
+GRAPH_BUILDER_MODEL_ID = os.environ.get('GRAPH_BUILDER_MODEL_ID', '')
 PROMPTS = None
 
 lambda_client = None
@@ -35,12 +34,6 @@ def get_lambda_client():
             region_name=os.environ.get('AWS_REGION', 'us-east-1'),
         )
     return lambda_client
-
-
-def entity_id(project_id: str, name: str, entity_type: str) -> str:
-    """Generate a deterministic entity ID from project_id + name + type."""
-    key = f'{project_id}:{name.lower().strip()}:{entity_type.lower()}'
-    return hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
 def get_prompts():
@@ -92,59 +85,6 @@ def create_analysis_nodes(segments, workflow_id, project_id, document_id):
     return analyses
 
 
-def extract_entities_batch(
-    model_id, region, language, segments_batch, existing_entities
-):
-    """Extract entities and relationships from a batch of segments using LLM."""
-    prompts = get_prompts()
-
-    # Format segments for prompt, including QA pair indices
-    segments_text = ''
-    for seg in segments_batch:
-        idx = seg.get('segment_index', 0)
-        for qa_idx, analysis in enumerate(seg.get('ai_analysis', [])):
-            content = analysis.get('content', '')
-            if content:
-                segments_text += f'\n--- Segment {idx}, QA {qa_idx} ---\n{content}\n'
-        page_desc = seg.get('page_description', '')
-        if page_desc:
-            segments_text += f'\n--- Segment {idx}, Page Description ---\n{page_desc}\n'
-
-    if not segments_text.strip():
-        return {'entities': [], 'relationships': []}
-
-    # Format existing entities list
-    existing_text = (
-        'None'
-        if not existing_entities
-        else json.dumps(
-            [{'name': e['name'], 'type': e['type']} for e in existing_entities],
-            ensure_ascii=False,
-        )
-    )
-
-    user_text = prompts['user'].format(
-        language=language,
-        existing_entities=existing_text,
-        segments=segments_text,
-    )
-
-    bedrock_model = BedrockModel(model_id=model_id, region_name=region)
-    agent = Agent(model=bedrock_model, system_prompt=prompts['system'])
-
-    try:
-        result = str(agent(user_text)).strip()
-        # Parse JSON from response (handle potential markdown wrapping)
-        if result.startswith('```'):
-            result = result.split('```')[1]
-            if result.startswith('json'):
-                result = result[4:]
-        return json.loads(result)
-    except (json.JSONDecodeError, Exception) as e:
-        print(f'Entity extraction parse error: {e}')
-        return {'entities': [], 'relationships': []}
-
-
 def deduplicate_entities(all_entities):
     """Deduplicate entities by normalized name + type."""
     seen = {}
@@ -159,6 +99,66 @@ def deduplicate_entities(all_entities):
     return list(seen.values())
 
 
+def collect_entities_from_segments(segments, workflow_id):
+    """Collect pre-extracted entities and relationships from S3 segment data."""
+    all_entities = []
+    all_relationships = []
+
+    for seg in segments:
+        entities = seg.get('graph_entities', [])
+        relationships = seg.get('graph_relationships', [])
+
+        # Add workflow_id to mention references
+        for ent in entities:
+            for mention in ent.get('mentioned_in', []):
+                mention['workflow_id'] = workflow_id
+
+        all_entities.extend(entities)
+        all_relationships.extend(relationships)
+
+    return all_entities, all_relationships
+
+
+def extract_entities_for_segment(segment_data, segment_index, language):
+    """Fallback: extract entities via LLM for a single segment (used by qa-regenerator)."""
+    if not GRAPH_BUILDER_MODEL_ID:
+        return {'entities': [], 'relationships': []}
+
+    prompts = get_prompts()
+    segments_text = ''
+    for qa_idx, analysis in enumerate(segment_data.get('ai_analysis', [])):
+        content = analysis.get('content', '')
+        if content:
+            segments_text += f'\n--- Segment {segment_index}, QA {qa_idx} ---\n{content}\n'
+    page_desc = segment_data.get('page_description', '')
+    if page_desc:
+        segments_text += f'\n--- Segment {segment_index}, Page Description ---\n{page_desc}\n'
+
+    if not segments_text.strip():
+        return {'entities': [], 'relationships': []}
+
+    user_text = prompts['user'].format(
+        language=language,
+        existing_entities='None',
+        segments=segments_text,
+    )
+
+    region = os.environ.get('AWS_REGION', 'us-east-1')
+    bedrock_model = BedrockModel(model_id=GRAPH_BUILDER_MODEL_ID, region_name=region)
+    agent = Agent(model=bedrock_model, system_prompt=prompts['system'])
+
+    try:
+        result = str(agent(user_text)).strip()
+        if result.startswith('```'):
+            result = result.split('```')[1]
+            if result.startswith('json'):
+                result = result[4:]
+        return json.loads(result)
+    except (json.JSONDecodeError, Exception) as e:
+        print(f'Entity extraction parse error: {e}')
+        return {'entities': [], 'relationships': []}
+
+
 def handle_extract_entities(event):
     """Extract entities for a single segment and update Neptune graph.
 
@@ -170,27 +170,12 @@ def handle_extract_entities(event):
     segment_index = event['segment_index']
     language = event.get('language', 'English')
 
-    model_id = os.environ.get('GRAPH_BUILDER_MODEL_ID', '')
-    region = os.environ.get('AWS_REGION', 'us-east-1')
-
-    # Load the single segment from S3
-    from shared.s3_analysis import get_segment_analysis
     segment_data = get_segment_analysis(file_uri, segment_index)
     if not segment_data:
         print(f'Segment not found: {file_uri}, index {segment_index}')
         return {'success': False, 'error': 'Segment not found'}
 
-    segments_batch = [{
-        'segment_index': segment_index,
-        'ai_analysis': [
-            {'content': a.get('content', ''), 'analysis_query': a.get('analysis_query', '')}
-            for a in segment_data.get('ai_analysis', [])
-        ],
-        'page_description': segment_data.get('page_description', ''),
-    }]
-
-    # Extract entities
-    result = extract_entities_batch(model_id, region, language, segments_batch, [])
+    result = extract_entities_for_segment(segment_data, segment_index, language)
     entities = result.get('entities', [])
     relationships = result.get('relationships', [])
 
@@ -258,8 +243,6 @@ def handler(event, _context):
             'segment_count': segment_count,
         }
 
-    model_id = os.environ.get('GRAPH_BUILDER_MODEL_ID', '')
-    region = os.environ.get('AWS_REGION', 'us-east-1')
     language = event.get('language') or get_project_language(project_id)
 
     record_step_start(workflow_id, StepName.GRAPH_BUILDER)
@@ -295,43 +278,12 @@ def handler(event, _context):
         )
         print(f'Analysis nodes: {len(analyses)}')
 
-        # 4. Extract entities in batches
-        all_entities = []
-        all_relationships = []
-
-        for batch_start in range(0, len(segments_sorted), ENTITY_BATCH_SIZE):
-            batch = segments_sorted[batch_start : batch_start + ENTITY_BATCH_SIZE]
-            batch_indices = [s.get('segment_index', 0) for s in batch]
-            print(
-                f'Extracting entities from segments {batch_indices[0]}-{batch_indices[-1]}'
-            )
-
-            result = extract_entities_batch(
-                model_id,
-                region,
-                language,
-                batch,
-                all_entities,
-            )
-
-            batch_entities = result.get('entities', [])
-            batch_relationships = result.get('relationships', [])
-
-            # Normalize mention references: add workflow_id, handle qa_index
-            for ent in batch_entities:
-                normalized = []
-                mentions = ent.get('mentioned_in') or ent.get('mentioned_in_segments') or []
-                for mention in mentions:
-                    if isinstance(mention, int):
-                        mention = {'segment_index': mention, 'qa_index': 0}
-                    elif isinstance(mention, dict) and 'qa_index' not in mention:
-                        mention['qa_index'] = 0
-                    mention['workflow_id'] = workflow_id
-                    normalized.append(mention)
-                ent['mentioned_in'] = normalized
-
-            all_entities.extend(batch_entities)
-            all_relationships.extend(batch_relationships)
+        # 4. Collect pre-extracted entities from S3 segments
+        #    (entity extraction now runs in AnalysisFinalizer, parallelized per segment)
+        all_entities, all_relationships = collect_entities_from_segments(
+            segments_sorted, workflow_id
+        )
+        print(f'Collected {len(all_entities)} entities, {len(all_relationships)} relationships from segments')
 
         # 5. Entity resolution (deduplicate)
         unique_entities = deduplicate_entities(all_entities)

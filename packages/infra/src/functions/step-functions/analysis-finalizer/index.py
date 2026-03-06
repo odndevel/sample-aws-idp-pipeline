@@ -19,7 +19,9 @@ lambda_client = None
 LANCEDB_WRITE_QUEUE_URL = os.environ.get('LANCEDB_WRITE_QUEUE_URL')
 LANCEDB_FUNCTION_NAME = os.environ.get('LANCEDB_FUNCTION_NAME', 'idp-v2-lancedb-service')
 PAGE_DESCRIPTION_MODEL_ID = os.environ.get('PAGE_DESCRIPTION_MODEL_ID', '')
+ENTITY_EXTRACTION_MODEL_ID = os.environ.get('ENTITY_EXTRACTION_MODEL_ID', '')
 PROMPTS = None
+ENTITY_PROMPTS = None
 
 
 def get_sqs_client():
@@ -43,6 +45,15 @@ def get_prompts():
         with open(path, 'r') as f:
             PROMPTS = yaml.safe_load(f)
     return PROMPTS
+
+
+def get_entity_prompts():
+    global ENTITY_PROMPTS
+    if ENTITY_PROMPTS is None:
+        path = os.path.join(os.path.dirname(__file__), 'prompts', 'entity_extraction.yaml')
+        with open(path, 'r') as f:
+            ENTITY_PROMPTS = yaml.safe_load(f)
+    return ENTITY_PROMPTS
 
 
 def invoke_lancedb(action: str, params: dict) -> dict:
@@ -128,6 +139,47 @@ def build_qa_content(analysis_query: str, content: str) -> str:
     return content
 
 
+def extract_entities_from_segment(segment_data, segment_index, language):
+    """Extract entities and relationships from a single segment using LLM."""
+    if not ENTITY_EXTRACTION_MODEL_ID:
+        return None
+
+    prompts = get_entity_prompts()
+
+    segments_text = ''
+    for qa_idx, analysis in enumerate(segment_data.get('ai_analysis', [])):
+        content = analysis.get('content', '')
+        if content:
+            segments_text += f'\n--- Segment {segment_index}, QA {qa_idx} ---\n{content}\n'
+    page_desc = segment_data.get('page_description', '')
+    if page_desc:
+        segments_text += f'\n--- Segment {segment_index}, Page Description ---\n{page_desc}\n'
+
+    if not segments_text.strip():
+        return {'entities': [], 'relationships': []}
+
+    user_text = prompts['user'].format(
+        language=language,
+        existing_entities='None',
+        segments=segments_text,
+    )
+
+    region = os.environ.get('AWS_REGION', 'us-east-1')
+    bedrock_model = BedrockModel(model_id=ENTITY_EXTRACTION_MODEL_ID, region_name=region)
+    agent = Agent(model=bedrock_model, system_prompt=prompts['system'])
+
+    try:
+        result = str(agent(user_text)).strip()
+        if result.startswith('```'):
+            result = result.split('```')[1]
+            if result.startswith('json'):
+                result = result[4:]
+        return json.loads(result)
+    except (json.JSONDecodeError, Exception) as e:
+        print(f'Entity extraction parse error: {e}')
+        return {'entities': [], 'relationships': []}
+
+
 def handler(event, _context):
     print(f'Event: {json.dumps(event)}')
 
@@ -173,6 +225,29 @@ def handler(event, _context):
     if page_description:
         update_segment_analysis(file_uri, segment_index, page_description=page_description)
         print(f'Saved page_description to segment {segment_index}')
+
+    # Extract entities and relationships for knowledge graph
+    extraction_result = extract_entities_from_segment(segment_data, segment_index, language)
+    if extraction_result:
+        entities = extraction_result.get('entities', [])
+        relationships = extraction_result.get('relationships', [])
+        # Normalize mention references
+        for ent in entities:
+            normalized = []
+            mentions = ent.get('mentioned_in') or ent.get('mentioned_in_segments') or []
+            for mention in mentions:
+                if isinstance(mention, int):
+                    mention = {'segment_index': mention, 'qa_index': 0}
+                elif isinstance(mention, dict) and 'qa_index' not in mention:
+                    mention['qa_index'] = 0
+                normalized.append(mention)
+            ent['mentioned_in'] = normalized
+        update_segment_analysis(
+            file_uri, segment_index,
+            graph_entities=entities,
+            graph_relationships=relationships,
+        )
+        print(f'Extracted {len(entities)} entities, {len(relationships)} relationships for segment {segment_index}')
 
     image_uri = segment_data.get('image_uri', '')
 

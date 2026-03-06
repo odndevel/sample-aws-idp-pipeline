@@ -83,22 +83,25 @@ def get_document_base_path(file_uri: str) -> tuple:
 
 def strip_graphics_inplace(reader: pypdf.PdfReader):
     """Strip non-text content from PDF in-place, keeping only BT..ET text blocks."""
-    for page in reader.pages:
+    for page_num, page in enumerate(reader.pages):
         contents = page.get('/Contents')
         if contents is None:
             continue
 
-        obj = contents.get_object()
-        if isinstance(obj, pypdf.generic.ArrayObject):
-            raw = b''.join(item.get_object().get_data() for item in obj)
-            blocks = BT_ET_PATTERN.findall(raw)
-            new_obj = DecodedStreamObject()
-            new_obj.set_data(b'\n'.join(blocks))
-            page[NameObject('/Contents')] = new_obj
-        else:
-            raw = obj.get_data()
-            blocks = BT_ET_PATTERN.findall(raw)
-            obj.set_data(b'\n'.join(blocks))
+        try:
+            obj = contents.get_object()
+            if isinstance(obj, pypdf.generic.ArrayObject):
+                raw = b''.join(item.get_object().get_data() for item in obj)
+                blocks = BT_ET_PATTERN.findall(raw)
+                new_obj = DecodedStreamObject()
+                new_obj.set_data(b'\n'.join(blocks))
+                page[NameObject('/Contents')] = new_obj
+            else:
+                raw = obj.get_data()
+                blocks = BT_ET_PATTERN.findall(raw)
+                obj.set_data(b'\n'.join(blocks))
+        except Exception as e:
+            print(f'[format-parser] Page {page_num}: strip_graphics failed: {e}')
 
 
 def process_pdf(file_uri: str) -> dict:
@@ -127,7 +130,11 @@ def process_pdf(file_uri: str) -> dict:
 
             print(f'[format-parser] Extracting text...')
             for page_num, page in enumerate(reader.pages):
-                text = (page.extract_text() or '').strip()
+                try:
+                    text = (page.extract_text() or '').strip()
+                except Exception as e:
+                    print(f'[format-parser] Page {page_num}: extract_text failed: {e}')
+                    text = ''
                 pages.append({
                     'page_index': page_num,
                     'text': text,

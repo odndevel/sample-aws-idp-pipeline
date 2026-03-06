@@ -394,6 +394,7 @@ export class WorkflowStack extends Stack {
         LANCEDB_WRITE_QUEUE_URL: lancedbWriteQueue.queueUrl,
         LANCEDB_FUNCTION_NAME: lancedbService.functionName,
         PAGE_DESCRIPTION_MODEL_ID: models.describer,
+        ENTITY_EXTRACTION_MODEL_ID: models.extractor,
       },
     });
 
@@ -419,8 +420,8 @@ export class WorkflowStack extends Stack {
       ...commonLambdaProps,
       functionName: 'idp-v2-graph-builder',
       handler: 'index.handler',
-      timeout: Duration.minutes(15),
-      memorySize: 1024,
+      timeout: Duration.minutes(10),
+      memorySize: 512,
       code: lambda.Code.fromAsset(
         path.join(__dirname, '../functions/step-functions/graph-builder'),
       ),
