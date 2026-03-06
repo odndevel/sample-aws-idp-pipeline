@@ -129,25 +129,25 @@ Resources:
                   done
                 - |
                   echo "=== Pre-cleanup: S3 Express Directory Buckets ==="
-                  BUCKETS=$(aws s3api list-directory-buckets --query 'Buckets[].BucketName' --output text 2>/dev/null || echo "")
-                  echo "Found directory buckets: $BUCKETS"
-                  for bucket in $BUCKETS; do
-                    case "$bucket" in *idp*|*lancedb*)
-                      echo "Emptying directory bucket: $bucket"
-                      RETRIES=0
-                      while [ $RETRIES -lt 20 ]; do
-                        OBJECTS=$(aws s3api list-objects-v2 --bucket "$bucket" --max-keys 1000 --query 'Contents[].Key' --output json 2>/dev/null || echo "[]")
-                        if [ "$OBJECTS" = "[]" ] || [ "$OBJECTS" = "null" ] || [ -z "$OBJECTS" ]; then
-                          break
-                        fi
-                        DELETE_JSON=$(echo "$OBJECTS" | python3 -c "import sys,json; keys=json.load(sys.stdin); print(json.dumps({'Objects':[{'Key':k} for k in keys]}))")
-                        aws s3api delete-objects --bucket "$bucket" --delete "$DELETE_JSON" 2>/dev/null || break
-                        RETRIES=$((RETRIES + 1))
-                      done
-                      echo "Deleting directory bucket: $bucket"
-                      aws s3api delete-bucket --bucket "$bucket" 2>/dev/null || true
-                    ;; esac
-                  done
+                  BUCKET=$(aws ssm get-parameter --name /idp-v2/lancedb/express-bucket-name --query Parameter.Value --output text 2>/dev/null || echo "")
+                  if [ -z "$BUCKET" ]; then
+                    BUCKET=$(aws s3api list-directory-buckets --query 'Buckets[?starts_with(BucketName,`lancedb-ex`)].BucketName | [0]' --output text 2>/dev/null || echo "")
+                  fi
+                  if [ -n "$BUCKET" ] && [ "$BUCKET" != "None" ]; then
+                    echo "Emptying directory bucket: $BUCKET"
+                    RETRIES=0
+                    while [ $RETRIES -lt 20 ]; do
+                      OBJECTS=$(aws s3api list-objects-v2 --bucket "$BUCKET" --max-keys 1000 --query 'Contents[].Key' --output json 2>/dev/null || echo "[]")
+                      if [ "$OBJECTS" = "[]" ] || [ "$OBJECTS" = "null" ] || [ -z "$OBJECTS" ]; then
+                        break
+                      fi
+                      DELETE_JSON=$(echo "$OBJECTS" | python3 -c "import sys,json; keys=json.load(sys.stdin); print(json.dumps({'Objects':[{'Key':k} for k in keys]}))")
+                      aws s3api delete-objects --bucket "$BUCKET" --delete "$DELETE_JSON" 2>/dev/null || break
+                      RETRIES=$((RETRIES + 1))
+                    done
+                  else
+                    echo "No directory bucket found"
+                  fi
                 - |
                   echo "=== Pre-cleanup: DynamoDB Tables ==="
                   BACKEND_TABLE=$(aws ssm get-parameter --name /idp-v2/backend/table-name --query Parameter.Value --output text 2>/dev/null || echo "")
