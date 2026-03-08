@@ -3,9 +3,13 @@
 Receives PDF/Image files from SQS queue and routes to the appropriate backend:
 - pp-ocrv5, pp-structurev3 -> Lambda async invoke (CPU-only, no SageMaker needed)
 - paddleocr-vl -> SageMaker async inference (GPU required)
+
+For large PDFs (>200 pages), splits into chunks and invokes parallel Lambda processors.
 """
 import json
 import os
+import io
+import tempfile
 from datetime import datetime, timezone
 
 import boto3
@@ -24,6 +28,7 @@ from shared.s3_analysis import get_s3_client, parse_s3_uri
 SAGEMAKER_ENDPOINT_NAME = os.environ.get('SAGEMAKER_ENDPOINT_NAME', '')
 OUTPUT_BUCKET = os.environ.get('OUTPUT_BUCKET', '')
 OCR_LAMBDA_FUNCTION_NAME = os.environ.get('OCR_LAMBDA_FUNCTION_NAME', '')
+CHUNK_PAGE_SIZE = int(os.environ.get('CHUNK_PAGE_SIZE', '30'))
 
 # Models that run on Lambda (CPU-only) instead of SageMaker (GPU)
 LAMBDA_OCR_MODELS = {'pp-ocrv5', 'pp-structurev3'}
@@ -110,6 +115,87 @@ def get_document_base_path(file_uri: str) -> tuple[str, str]:
     return bucket, base_path
 
 
+def get_pdf_page_count(bucket: str, key: str) -> int:
+    """Get PDF page count using pypdf. Downloads only to /tmp."""
+    from pypdf import PdfReader
+
+    s3 = get_s3_client()
+    with tempfile.NamedTemporaryFile(suffix='.pdf', dir='/tmp', delete=True) as tmp:
+        s3.download_file(bucket, key, tmp.name)
+        reader = PdfReader(tmp.name)
+        return len(reader.pages)
+
+
+def split_and_upload_chunks(
+    bucket: str,
+    key: str,
+    base_path: str,
+    workflow_id: str,
+    document_id: str,
+    ocr_model: str,
+    ocr_options: dict,
+    chunk_size: int = CHUNK_PAGE_SIZE,
+) -> dict:
+    """Split PDF into chunks, upload to S3, and write manifest.json.
+
+    Returns manifest dict with total_chunks and chunk metadata.
+    """
+    from pypdf import PdfReader, PdfWriter
+
+    s3 = get_s3_client()
+
+    with tempfile.NamedTemporaryFile(suffix='.pdf', dir='/tmp', delete=True) as tmp:
+        s3.download_file(bucket, key, tmp.name)
+        reader = PdfReader(tmp.name)
+        total_pages = len(reader.pages)
+        chunks = []
+
+        for chunk_idx in range(0, total_pages, chunk_size):
+            start_page = chunk_idx
+            end_page = min(chunk_idx + chunk_size, total_pages)
+
+            writer = PdfWriter()
+            for page_num in range(start_page, end_page):
+                writer.add_page(reader.pages[page_num])
+
+            buf = io.BytesIO()
+            writer.write(buf)
+            buf.seek(0)
+
+            chunk_key = f'{base_path}/paddleocr/chunks/chunk_{chunk_idx // chunk_size:04d}.pdf'
+            s3.put_object(Bucket=bucket, Key=chunk_key, Body=buf.read(), ContentType='application/pdf')
+
+            chunks.append({
+                'chunk_index': chunk_idx // chunk_size,
+                'start_page': start_page,
+                'end_page': end_page,
+                'page_count': end_page - start_page,
+                's3_key': chunk_key,
+            })
+
+        manifest = {
+            'total_chunks': len(chunks),
+            'chunk_size': chunk_size,
+            'total_pages': total_pages,
+            'workflow_id': workflow_id,
+            'document_id': document_id,
+            'ocr_model': ocr_model,
+            'ocr_options': ocr_options,
+            'chunks': chunks,
+        }
+
+        manifest_key = f'{base_path}/paddleocr/manifest.json'
+        s3.put_object(
+            Bucket=bucket,
+            Key=manifest_key,
+            Body=json.dumps(manifest, ensure_ascii=False, indent=2).encode('utf-8'),
+            ContentType='application/json',
+        )
+
+        print(f'[{workflow_id}] Split {total_pages} pages into {len(chunks)} chunks, manifest saved')
+        return manifest
+
+
 def invoke_async_inference(
     file_uri: str,
     workflow_id: str,
@@ -173,10 +259,15 @@ def invoke_lambda_async(
     project_id: str,
     ocr_model: str,
     ocr_options: dict | None = None,
+    chunk_index: int | None = None,
+    start_page: int | None = None,
+    total_chunks: int | None = None,
+    original_file_uri: str | None = None,
 ) -> None:
     """Invoke OCR Lambda processor asynchronously (fire-and-forget).
 
     The Lambda processor handles DDB/S3 writes on completion.
+    For chunk mode, additional parameters tell the processor about its chunk context.
     """
     client = get_lambda_client()
 
@@ -189,7 +280,14 @@ def invoke_lambda_async(
         'ocr_options': ocr_options or {},
     }
 
-    print(f'Invoking Lambda async: function={OCR_LAMBDA_FUNCTION_NAME}, model={ocr_model}')
+    if chunk_index is not None:
+        payload['chunk_index'] = chunk_index
+        payload['start_page'] = start_page
+        payload['total_chunks'] = total_chunks
+        payload['original_file_uri'] = original_file_uri
+
+    print(f'Invoking Lambda async: function={OCR_LAMBDA_FUNCTION_NAME}, model={ocr_model}'
+          f'{f", chunk={chunk_index}/{total_chunks}" if chunk_index is not None else ""}')
 
     client.invoke(
         FunctionName=OCR_LAMBDA_FUNCTION_NAME,
@@ -237,7 +335,55 @@ def process_message(message: dict) -> dict:
         )
 
         if ocr_model in LAMBDA_OCR_MODELS:
-            # CPU-only models -> Lambda async invoke (fire-and-forget)
+            # CPU-only models -> Lambda async invoke
+            # Check if PDF needs chunking for parallel processing
+            if file_type == 'application/pdf':
+                try:
+                    bucket, base_path = get_document_base_path(file_uri)
+                    _, file_key = parse_s3_uri(file_uri)
+                    page_count = get_pdf_page_count(bucket, file_key)
+                    print(f'[{workflow_id}] PDF has {page_count} pages (chunk threshold: {CHUNK_PAGE_SIZE})')
+
+                    if page_count > CHUNK_PAGE_SIZE:
+                        # Split into chunks and invoke parallel Lambdas
+                        manifest = split_and_upload_chunks(
+                            bucket=bucket,
+                            key=file_key,
+                            base_path=base_path,
+                            workflow_id=workflow_id,
+                            document_id=document_id,
+                            ocr_model=ocr_model,
+                            ocr_options=ocr_options,
+                        )
+
+                        for chunk in manifest['chunks']:
+                            chunk_file_uri = f's3://{bucket}/{chunk["s3_key"]}'
+                            invoke_lambda_async(
+                                file_uri=chunk_file_uri,
+                                workflow_id=workflow_id,
+                                document_id=document_id,
+                                project_id=project_id,
+                                ocr_model=ocr_model,
+                                ocr_options=ocr_options,
+                                chunk_index=chunk['chunk_index'],
+                                start_page=chunk['start_page'],
+                                total_chunks=manifest['total_chunks'],
+                                original_file_uri=file_uri,
+                            )
+
+                        return {
+                            'status': 'invoked',
+                            'backend': 'lambda',
+                            'mode': 'chunked',
+                            'total_chunks': manifest['total_chunks'],
+                            'total_pages': manifest['total_pages'],
+                        }
+
+                except Exception as e:
+                    # pypdf failure -> fallback to single Lambda invoke
+                    print(f'[{workflow_id}] PDF chunking failed, falling back to single invoke: {e}')
+
+            # Single Lambda invoke (small PDF, images, or chunking fallback)
             invoke_lambda_async(
                 file_uri=file_uri,
                 workflow_id=workflow_id,

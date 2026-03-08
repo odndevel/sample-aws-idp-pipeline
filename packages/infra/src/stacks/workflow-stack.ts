@@ -292,6 +292,24 @@ export class WorkflowStack extends Stack {
       layers: [coreLayer, sharedLayer],
     });
 
+    // Segment Prep Finalizer (records step complete after parallel page rendering)
+    const segmentPrepFinalizer = new lambda.Function(
+      this,
+      'SegmentPrepFinalizer',
+      {
+        ...commonLambdaProps,
+        functionName: 'idp-v2-segment-prep-finalizer',
+        handler: 'index.handler',
+        code: lambda.Code.fromAsset(
+          path.join(
+            __dirname,
+            '../functions/step-functions/segment-prep-finalizer',
+          ),
+        ),
+        layers: [sharedLayer],
+      },
+    );
+
     // Format Parser (extracts text from PDF/PPTX, runs before waiting for async preprocessing)
     // Docker Lambda for LibreOffice (PPT to PDF conversion)
     const formatParser = new lambda.DockerImageFunction(this, 'FormatParser', {
@@ -335,7 +353,7 @@ export class WorkflowStack extends Stack {
       functionName: 'idp-v2-segment-builder',
       handler: 'index.handler',
       timeout: Duration.minutes(10),
-      memorySize: 256,
+      memorySize: 1024,
       code: lambda.Code.fromAsset(
         path.join(__dirname, '../functions/step-functions/segment-builder'),
       ),
@@ -384,7 +402,7 @@ export class WorkflowStack extends Stack {
       functionName: 'idp-v2-analysis-finalizer',
       handler: 'index.handler',
       timeout: Duration.minutes(10),
-      memorySize: 256,
+      memorySize: 1024,
       code: lambda.Code.fromAsset(
         path.join(__dirname, '../functions/step-functions/analysis-finalizer'),
       ),
@@ -515,6 +533,47 @@ export class WorkflowStack extends Stack {
       outputPath: '$.Payload',
     });
 
+    // Render pages task (called by Map, reuses segment-prep Lambda in render mode)
+    const renderPagesTask = new tasks.LambdaInvoke(this, 'RenderPageBatch', {
+      lambdaFunction: segmentPrep,
+      outputPath: '$.Payload',
+    });
+
+    // Map state for parallel page rendering
+    const renderPagesMap = new sfn.Map(this, 'RenderPagesInParallel', {
+      maxConcurrency: 10,
+      itemsPath: '$.render_batches',
+      resultPath: sfn.JsonPath.DISCARD,
+      itemSelector: {
+        'mode': 'render_pages',
+        'file_uri.$': '$.file_uri',
+        'start_page.$': '$$.Map.Item.Value.start_page',
+        'end_page.$': '$$.Map.Item.Value.end_page',
+      },
+    });
+    renderPagesMap.itemProcessor(renderPagesTask);
+
+    // Finalize segment prep (record step_complete after rendering)
+    const finalizeSegmentPrepTask = new tasks.LambdaInvoke(
+      this,
+      'FinalizeSegmentPrep',
+      {
+        lambdaFunction: segmentPrepFinalizer,
+        outputPath: '$.Payload',
+      },
+    );
+
+    // Choice: skip rendering for non-PDF files
+    const renderChoice = new sfn.Choice(this, 'NeedRendering')
+      .when(
+        sfn.Condition.booleanEquals('$.render_needed', true),
+        renderPagesMap.next(finalizeSegmentPrepTask),
+      )
+      .otherwise(new sfn.Pass(this, 'SkipRendering'));
+
+    // Chain: PrepareSegments → Choice → (Map → Finalize, or Skip)
+    const segmentPrepChain = segmentPrepTask.next(renderChoice);
+
     const formatParserTask = new tasks.LambdaInvoke(this, 'ParseFormat', {
       lambdaFunction: formatParser,
       outputPath: '$.Payload',
@@ -620,7 +679,7 @@ export class WorkflowStack extends Stack {
     const segmentProcessing = segmentAnalyzerTask.next(analysisFinalizerTask);
 
     // Distributed Map for parallel segment processing
-    const parallelSegmentProcessing = new sfn.Map(
+    const parallelSegmentProcessing = new sfn.DistributedMap(
       this,
       'ProcessSegmentsInParallel',
       {
@@ -639,9 +698,13 @@ export class WorkflowStack extends Stack {
           'segment_index.$': '$$.Map.Item.Value',
           'is_reanalysis.$': '$.is_reanalysis',
         },
+        mapExecutionType: sfn.StateMachineType.STANDARD,
       },
     );
-    parallelSegmentProcessing.itemProcessor(segmentProcessing);
+    parallelSegmentProcessing.itemProcessor(segmentProcessing, {
+      mode: sfn.ProcessorMode.DISTRIBUTED,
+      executionType: sfn.ProcessorType.STANDARD,
+    });
     parallelSegmentProcessing.addCatch(errorHandlerTask, catchConfig);
 
     // ========================================
@@ -710,7 +773,7 @@ export class WorkflowStack extends Stack {
         },
       },
     );
-    parallelPreprocessing.branch(segmentPrepTask);
+    parallelPreprocessing.branch(segmentPrepChain);
     parallelPreprocessing.branch(formatParserTask);
     parallelPreprocessing.addCatch(errorHandlerTask, catchConfig);
 
@@ -737,7 +800,7 @@ export class WorkflowStack extends Stack {
       {
         stateMachineName: 'idp-v2-document-analysis',
         definitionBody: sfn.DefinitionBody.fromChainable(definition),
-        timeout: Duration.hours(1),
+        timeout: Duration.hours(24),
       },
     );
 
@@ -772,6 +835,7 @@ export class WorkflowStack extends Stack {
 
     const allFunctions = [
       segmentPrep,
+      segmentPrepFinalizer,
       formatParser,
       checkPreprocessStatus,
       segmentBuilder,

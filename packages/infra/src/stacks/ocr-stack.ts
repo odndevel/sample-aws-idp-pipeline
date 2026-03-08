@@ -11,6 +11,8 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as cloudwatchActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as eventsTargets from 'aws-cdk-lib/aws-events-targets';
 import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -216,10 +218,21 @@ export class OcrStack extends Stack {
       functionName: 'idp-v2-ocr-invoker',
       runtime: lambda.Runtime.PYTHON_3_14,
       handler: 'index.handler',
-      timeout: Duration.minutes(1),
-      memorySize: 256,
+      timeout: Duration.minutes(2),
+      memorySize: 512,
+      ephemeralStorageSize: Size.mebibytes(1024),
       code: lambda.Code.fromAsset(
         path.join(__dirname, '../functions/preprocessing/ocr-invoker'),
+        {
+          bundling: {
+            image: lambda.Runtime.PYTHON_3_14.bundlingImage,
+            command: [
+              'bash',
+              '-c',
+              'pip install pypdf -t /asset-output && cp -r /asset-input/* /asset-output/',
+            ],
+          },
+        },
       ),
       layers: [sharedLayer],
       environment: {
@@ -292,6 +305,57 @@ export class OcrStack extends Stack {
     ocrErrorTopic.addSubscription(
       new snsSubscriptions.LambdaSubscription(ocrCompleteHandler),
     );
+
+    // ========================================
+    // OCR Chunk Merger Lambda (EventBridge triggered)
+    // ========================================
+
+    const ocrChunkMerger = new lambda.Function(this, 'OcrChunkMerger', {
+      functionName: 'idp-v2-ocr-chunk-merger',
+      runtime: lambda.Runtime.PYTHON_3_14,
+      handler: 'index.handler',
+      timeout: Duration.minutes(5),
+      memorySize: 1024,
+      code: lambda.Code.fromAsset(
+        path.join(
+          __dirname,
+          '../functions/preprocessing/ocr-chunk-merger',
+        ),
+      ),
+      layers: [sharedLayer],
+      environment: {
+        BACKEND_TABLE_NAME: backendTableName,
+      },
+    });
+
+    // Permissions: DDB read/write, S3 read/write/delete for document bucket
+    backendTable.grantReadWriteData(ocrChunkMerger);
+    documentBucket.grantRead(ocrChunkMerger);
+    documentBucket.grantPut(ocrChunkMerger);
+    documentBucket.grantDelete(ocrChunkMerger);
+
+    // EventBridge rule: trigger merger when chunk JSON files are created
+    new events.Rule(this, 'OcrChunkCreatedRule', {
+      ruleName: 'idp-v2-ocr-chunk-created',
+      description: 'Trigger OCR chunk merger when chunk result JSON is created',
+      eventPattern: {
+        source: ['aws.s3'],
+        detailType: ['Object Created'],
+        detail: {
+          bucket: {
+            name: [documentBucketName],
+          },
+          object: {
+            key: [
+              {
+                wildcard: 'projects/*/documents/*/paddleocr/chunks/chunk_*.json',
+              },
+            ],
+          },
+        },
+      },
+      targets: [new eventsTargets.LambdaFunction(ocrChunkMerger)],
+    });
 
     // ========================================
     // Fallback Scale-In (10 min alarm)

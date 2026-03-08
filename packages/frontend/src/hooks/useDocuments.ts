@@ -126,6 +126,7 @@ export function useDocuments({
             {
               status: string;
               label: string;
+              error?: string;
               qa_regen?: { status: string; segment_index: number };
             }
           >;
@@ -146,6 +147,7 @@ export function useDocuments({
               steps[key] = {
                 status: val.status as StepStatus['status'],
                 label: stepLabels[key] || val.label,
+                ...(val.error && { error: val.error }),
               };
             }
             const segAnalyzer = progress.steps.segment_analyzer;
@@ -212,6 +214,7 @@ export function useDocuments({
             {
               status: string;
               label: string;
+              error?: string;
               qa_regen?: { status: string; segment_index: number };
             }
           >;
@@ -231,6 +234,7 @@ export function useDocuments({
             steps[key] = {
               status: val.status as StepStatus['status'],
               label: stepLabels[key] || val.label,
+              ...(val.error && { error: val.error }),
             };
           }
           const segAnalyzer = progress.steps.segment_analyzer;

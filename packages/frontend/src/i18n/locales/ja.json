@@ -123,6 +123,8 @@
     "bdaTooltip": "Amazon Bedrockを使用して、表、チャート、複数カラムレイアウトなどのドキュメント構造を分析します。",
     "ocrTooltip": "PaddleOCRを使用して、画像やスキャンされたPDFからテキストを抽出します。設定アイコンをクリックしてOCRオプションを変更できます。",
     "transcribeTooltip": "Amazon Transcribeを使用して、動画や音声ファイルの音声をテキストに変換します。",
+    "largeDocumentHint": "アップロードしたドキュメントに最大{{pages}}ページが含まれています。処理に時間がかかる場合があります。",
+    "maxPageHint": "アップロードしたドキュメントに最大{{pages}}ページが含まれています。公式サポートは3,000ページまでです。PoCでは小さなドキュメントで先に検証することをお勧めします。",
     "transcribe": "Transcribe",
     "transcribeDesc": "Amazon Transcribe"
   },
@@ -187,7 +189,7 @@
       "bdaProcessing": "BDA分析",
       "formatParsing": "フォーマット解析",
       "paddleocrProcessing": "OCR",
-      "paddleocrHint": "初回実行時、エンドポイントの起動に約10分かかる場合があります",
+      "paddleocrHint": "VLモデルの場合、初回実行時にエンドポイントの起動に約10分かかる場合があります",
       "transcription": "音声変換",
       "buildingSegments": "セグメント構築",
       "segmentAiAnalysis": "AI分析",

@@ -591,6 +591,32 @@ export default function DocumentUploadModal({
                       </div>
                     ))}
                   </div>
+
+                  {/* Large document info */}
+                  {maxPdfPages > 100 && maxPdfPages <= 3000 && (
+                    <div className="flex items-start gap-2 p-2.5 bg-amber-50 dark:bg-amber-500/[0.07] border border-amber-200 dark:border-amber-400/20 rounded-lg">
+                      <Info className="h-3.5 w-3.5 text-amber-500 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-700 dark:text-amber-300">
+                        {t(
+                          'documents.largeDocumentHint',
+                          'An uploaded document contains up to {{pages}} pages. Processing may take a while.',
+                          { pages: maxPdfPages },
+                        )}
+                      </p>
+                    </div>
+                  )}
+                  {maxPdfPages > 3000 && (
+                    <div className="flex items-start gap-2 p-2.5 bg-amber-50 dark:bg-amber-500/[0.07] border border-amber-200 dark:border-amber-400/20 rounded-lg">
+                      <Info className="h-3.5 w-3.5 text-amber-500 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-700 dark:text-amber-300">
+                        {t(
+                          'documents.maxPageHint',
+                          'An uploaded document contains up to {{pages}} pages. Officially supported up to 3,000 pages. For PoC, we recommend testing with smaller documents first.',
+                          { pages: maxPdfPages },
+                        )}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 

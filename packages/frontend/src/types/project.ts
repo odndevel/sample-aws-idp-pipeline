@@ -161,6 +161,7 @@ export interface ChatSession {
 export interface StepStatus {
   status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped';
   label: string;
+  error?: string;
 }
 
 export interface WorkflowProgress {

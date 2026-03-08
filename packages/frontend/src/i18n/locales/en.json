@@ -123,6 +123,8 @@
     "bdaTooltip": "Uses Amazon Bedrock to analyze document structure including tables, charts, and multi-column layouts.",
     "ocrTooltip": "Extracts text from images and scanned PDFs using PaddleOCR. Click the settings icon to change OCR options.",
     "transcribeTooltip": "Converts speech in video and audio files to text using Amazon Transcribe. Click the settings icon to change language options.",
+    "largeDocumentHint": "An uploaded document contains up to {{pages}} pages. Processing may take a while.",
+    "maxPageHint": "An uploaded document contains up to {{pages}} pages. Officially supported up to 3,000 pages. For PoC, we recommend testing with smaller documents first.",
     "transcribe": "Transcribe",
     "transcribeDesc": "Amazon Transcribe"
   },
@@ -187,7 +189,7 @@
       "bdaProcessing": "BDA Processing",
       "formatParsing": "Format Parsing",
       "paddleocrProcessing": "OCR",
-      "paddleocrHint": "Initial endpoint activation may take ~10 minutes",
+      "paddleocrHint": "For VL model, initial endpoint activation may take ~10 minutes",
       "transcription": "Transcription",
       "buildingSegments": "Building Segments",
       "segmentAiAnalysis": "AI Analysis",
