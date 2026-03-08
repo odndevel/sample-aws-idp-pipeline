@@ -110,37 +110,44 @@ def action_add_segment_links(params: dict) -> dict:
         },
     )
 
-    # Create Segment nodes + BELONGS_TO edges in batches
+    # Create Segment nodes + BELONGS_TO edges via UNWIND batch
+    segments = [
+        {'sid': f'{workflow_id}_{i:04d}', 'idx': i}
+        for i in range(segment_count)
+    ]
     batch_size = 50
-    for start in range(0, segment_count, batch_size):
-        end = min(start + batch_size, segment_count)
-        for i in range(start, end):
-            seg_id = f'{workflow_id}_{i:04d}'
-            run_query(
-                'MERGE (s:Segment {id: $sid}) '
-                'SET s.project_id = $pid, s.workflow_id = $wid, '
-                's.document_id = $did, s.segment_index = $idx '
-                'WITH s '
-                'MATCH (d:Document {id: $did}) '
-                'MERGE (s)-[:BELONGS_TO]->(d)',
-                {
-                    'sid': seg_id,
-                    'pid': project_id,
-                    'wid': workflow_id,
-                    'did': document_id,
-                    'idx': i,
-                },
-            )
-
-    # Create NEXT relationships between consecutive segments
-    for i in range(segment_count - 1):
-        curr_id = f'{workflow_id}_{i:04d}'
-        next_id = f'{workflow_id}_{i + 1:04d}'
+    for start in range(0, len(segments), batch_size):
+        batch = segments[start:start + batch_size]
         run_query(
-            'MATCH (a:Segment {id: $curr}), (b:Segment {id: $next}) '
-            'MERGE (a)-[:NEXT]->(b)',
-            {'curr': curr_id, 'next': next_id},
+            'UNWIND $segments AS seg '
+            'MERGE (s:Segment {id: seg.sid}) '
+            'SET s.project_id = $pid, s.workflow_id = $wid, '
+            's.document_id = $did, s.segment_index = seg.idx '
+            'WITH s '
+            'MATCH (d:Document {id: $did}) '
+            'MERGE (s)-[:BELONGS_TO]->(d)',
+            {
+                'segments': batch,
+                'pid': project_id,
+                'wid': workflow_id,
+                'did': document_id,
+            },
         )
+
+    # Create NEXT relationships via UNWIND batch
+    if segment_count > 1:
+        pairs = [
+            {'curr': f'{workflow_id}_{i:04d}', 'next': f'{workflow_id}_{i + 1:04d}'}
+            for i in range(segment_count - 1)
+        ]
+        for start in range(0, len(pairs), batch_size):
+            batch = pairs[start:start + batch_size]
+            run_query(
+                'UNWIND $pairs AS p '
+                'MATCH (a:Segment {id: p.curr}), (b:Segment {id: p.next}) '
+                'MERGE (a)-[:NEXT]->(b)',
+                {'pairs': batch},
+            )
 
     return {
         'success': True,
@@ -156,36 +163,38 @@ def action_add_analyses(params: dict) -> dict:
     document_id = params.get('document_id', '')
     analyses = params.get('analyses', [])
 
-    created = 0
-    for item in analyses:
-        segment_index = item['segment_index']
-        qa_index = item['qa_index']
-        question = item.get('question', '')
-        analysis_id = f'{workflow_id}_{segment_index:04d}_{qa_index:02d}'
-        seg_id = f'{workflow_id}_{segment_index:04d}'
+    items = [
+        {
+            'aid': f'{workflow_id}_{item["segment_index"]:04d}_{item["qa_index"]:02d}',
+            'sid': f'{workflow_id}_{item["segment_index"]:04d}',
+            'idx': item['segment_index'],
+            'qidx': item['qa_index'],
+            'q': item.get('question', ''),
+        }
+        for item in analyses
+    ]
 
+    batch_size = 50
+    for start in range(0, len(items), batch_size):
+        batch = items[start:start + batch_size]
         run_query(
-            'MERGE (a:Analysis {id: $aid}) '
+            'UNWIND $items AS item '
+            'MERGE (a:Analysis {id: item.aid}) '
             'SET a.project_id = $pid, a.workflow_id = $wid, '
-            'a.document_id = $did, a.segment_index = $idx, '
-            'a.qa_index = $qidx, a.question = $q '
-            'WITH a '
-            'MATCH (s:Segment {id: $sid}) '
+            'a.document_id = $did, a.segment_index = item.idx, '
+            'a.qa_index = item.qidx, a.question = item.q '
+            'WITH a, item '
+            'MATCH (s:Segment {id: item.sid}) '
             'MERGE (a)-[:BELONGS_TO]->(s)',
             {
-                'aid': analysis_id,
+                'items': batch,
                 'pid': project_id,
                 'wid': workflow_id,
                 'did': document_id,
-                'idx': segment_index,
-                'qidx': qa_index,
-                'sid': seg_id,
-                'q': question,
             },
         )
-        created += 1
 
-    return {'success': True, 'created': created}
+    return {'success': True, 'created': len(items)}
 
 
 def action_add_entities(params: dict) -> dict:
@@ -193,43 +202,52 @@ def action_add_entities(params: dict) -> dict:
     project_id = params['project_id']
     entities = params.get('entities', [])
 
-    created = 0
-    for ent in entities:
-        eid = entity_id(project_id, ent['name'], ent['type'])
+    # Batch MERGE entity nodes
+    entity_items = [
+        {
+            'eid': entity_id(project_id, ent['name'], ent['type']),
+            'name': ent['name'],
+            'type': ent['type'],
+        }
+        for ent in entities
+    ]
 
+    batch_size = 50
+    for start in range(0, len(entity_items), batch_size):
+        batch = entity_items[start:start + batch_size]
         run_query(
-            'MERGE (e:Entity {id: $eid}) '
-            'SET e.project_id = $pid, e.name = $name, e.type = $type',
-            {
-                'eid': eid,
-                'pid': project_id,
-                'name': ent['name'],
-                'type': ent['type'],
-            },
+            'UNWIND $items AS item '
+            'MERGE (e:Entity {id: item.eid}) '
+            'SET e.project_id = $pid, e.name = item.name, e.type = item.type',
+            {'items': batch, 'pid': project_id},
         )
 
+    # Batch MERGE MENTIONED_IN relationships
+    mention_items = []
+    for ent in entities:
+        eid = entity_id(project_id, ent['name'], ent['type'])
         for mention in ent.get('mentioned_in', []):
             workflow_id = mention.get('workflow_id', '')
             segment_index = mention.get('segment_index', 0)
             qa_index = mention.get('qa_index', 0)
-            analysis_id = f'{workflow_id}_{segment_index:04d}_{qa_index:02d}'
-            confidence = mention.get('confidence', 1.0)
-            context = mention.get('context', '')
+            mention_items.append({
+                'eid': eid,
+                'aid': f'{workflow_id}_{segment_index:04d}_{qa_index:02d}',
+                'conf': mention.get('confidence', 1.0),
+                'ctx': mention.get('context', ''),
+            })
 
-            run_query(
-                'MATCH (e:Entity {id: $eid}), (a:Analysis {id: $aid}) '
-                'MERGE (e)-[r:MENTIONED_IN]->(a) '
-                'SET r.confidence = $conf, r.context = $ctx',
-                {
-                    'eid': eid,
-                    'aid': analysis_id,
-                    'conf': confidence,
-                    'ctx': context,
-                },
-            )
-        created += 1
+    for start in range(0, len(mention_items), batch_size):
+        batch = mention_items[start:start + batch_size]
+        run_query(
+            'UNWIND $items AS item '
+            'MATCH (e:Entity {id: item.eid}), (a:Analysis {id: item.aid}) '
+            'MERGE (e)-[r:MENTIONED_IN]->(a) '
+            'SET r.confidence = item.conf, r.context = item.ctx',
+            {'items': batch},
+        )
 
-    return {'success': True, 'created': created}
+    return {'success': True, 'created': len(entity_items)}
 
 
 def action_add_relationships(params: dict) -> dict:
@@ -237,27 +255,28 @@ def action_add_relationships(params: dict) -> dict:
     project_id = params['project_id']
     relationships = params.get('relationships', [])
 
-    created = 0
-    for rel in relationships:
-        source_id = entity_id(project_id, rel['source'], rel.get('source_type', 'CONCEPT'))
-        target_id = entity_id(project_id, rel['target'], rel.get('target_type', 'CONCEPT'))
-        relationship = rel.get('relationship', 'RELATED')
-        source_origin = rel.get('source_origin', 'auto')
+    items = [
+        {
+            'src': entity_id(project_id, rel['source'], rel.get('source_type', 'CONCEPT')),
+            'tgt': entity_id(project_id, rel['target'], rel.get('target_type', 'CONCEPT')),
+            'rel': rel.get('relationship', 'RELATED'),
+            'origin': rel.get('source_origin', 'auto'),
+        }
+        for rel in relationships
+    ]
 
+    batch_size = 50
+    for start in range(0, len(items), batch_size):
+        batch = items[start:start + batch_size]
         run_query(
-            'MATCH (a:Entity {id: $src}), (b:Entity {id: $tgt}) '
-            'MERGE (a)-[r:RELATES_TO {relationship: $rel}]->(b) '
-            'SET r.source = $origin',
-            {
-                'src': source_id,
-                'tgt': target_id,
-                'rel': relationship,
-                'origin': source_origin,
-            },
+            'UNWIND $items AS item '
+            'MATCH (a:Entity {id: item.src}), (b:Entity {id: item.tgt}) '
+            'MERGE (a)-[r:RELATES_TO {relationship: item.rel}]->(b) '
+            'SET r.source = item.origin',
+            {'items': batch},
         )
-        created += 1
 
-    return {'success': True, 'created': created}
+    return {'success': True, 'created': len(items)}
 
 
 def action_link_documents(params: dict) -> dict:

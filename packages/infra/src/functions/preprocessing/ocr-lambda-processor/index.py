@@ -7,7 +7,6 @@ import json
 import os
 import tempfile
 import tarfile
-import logging
 from typing import Any
 
 import boto3
@@ -21,9 +20,6 @@ from shared.ddb_client import (
     record_step_error,
     StepName,
 )
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 OUTPUT_BUCKET = os.environ.get('OUTPUT_BUCKET', '')
 MODEL_CACHE_BUCKET = os.environ.get('MODEL_CACHE_BUCKET', '')
@@ -67,7 +63,7 @@ def s3_cache_exists(model_key: str) -> bool:
         )
         content_length = response.get('ContentLength', 0)
         if content_length < 1024 * 1024:
-            logger.warning(f'S3 cache for {model_key} too small ({content_length} bytes), treating as missing')
+            print(f'S3 cache for {model_key} too small ({content_length} bytes), treating as missing')
             return False
         return True
     except ClientError:
@@ -82,12 +78,12 @@ def download_from_s3_cache(model_key: str) -> bool:
         cache_path = f'{MODEL_CACHE_PREFIX}/{model_key}.tar.gz'
         local_tar = f'/tmp/{model_key}.tar.gz'
 
-        logger.info(f'Downloading model cache from s3://{MODEL_CACHE_BUCKET}/{cache_path}')
+        print(f'Downloading model cache from s3://{MODEL_CACHE_BUCKET}/{cache_path}')
         s3.download_file(MODEL_CACHE_BUCKET, cache_path, local_tar)
 
         file_size = os.path.getsize(local_tar)
         if file_size < 1000:
-            logger.warning(f'Cache file too small ({file_size} bytes)')
+            print(f'Cache file too small ({file_size} bytes)')
             os.unlink(local_tar)
             return False
 
@@ -104,10 +100,10 @@ def download_from_s3_cache(model_key: str) -> bool:
                     tar.extract(member, '/tmp')
 
         os.unlink(local_tar)
-        logger.info('Model cache extracted')
+        print('Model cache extracted')
         return True
     except Exception as e:
-        logger.warning(f'Failed to download from S3 cache: {e}')
+        print(f'Failed to download from S3 cache: {e}')
         return False
 
 
@@ -119,7 +115,7 @@ def upload_to_s3_cache(model_key: str) -> bool:
         cache_path = f'{MODEL_CACHE_PREFIX}/{model_key}.tar.gz'
         local_tar = f'/tmp/{model_key}_upload.tar.gz'
 
-        logger.info('Creating model cache archive...')
+        print('Creating model cache archive...')
         with tarfile.open(local_tar, 'w:gz') as tar:
             if os.path.exists(PADDLEOCR_HOME):
                 tar.add(PADDLEOCR_HOME, arcname='.paddleocr')
@@ -127,14 +123,14 @@ def upload_to_s3_cache(model_key: str) -> bool:
                 tar.add(PADDLEX_HOME, arcname='.paddlex')
 
         file_size = os.path.getsize(local_tar)
-        logger.info(f'Cache archive size: {file_size / (1024 * 1024):.2f} MB')
+        print(f'Cache archive size: {file_size / (1024 * 1024):.2f} MB')
 
         s3.upload_file(local_tar, MODEL_CACHE_BUCKET, cache_path)
         os.unlink(local_tar)
-        logger.info('Model cache uploaded')
+        print('Model cache uploaded')
         return True
     except Exception as e:
-        logger.warning(f'Failed to upload to S3 cache: {e}')
+        print(f'Failed to upload to S3 cache: {e}')
         return False
 
 
@@ -161,10 +157,10 @@ def load_model(model_name: str, options: dict | None = None):
     cache_key = f'{model_name}-{lang or "default"}'
 
     if s3_cache_exists(cache_key):
-        logger.info(f'Found S3 cache for {cache_key}, downloading...')
+        print(f'Found S3 cache for {cache_key}, downloading...')
         download_from_s3_cache(cache_key)
     else:
-        logger.info(f'No S3 cache for {cache_key}, will download from HuggingFace')
+        print(f'No S3 cache for {cache_key}, will download from HuggingFace')
 
     os.makedirs(PADDLEOCR_HOME, exist_ok=True)
     os.makedirs(PADDLEX_HOME, exist_ok=True)
@@ -191,11 +187,11 @@ def load_model(model_name: str, options: dict | None = None):
     else:
         raise ValueError(f'Unsupported model: {model_name}')
 
-    logger.info(f'{model_name} loaded')
+    print(f'{model_name} loaded')
 
     # Cache to S3 if not already cached
     if not s3_cache_exists(cache_key):
-        logger.info(f'Caching {cache_key} to S3...')
+        print(f'Caching {cache_key} to S3...')
         upload_to_s3_cache(cache_key)
 
     _loaded_model = model
@@ -327,42 +323,94 @@ def format_pp_structurev3_output(results: list[Any]) -> dict:
 # Main Processing
 # ========================================
 
-def process_file(
-    file_uri: str,
-    workflow_id: str,
-    document_id: str,
-    ocr_model: str,
-    ocr_options: dict | None = None,
-) -> dict:
-    """Download file from S3, run OCR, save result.json, update DDB."""
-    s3 = get_s3_client()
+def get_base_path_from_uri(file_uri: str) -> tuple[str, str, str]:
+    """Extract bucket, key, and document base path from a file URI."""
     bucket, key = parse_s3_uri(file_uri)
-
-    # Determine document base path
     key_parts = key.split('/')
     if 'documents' in key_parts:
         doc_idx = key_parts.index('documents')
         base_path = '/'.join(key_parts[:doc_idx + 2])
     else:
         base_path = '/'.join(key_parts[:-1])
+    return bucket, key, base_path
+
+
+def process_file(
+    file_uri: str,
+    workflow_id: str,
+    document_id: str,
+    ocr_model: str,
+    ocr_options: dict | None = None,
+    context: Any = None,
+    chunk_index: int | None = None,
+    start_page: int | None = None,
+    total_chunks: int | None = None,
+    original_file_uri: str | None = None,
+) -> dict:
+    """Download file from S3, run OCR, save result.json, update DDB.
+
+    In chunk mode (chunk_index is not None):
+    - Saves output to chunks/chunk_NNNN.json instead of result.json
+    - Applies page offset (start_page) to page indices
+    - Does NOT update DDB (merger Lambda handles that)
+    - Saves .failed marker on error
+    """
+    import time
+
+    is_chunk = chunk_index is not None
+    s3 = get_s3_client()
+    bucket, key, base_path = get_base_path_from_uri(file_uri)
+
+    # In chunk mode, base_path comes from the original file, not the chunk file
+    if is_chunk and original_file_uri:
+        _, _, base_path = get_base_path_from_uri(original_file_uri)
 
     # Download file to /tmp
     suffix = os.path.splitext(key)[1].lower() or '.jpg'
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir='/tmp') as tmp:
+        dl_start = time.time()
         s3.download_file(bucket, key, tmp.name)
         tmp_path = tmp.name
+        file_size = os.path.getsize(tmp_path)
+        chunk_label = f' chunk={chunk_index}/{total_chunks}' if is_chunk else ''
+        print(f'[{workflow_id}]{chunk_label} Downloaded {file_size / (1024*1024):.1f}MB in {time.time() - dl_start:.1f}s')
 
     try:
-        # Load model and run prediction
+        # Load model
+        load_start = time.time()
         model = load_model(ocr_model, ocr_options)
-        logger.info(f'Processing file: {tmp_path} (model={ocr_model})')
+        print(f'[{workflow_id}]{chunk_label} Model loaded in {time.time() - load_start:.1f}s')
+
+        # Check remaining time before predict
+        remaining_ms = context.get_remaining_time_in_millis() if context else 900000
+        print(f'[{workflow_id}]{chunk_label} Processing file: {tmp_path} (model={ocr_model}, remaining={remaining_ms/1000:.0f}s)')
+
+        # Run prediction
+        predict_start = time.time()
         results = model.predict(input=tmp_path)
+
+        # Collect results (generator) with page-level progress
+        result_list = []
+        for page_idx, res in enumerate(results):
+            result_list.append(res)
+            elapsed = time.time() - predict_start
+            if (page_idx + 1) % 50 == 0 or page_idx == 0:
+                remaining_ms = context.get_remaining_time_in_millis() if context else 0
+                print(f'[{workflow_id}]{chunk_label} Page {page_idx + 1} done ({elapsed:.1f}s elapsed, {remaining_ms/1000:.0f}s remaining)')
+
+        total_predict_time = time.time() - predict_start
+        print(f'[{workflow_id}]{chunk_label} Predict completed: {len(result_list)} pages in {total_predict_time:.1f}s ({total_predict_time/max(len(result_list),1):.2f}s/page)')
 
         # Format output (same structure as SageMaker)
         if ocr_model == 'pp-ocrv5':
-            formatted = format_pp_ocrv5_output(results)
+            formatted = format_pp_ocrv5_output(result_list)
         else:
-            formatted = format_pp_structurev3_output(results)
+            formatted = format_pp_structurev3_output(result_list)
+
+        # Apply page offset for chunk mode
+        if is_chunk and start_page:
+            for page in formatted.get('pages', []):
+                page['page_index'] = page['page_index'] + start_page
 
         output = {
             'success': True,
@@ -372,46 +420,87 @@ def process_file(
             **formatted,
         }
 
-        # Save result.json to S3
-        output_key = f'{base_path}/paddleocr/result.json'
-        s3.put_object(
-            Bucket=bucket,
-            Key=output_key,
-            Body=json.dumps(output, ensure_ascii=False, indent=2),
-            ContentType='application/json',
-        )
-        ocr_output_uri = f's3://{bucket}/{output_key}'
-        logger.info(f'Result saved to: {ocr_output_uri}')
+        if is_chunk:
+            # Chunk mode: save to chunks/chunk_NNNN.json
+            output_key = f'{base_path}/paddleocr/chunks/chunk_{chunk_index:04d}.json'
+            s3.put_object(
+                Bucket=bucket,
+                Key=output_key,
+                Body=json.dumps(output, ensure_ascii=False, indent=2),
+                ContentType='application/json',
+            )
+            output_uri = f's3://{bucket}/{output_key}'
+            print(f'[{workflow_id}] Chunk {chunk_index} result saved to: {output_uri}')
+            return {'status': 'completed', 'output_uri': output_uri, 'page_count': formatted.get('page_count', 0), 'chunk_index': chunk_index}
+        else:
+            # Normal mode: save to result.json and update DDB
+            output_key = f'{base_path}/paddleocr/result.json'
+            s3.put_object(
+                Bucket=bucket,
+                Key=output_key,
+                Body=json.dumps(output, ensure_ascii=False, indent=2),
+                ContentType='application/json',
+            )
+            ocr_output_uri = f's3://{bucket}/{output_key}'
+            print(f'[{workflow_id}] Result saved to: {ocr_output_uri}')
 
-        # Update DDB status
-        page_count = formatted.get('page_count', 1)
-        update_preprocess_status(
-            document_id=document_id,
-            workflow_id=workflow_id,
-            processor=PreprocessType.OCR,
-            status=PreprocessStatus.COMPLETED,
-            output_uri=ocr_output_uri,
-            page_count=page_count,
-        )
-        record_step_complete(workflow_id, StepName.PADDLEOCR_PROCESSOR)
-        logger.info(f'OCR completed: {page_count} pages')
+            page_count = formatted.get('page_count', 1)
+            update_preprocess_status(
+                document_id=document_id,
+                workflow_id=workflow_id,
+                processor=PreprocessType.OCR,
+                status=PreprocessStatus.COMPLETED,
+                output_uri=ocr_output_uri,
+                page_count=page_count,
+            )
+            record_step_complete(workflow_id, StepName.PADDLEOCR_PROCESSOR)
+            print(f'[{workflow_id}] OCR completed: {page_count} pages')
+            return {'status': 'completed', 'output_uri': ocr_output_uri, 'page_count': page_count}
 
-        return {'status': 'completed', 'output_uri': ocr_output_uri, 'page_count': page_count}
+    except Exception:
+        if is_chunk:
+            # Save .failed marker for merger to detect
+            try:
+                failed_key = f'{base_path}/paddleocr/chunks/chunk_{chunk_index:04d}.failed'
+                s3.put_object(
+                    Bucket=bucket,
+                    Key=failed_key,
+                    Body=b'',
+                    ContentType='application/octet-stream',
+                )
+                print(f'[{workflow_id}] Saved failure marker: {failed_key}')
+            except Exception as marker_err:
+                print(f'[{workflow_id}] Failed to save failure marker: {marker_err}')
+        raise
 
     finally:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
 
 
-def handler(event, _context):
-    """Lambda handler - invoked asynchronously by ocr-invoker."""
-    logger.info(f'Event: {json.dumps(event)}')
+def handler(event, context):
+    """Lambda handler - invoked asynchronously by ocr-invoker.
+
+    Supports both normal mode and chunk mode (when chunk_index is present).
+    """
+    print(f'Event: {json.dumps(event)}')
 
     workflow_id = event.get('workflow_id')
     document_id = event.get('document_id')
     file_uri = event.get('file_uri')
     ocr_model = event.get('ocr_model', 'pp-ocrv5')
     ocr_options = event.get('ocr_options', {})
+
+    # Chunk mode parameters
+    chunk_index = event.get('chunk_index')
+    start_page = event.get('start_page')
+    total_chunks = event.get('total_chunks')
+    original_file_uri = event.get('original_file_uri')
+    is_chunk = chunk_index is not None
+
+    remaining_ms = context.get_remaining_time_in_millis() if context else 900000
+    chunk_label = f', chunk={chunk_index}/{total_chunks}' if is_chunk else ''
+    print(f'[{workflow_id}] Starting OCR (model={ocr_model}{chunk_label}, timeout={remaining_ms/1000:.0f}s)')
 
     try:
         result = process_file(
@@ -420,21 +509,27 @@ def handler(event, _context):
             document_id=document_id,
             ocr_model=ocr_model,
             ocr_options=ocr_options,
+            context=context,
+            chunk_index=chunk_index,
+            start_page=start_page,
+            total_chunks=total_chunks,
+            original_file_uri=original_file_uri,
         )
         return {'statusCode': 200, 'body': json.dumps(result)}
 
     except Exception as e:
-        logger.error(f'OCR processing failed: {e}')
+        print(f'[{workflow_id}] OCR processing failed: {e}')
         import traceback
         traceback.print_exc()
 
-        # Update DDB with failure
-        update_preprocess_status(
-            document_id=document_id,
-            workflow_id=workflow_id,
-            processor=PreprocessType.OCR,
-            status=PreprocessStatus.FAILED,
-            error=str(e),
-        )
-        record_step_error(workflow_id, StepName.PADDLEOCR_PROCESSOR, str(e))
+        if not is_chunk:
+            # Only update DDB in normal mode; chunk mode uses .failed marker
+            update_preprocess_status(
+                document_id=document_id,
+                workflow_id=workflow_id,
+                processor=PreprocessType.OCR,
+                status=PreprocessStatus.FAILED,
+                error=str(e),
+            )
+            record_step_error(workflow_id, StepName.PADDLEOCR_PROCESSOR, str(e))
         raise

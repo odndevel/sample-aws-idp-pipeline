@@ -16,10 +16,14 @@ import io
 import json
 import os
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
 import pypdfium2 as pdfium
 from PIL import Image
+
+# Pages per batch for parallel rendering via Step Functions Map
+RENDER_BATCH_SIZE = int(os.environ.get('RENDER_BATCH_SIZE', '500'))
 
 from shared.ddb_client import (
     record_step_start,
@@ -127,10 +131,7 @@ def save_metadata_to_s3(bucket: str, base_path: str, metadata: dict):
 
 
 def process_pdf(file_uri: str, bucket: str, base_path: str) -> list[dict]:
-    """Process PDF file: render each page as PNG image."""
-    segments = []
-    scale = PDF_DPI / 72  # 72 is default PDF DPI
-
+    """Count PDF pages and create segments with predictable image_uri paths (no rendering)."""
     with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
         tmp_path = tmp.name
 
@@ -138,43 +139,68 @@ def process_pdf(file_uri: str, bucket: str, base_path: str) -> list[dict]:
         download_file_from_s3(file_uri, tmp_path)
         doc = pdfium.PdfDocument(tmp_path)
         page_count = len(doc)
-        print(f'PDF has {page_count} pages')
+        doc.close()
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
-        for page_num in range(page_count):
+    print(f'PDF has {page_count} pages (rendering deferred to Map)')
+
+    segments = []
+    for page_num in range(page_count):
+        image_key = f'{base_path}/preprocessed/page_{page_num:04d}.png'
+        segments.append({
+            'segment_index': page_num,
+            'segment_type': 'PAGE',
+            'image_uri': f's3://{bucket}/{image_key}',
+        })
+
+    return segments
+
+
+def handle_render_pages(event):
+    """Render a batch of PDF pages and upload to S3. Called by Step Functions Map."""
+    file_uri = event['file_uri']
+    start_page = event['start_page']
+    end_page = event['end_page']
+
+    bucket, base_path = get_document_base_path(file_uri)
+    scale = PDF_DPI / 72
+
+    with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+        tmp_path = tmp.name
+
+    try:
+        download_file_from_s3(file_uri, tmp_path)
+        doc = pdfium.PdfDocument(tmp_path)
+        rendered = 0
+
+        for page_num in range(start_page, end_page):
             page = doc[page_num]
             bitmap = page.render(scale=scale)
             img = bitmap.to_pil()
 
-            # Convert to PNG bytes
             buf = io.BytesIO()
             img.save(buf, format='PNG')
             png_bytes = buf.getvalue()
 
-            # Upload to S3
             image_key = f'{base_path}/preprocessed/page_{page_num:04d}.png'
             upload_image_to_s3(bucket, image_key, png_bytes)
 
-            image_uri = f's3://{bucket}/{image_key}'
-            segments.append({
-                'segment_index': page_num,
-                'segment_type': 'PAGE',
-                'image_uri': image_uri,
-                'width': img.width,
-                'height': img.height
-            })
-
             bitmap.close()
             page.close()
+            rendered += 1
 
-            if (page_num + 1) % 100 == 0:
-                print(f'Rendered {page_num + 1}/{page_count} pages')
+            if rendered % 100 == 0:
+                print(f'Rendered {rendered}/{end_page - start_page} pages (page {page_num})')
 
         doc.close()
     finally:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
 
-    return segments
+    print(f'Rendered pages {start_page}-{end_page - 1} ({rendered} pages)')
+    return {'start_page': start_page, 'end_page': end_page, 'rendered': rendered}
 
 
 def process_image(file_uri: str, bucket: str, base_path: str) -> list[dict]:
@@ -326,6 +352,10 @@ def prepare_presentation_segments(file_uri: str) -> list[dict]:
 def handler(event, _context):
     print(f'Event: {json.dumps(event)}')
 
+    # Render pages mode (called by Step Functions Map)
+    if event.get('mode') == 'render_pages':
+        return handle_render_pages(event)
+
     workflow_id = event.get('workflow_id')
     document_id = event.get('document_id')
     file_uri = event.get('file_uri')
@@ -386,7 +416,7 @@ def handler(event, _context):
         print(f'Saved metadata to {metadata_uri}')
 
         # Create initial segment analysis files (so frontend can show images immediately)
-        for seg in segments:
+        def _create_segment(seg):
             segment_type = seg.get('segment_type', 'PAGE')
             segment_data = {
                 'segment_index': seg['segment_index'],
@@ -395,53 +425,69 @@ def handler(event, _context):
                 'width': seg.get('width'),
                 'height': seg.get('height'),
                 'status': SegmentStatus.INDEXING,
-                # Initialize empty fields for later merging
                 'bda_indexer': '',
                 'paddleocr': '',
                 'paddleocr_blocks': None,
                 'format_parser': '',
                 'ai_analysis': [],
             }
-            # Media-specific fields (video/audio)
             if segment_type in ('VIDEO', 'AUDIO'):
                 segment_data['file_uri'] = seg.get('file_uri', file_uri)
-                # Initialize transcribe fields for media files
                 segment_data['transcribe'] = ''
                 segment_data['transcribe_segments'] = []
-
-            # Web-specific fields
             if segment_type == 'WEB':
                 segment_data['file_uri'] = seg.get('file_uri', file_uri)
                 segment_data['webcrawler_content'] = ''
                 segment_data['source_url'] = ''
                 segment_data['page_title'] = ''
-
-            # Text-specific fields (DOCX, Markdown, TXT)
             if segment_type == 'TEXT':
                 segment_data['file_uri'] = seg.get('file_uri', file_uri)
                 segment_data['text_content'] = seg.get('text_content', '')
                 segment_data['chunk_uri'] = seg.get('chunk_uri', '')
-                # Text files use format_parser field for analysis
                 segment_data['format_parser'] = seg.get('text_content', '')
-
             save_segment_analysis(file_uri, seg['segment_index'], segment_data)
-            print(f'Created initial segment {seg["segment_index"]}')
+
+        if len(segments) > 100:
+            with ThreadPoolExecutor(max_workers=20) as executor:
+                list(executor.map(_create_segment, segments))
+            print(f'Created {len(segments)} initial segments (parallel)')
+        else:
+            for seg in segments:
+                _create_segment(seg)
+            print(f'Created {len(segments)} initial segments')
 
         # Update workflow total_segments in DynamoDB
         entity_type = get_entity_prefix(file_type)
         update_workflow_total_segments(document_id, workflow_id, len(segments), entity_type)
 
-        record_step_complete(
-            workflow_id,
-            StepName.SEGMENT_PREP,
-            segment_count=len(segments)
-        )
+        is_pdf = (ext in PDF_EXTENSIONS or file_type == 'application/pdf') and len(segments) > 0
 
-        return {
+        result = {
             **event,
             'preprocessor_metadata_uri': metadata_uri,
-            'segment_count': len(segments)
+            'segment_count': len(segments),
+            'render_needed': False,
         }
+
+        if is_pdf:
+            # PDF: defer step_complete to finalize_prep (after rendering Map)
+            render_batches = []
+            for i in range(0, len(segments), RENDER_BATCH_SIZE):
+                render_batches.append({
+                    'start_page': i,
+                    'end_page': min(i + RENDER_BATCH_SIZE, len(segments)),
+                })
+            result['render_needed'] = True
+            result['render_batches'] = render_batches
+            print(f'Created {len(render_batches)} render batches')
+        else:
+            record_step_complete(
+                workflow_id,
+                StepName.SEGMENT_PREP,
+                segment_count=len(segments)
+            )
+
+        return result
 
     except Exception as e:
         error_msg = str(e)

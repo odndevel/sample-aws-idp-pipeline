@@ -1,6 +1,7 @@
 import json
 import os
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import yaml
 from strands import Agent
@@ -29,9 +30,11 @@ lambda_client = None
 def get_lambda_client():
     global lambda_client
     if lambda_client is None:
+        from botocore.config import Config
         lambda_client = boto3.client(
             'lambda',
             region_name=os.environ.get('AWS_REGION', 'us-east-1'),
+            config=Config(read_timeout=300),
         )
     return lambda_client
 
@@ -61,6 +64,42 @@ def invoke_graph_service(action: str, params: dict) -> dict:
     return payload
 
 
+def send_batches_parallel(action: str, key: str, items: list, extra_params: dict,
+                          batch_size: int = 50, max_workers: int = 10):
+    """Send items to graph service in parallel batches."""
+    batches = []
+    for i in range(0, len(items), batch_size):
+        batches.append(items[i:i + batch_size])
+
+    total = len(items)
+    completed = 0
+    errors = []
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {}
+        for batch in batches:
+            params = {**extra_params, key: batch}
+            future = executor.submit(invoke_graph_service, action, params)
+            futures[future] = len(batch)
+
+        for future in as_completed(futures):
+            batch_len = futures[future]
+            try:
+                future.result()
+                completed += batch_len
+                if completed % 500 < batch_size or completed >= total:
+                    print(f'{action}: {completed}/{total}')
+            except Exception as e:
+                errors.append(str(e))
+                completed += batch_len
+                print(f'{action} batch error: {e}')
+
+    if errors:
+        print(f'{action}: {len(errors)} batch errors out of {len(batches)} batches')
+
+    return completed
+
+
 def create_analysis_nodes(segments, workflow_id, project_id, document_id):
     """Create Analysis nodes in Neptune for each QA pair across all segments."""
     analyses = []
@@ -74,13 +113,11 @@ def create_analysis_nodes(segments, workflow_id, project_id, document_id):
             })
 
     if analyses:
-        invoke_graph_service('add_analyses', {
-            'project_id': project_id,
-            'workflow_id': workflow_id,
-            'document_id': document_id,
-            'analyses': analyses,
-        })
-        print(f'Created {len(analyses)} analysis nodes')
+        send_batches_parallel(
+            'add_analyses', 'analyses', analyses,
+            {'project_id': project_id, 'workflow_id': workflow_id, 'document_id': document_id},
+            batch_size=200,
+        )
 
     return analyses
 
@@ -196,16 +233,16 @@ def handle_extract_entities(event):
     print(f'Extracted {len(unique_entities)} entities, {len(relationships)} relationships')
 
     if unique_entities:
-        invoke_graph_service('add_entities', {
-            'project_id': project_id,
-            'entities': unique_entities,
-        })
+        send_batches_parallel(
+            'add_entities', 'entities', unique_entities,
+            {'project_id': project_id},
+        )
 
     if relationships:
-        invoke_graph_service('add_relationships', {
-            'project_id': project_id,
-            'relationships': relationships,
-        })
+        send_batches_parallel(
+            'add_relationships', 'relationships', relationships,
+            {'project_id': project_id},
+        )
 
     return {
         'success': True,
@@ -291,27 +328,19 @@ def handler(event, _context):
             f'Entity resolution: {len(all_entities)} -> {len(unique_entities)} unique entities'
         )
 
-        # 6. Add entities to graph
+        # 6. Add entities to graph (parallel batches)
         if unique_entities:
-            invoke_graph_service(
-                'add_entities',
-                {
-                    'project_id': project_id,
-                    'entities': unique_entities,
-                },
+            send_batches_parallel(
+                'add_entities', 'entities', unique_entities,
+                {'project_id': project_id},
             )
-            print(f'Added {len(unique_entities)} entities to graph')
 
-        # 7. Add relationships
+        # 7. Add relationships (parallel batches)
         if all_relationships:
-            invoke_graph_service(
-                'add_relationships',
-                {
-                    'project_id': project_id,
-                    'relationships': all_relationships,
-                },
+            send_batches_parallel(
+                'add_relationships', 'relationships', all_relationships,
+                {'project_id': project_id},
             )
-            print(f'Added {len(all_relationships)} relationships to graph')
 
         record_step_complete(
             workflow_id,
@@ -338,11 +367,4 @@ def handler(event, _context):
         print(f'Error in graph builder: {e}')
         traceback.print_exc()
         record_step_error(workflow_id, StepName.GRAPH_BUILDER, str(e))
-        return {
-            'workflow_id': workflow_id,
-            'document_id': document_id,
-            'project_id': project_id,
-            'file_uri': file_uri,
-            'file_type': file_type,
-            'segment_count': segment_count,
-        }
+        raise

@@ -237,7 +237,13 @@ function StepProgressBar({
   const overallPct = hasSteps
     ? Math.round((completedCount / totalCount) * 100)
     : 0;
-  const activeStep = visibleSteps.find(([, s]) => s.status === 'in_progress');
+  const activeSteps = visibleSteps.filter(
+    ([, s]) => s.status === 'in_progress',
+  );
+  const activeLabel =
+    activeSteps.length > 0
+      ? activeSteps.map(([, s]) => s.label).join(', ')
+      : t('workflow.inProgress');
 
   return (
     <div className="mt-2">
@@ -249,7 +255,7 @@ function StepProgressBar({
         <div className="flex items-center gap-2">
           <Loader2 className="h-3 w-3 text-blue-500 animate-spin flex-shrink-0" />
           <span className="text-[11px] text-blue-700 dark:text-blue-300 font-medium truncate">
-            {activeStep ? activeStep[1].label : t('workflow.inProgress')}
+            {activeLabel}
           </span>
           {hasSteps && (
             <span className="text-[10px] text-slate-400 flex-shrink-0 ml-auto">
@@ -288,7 +294,11 @@ function StepProgressBar({
               : 0;
 
             return (
-              <div key={key} className="space-y-0.5">
+              <div
+                key={key}
+                className="space-y-0.5"
+                title={isFailed && step.error ? step.error : undefined}
+              >
                 <div className="flex items-center gap-1.5">
                   {isDone && (
                     <Check className="h-3 w-3 text-green-500 flex-shrink-0" />
@@ -325,8 +335,8 @@ function StepProgressBar({
                 </div>
 
                 {isActive && key === 'paddleocr_processor' && (
-                  <p className="pl-[18px] text-[10px] text-amber-600 dark:text-amber-400">
-                    {t('workflow.steps.paddleocrHint')}
+                  <p className="pl-[18px] text-[10px] text-slate-400/40 dark:text-slate-500/30">
+                    ({t('workflow.steps.paddleocrHint')})
                   </p>
                 )}
 
@@ -341,6 +351,23 @@ function StepProgressBar({
               </div>
             );
           })}
+
+          {/* Combined error summary for all failed steps */}
+          {(() => {
+            const failedWithError = visibleSteps.filter(
+              ([, s]) => s.status === 'failed' && s.error,
+            );
+            if (failedWithError.length === 0) return null;
+            return (
+              <div className="mt-1.5 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded text-[10px] text-red-600 dark:text-red-400 space-y-0.5">
+                {failedWithError.map(([key, s]) => (
+                  <p key={key}>
+                    <span className="font-medium">{s.label}:</span> {s.error}
+                  </p>
+                ))}
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
