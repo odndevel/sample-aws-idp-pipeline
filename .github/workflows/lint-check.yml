@@ -7,12 +7,17 @@ on:
       - 'packages/**'
       - 'eslint.config.mjs'
       - '.prettierrc'
+      - '.github/workflows/lint-check.yml'
   push:
     branches: [main]
     paths:
       - 'packages/**'
       - 'eslint.config.mjs'
       - '.prettierrc'
+      - '.github/workflows/lint-check.yml'
+
+permissions:
+  contents: read
 
 jobs:
   lint:
