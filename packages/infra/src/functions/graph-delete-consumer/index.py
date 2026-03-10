@@ -20,9 +20,13 @@ GRAPH_DELETE_QUEUE_URL = os.environ.get('GRAPH_DELETE_QUEUE_URL', '')
 _session = None
 _sqs_client = None
 
-PHASE_ORDER = ['analyses', 'segments', 'documents', 'orphan_cleanup']
+PHASE_ORDER = ['clusters', 'analyses', 'segments', 'documents', 'orphan_cleanup']
 
 DELETE_QUERIES = {
+    'clusters': (
+        'MATCH (d:Document {project_id: $pid, workflow_id: $wid})-[:HAS_CLUSTER]->(c:Cluster) '
+        'WITH c LIMIT $batch DETACH DELETE c RETURN count(*) AS deleted'
+    ),
     'analyses': (
         'MATCH (a:Analysis {project_id: $pid, workflow_id: $wid}) '
         'WITH a LIMIT $batch DETACH DELETE a RETURN count(*) AS deleted'
@@ -38,9 +42,7 @@ DELETE_QUERIES = {
     'orphan_cleanup': (
         'MATCH (e:Entity {project_id: $pid}) '
         'WHERE NOT (e)-[:MENTIONED_IN]->() '
-        'AND NOT (e)-[:RELATES_TO]-() '
-        'AND NOT ()-[:RELATES_TO]->(e) '
-        'WITH e LIMIT $batch DELETE e RETURN count(*) AS deleted'
+        'WITH e LIMIT $batch DETACH DELETE e RETURN count(*) AS deleted'
     ),
 }
 

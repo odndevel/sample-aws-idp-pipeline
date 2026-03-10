@@ -53,45 +53,6 @@ class GraphEdge(BaseModel):
     properties: dict | None = None
 
 
-class GraphResponse(BaseModel):
-    nodes: list[GraphNode]
-    edges: list[GraphEdge]
-
-
-@router.get("")
-def get_project_graph(
-    project_id: str,
-) -> GraphResponse:
-    """Get project-level entity graph for visualization."""
-    result = invoke_graph_service(
-        "get_entity_graph",
-        {"project_id": project_id},
-    )
-    return GraphResponse(
-        nodes=[GraphNode(**n) for n in result.get("nodes", [])],
-        edges=[GraphEdge(**e) for e in result.get("edges", [])],
-    )
-
-
-@router.get("/documents/{document_id}")
-def get_document_graph(
-    project_id: str,
-    document_id: str,
-) -> GraphResponse:
-    """Get document-level graph (segments + entities) for visualization."""
-    result = invoke_graph_service(
-        "get_document_graph",
-        {
-            "project_id": project_id,
-            "document_id": document_id,
-        },
-    )
-    return GraphResponse(
-        nodes=[GraphNode(**n) for n in result.get("nodes", [])],
-        edges=[GraphEdge(**e) for e in result.get("edges", [])],
-    )
-
-
 class TagCloudItem(BaseModel):
     id: str
     name: str
@@ -99,25 +60,76 @@ class TagCloudItem(BaseModel):
     connections: int
 
 
-class TagCloudResponse(BaseModel):
-    tags: list[TagCloudItem]
+class GraphResponse(BaseModel):
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
+    tagcloud: list[TagCloudItem] | None = None
+    total_segments: int | None = None
+    total_entities: int | None = None
+    mode: str | None = None
+    focus_page: int | None = None
+    from_page: int | None = None
+    to_page: int | None = None
 
 
-@router.get("/documents/{document_id}/tagcloud")
-def get_document_tagcloud(
+@router.get("")
+def get_project_graph(
+    project_id: str,
+    search: str | None = Query(default=None),
+    shared_only: bool = Query(default=False),
+) -> GraphResponse:
+    """Get project-level entity graph for visualization."""
+    params: dict = {"project_id": project_id}
+    if search:
+        params["search"] = search
+    if shared_only:
+        params["shared_only"] = True
+    result = invoke_graph_service(
+        "get_entity_graph",
+        params,
+    )
+    return GraphResponse(
+        nodes=[GraphNode(**n) for n in result.get("nodes", [])],
+        edges=[GraphEdge(**e) for e in result.get("edges", [])],
+        tagcloud=[TagCloudItem(**t) for t in result.get("tagcloud", [])] if result.get("tagcloud") else None,
+        total_entities=result.get("total_entities"),
+    )
+
+
+@router.get("/documents/{document_id}")
+def get_document_graph(
     project_id: str,
     document_id: str,
-) -> TagCloudResponse:
-    """Get lightweight entity tag cloud data for a document."""
-    result = invoke_graph_service(
-        "get_document_tagcloud",
-        {
-            "project_id": project_id,
-            "document_id": document_id,
-        },
-    )
-    return TagCloudResponse(
-        tags=[TagCloudItem(**t) for t in result.get("tags", [])],
+    from_page: int | None = Query(default=None),
+    to_page: int | None = Query(default=None),
+    page: int | None = Query(default=None),
+    search: str | None = Query(default=None),
+) -> GraphResponse:
+    """Get document-level graph (segments + entities) for visualization."""
+    params: dict = {
+        "project_id": project_id,
+        "document_id": document_id,
+    }
+    if from_page is not None and to_page is not None:
+        params["from_page"] = from_page
+        params["to_page"] = to_page
+    if page is not None:
+        params["page"] = page
+    if search:
+        params["search"] = search
+
+    result = invoke_graph_service("get_document_graph", params)
+    tc_raw = result.get("tagcloud")
+    tc = [TagCloudItem(**t) for t in tc_raw] if tc_raw else None
+    return GraphResponse(
+        nodes=[GraphNode(**n) for n in result.get("nodes", [])],
+        edges=[GraphEdge(**e) for e in result.get("edges", [])],
+        tagcloud=tc,
+        total_segments=result.get("total_segments"),
+        mode=result.get("mode"),
+        focus_page=result.get("focus_page"),
+        from_page=result.get("from_page"),
+        to_page=result.get("to_page"),
     )
 
 
@@ -134,6 +146,25 @@ def expand_entity_cluster(
             "project_id": project_id,
             "document_id": document_id,
             "entity_type": entity_type,
+        },
+    )
+    return GraphResponse(
+        nodes=[GraphNode(**n) for n in result.get("nodes", [])],
+        edges=[GraphEdge(**e) for e in result.get("edges", [])],
+    )
+
+
+@router.get("/documents/{document_id}/expand-all")
+def expand_all_clusters(
+    project_id: str,
+    document_id: str,
+) -> GraphResponse:
+    """Expand all clustered entity types into individual entities at once."""
+    result = invoke_graph_service(
+        "expand_all_clusters",
+        {
+            "project_id": project_id,
+            "document_id": document_id,
         },
     )
     return GraphResponse(

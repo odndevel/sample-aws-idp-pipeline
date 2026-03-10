@@ -76,6 +76,20 @@ Neptune에 저장되는 노드와 관계 구조입니다. 쿼리 언어로 openC
 | `RELATES_TO` | Entity → Entity | 엔티티 간 관계 (`relationship`, `source`) |
 | `RELATED_TO` | Document → Document | 문서 간 수동 연결 (`reason`, `label`) |
 
+### 노드 ID 설계
+
+Neptune은 별도의 인덱스를 지원하지 않으며, 노드의 `~id` 속성만이 유일한 O(1) 직접 조회 수단입니다. 따라서 각 노드 타입의 ID를 의미 있는 복합 키로 구성하여, 인덱스 없이도 빠른 조회가 가능하도록 설계했습니다.
+
+| 노드 | ID 형식 | 예시 |
+|------|---------|------|
+| **Document** | `{document_id}` | `doc_abc123` |
+| **Segment** | `{workflow_id}_{segment_index:04d}` | `wf_abc123_0042` |
+| **Analysis** | `{workflow_id}_{segment_index:04d}_{qa_index:02d}` | `wf_abc123_0042_00` |
+| **Entity** | SHA256(`{project_id}:{name}:{type}`)의 앞 16자 | `a1b2c3d4e5f6g7h8` |
+
+- **Segment/Analysis**: 워크플로우 ID + 세그먼트 인덱스(+ QA 인덱스)를 조합하여, ID만으로 소속 관계를 파악할 수 있습니다
+- **Entity**: 프로젝트 ID + 정규화된 이름 + 타입의 해시를 사용하여, 동일한 엔티티가 여러 세그먼트에서 추출되더라도 자연스럽게 같은 노드로 병합(MERGE)됩니다
+
 ### 그래프 구조 예시
 
 ```

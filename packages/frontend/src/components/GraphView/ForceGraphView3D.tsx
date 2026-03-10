@@ -32,6 +32,7 @@ interface ForceLink {
   edgeLabel: string;
   description?: string;
   color: string;
+  properties?: Record<string, unknown> | null;
 }
 
 export type LinkDirection = 'both' | 'outgoing' | 'incoming';
@@ -47,6 +48,12 @@ export interface ForceGraphViewProps {
   showEdgeLabels?: boolean;
   onNodeClick?: (nodeId: string, nodeType: string) => void;
   onClusterClick?: (entityType: string) => void;
+  onLinkClick?: (link: {
+    source: string;
+    target: string;
+    label: string;
+    properties?: Record<string, unknown> | null;
+  }) => void;
 }
 
 const DEFAULT_LINK_COLOR = '#4b5563';
@@ -83,7 +90,9 @@ function getOrCreateLabelTexture(
   let scale = labelScaleCache.get(key);
   if (!texture || !scale) {
     const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d')!;
+    const ctx = canvas.getContext('2d');
+    if (!ctx)
+      return { texture: new THREE.CanvasTexture(canvas), scaleX: 1, scaleY: 1 };
     const fontSize = 48;
     ctx.font = `${fontSize}px sans-serif`;
     const textWidth = ctx.measureText(text).width;
@@ -144,7 +153,7 @@ function getOrCreateMaterial(
       transparent: true,
       opacity,
       ...(emissive
-        ? { emissive: new THREE.Color(color), emissiveIntensity: 0.6 }
+        ? { emissive: new THREE.Color(color), emissiveIntensity: 1.0 }
         : {}),
     });
     materialCache.set(key, mat);
@@ -152,13 +161,17 @@ function getOrCreateMaterial(
   return mat;
 }
 
-const geometryCache = {
-  sphere: new THREE.SphereGeometry(1, 16, 12),
-  box: new THREE.BoxGeometry(1, 1, 1),
-  plane: new THREE.PlaneGeometry(1, 1),
-  octahedron: new THREE.OctahedronGeometry(1),
-  cylinder: new THREE.CylinderGeometry(0.8, 1, 0.3, 6),
-};
+function createGeometryCache() {
+  return {
+    sphere: new THREE.SphereGeometry(1, 16, 12),
+    box: new THREE.BoxGeometry(1, 1, 1),
+    plane: new THREE.PlaneGeometry(1, 1),
+    octahedron: new THREE.OctahedronGeometry(1),
+    cylinder: new THREE.CylinderGeometry(0.8, 1, 0.3, 6),
+  };
+}
+
+let geometryCache = createGeometryCache();
 
 function createPageTextureRaw(
   baseColor: string,
@@ -170,7 +183,8 @@ function createPageTextureRaw(
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
-  const ctx = canvas.getContext('2d')!;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return new THREE.CanvasTexture(canvas);
 
   // Parse base color
   const c = new THREE.Color(baseColor);
@@ -267,6 +281,7 @@ export default function ForceGraphView({
   showEdgeLabels = true,
   onNodeClick,
   onClusterClick,
+  onLinkClick,
 }: ForceGraphViewProps) {
   const { t } = useTranslation();
   const fgRef = useRef<ForceGraphMethods3D<ForceNode, ForceLink>>(undefined);
@@ -288,20 +303,35 @@ export default function ForceGraphView({
 
   // Cleanup Three.js renderer and cached objects on unmount
   useEffect(() => {
+    const fg = fgRef.current;
+    const cache = nodeObjectCache.current;
     return () => {
-      const fg = fgRef.current;
       if (fg) {
         const renderer = fg.renderer?.();
         if (renderer) {
+          renderer.forceContextLoss();
           renderer.dispose();
         }
         const scene = fg.scene?.();
         if (scene) {
+          scene.traverse((obj) => {
+            if (obj instanceof THREE.Mesh) {
+              obj.geometry?.dispose();
+              if (Array.isArray(obj.material)) {
+                obj.material.forEach((m) => m.dispose());
+              } else if (obj.material) {
+                obj.material.dispose();
+              }
+            } else if (obj instanceof THREE.Sprite) {
+              obj.material?.map?.dispose();
+              obj.material?.dispose();
+            }
+          });
           scene.clear();
         }
       }
       // Dispose cached node objects
-      for (const group of nodeObjectCache.current.values()) {
+      for (const group of cache.values()) {
         group.traverse((child) => {
           if (child instanceof THREE.Mesh) {
             child.geometry?.dispose();
@@ -309,11 +339,22 @@ export default function ForceGraphView({
               child.material.dispose();
             }
           } else if (child instanceof THREE.Sprite) {
+            child.material?.map?.dispose();
             child.material?.dispose();
           }
         });
       }
-      nodeObjectCache.current.clear();
+      cache.clear();
+      // Dispose module-level caches
+      for (const t of labelTextureCache.values()) t.dispose();
+      labelTextureCache.clear();
+      labelScaleCache.clear();
+      for (const t of pageTextureCache.values()) t.dispose();
+      pageTextureCache.clear();
+      for (const m of materialCache.values()) m.dispose();
+      materialCache.clear();
+      Object.values(geometryCache).forEach((g) => g.dispose());
+      geometryCache = createGeometryCache();
     };
   }, []);
 
@@ -447,7 +488,8 @@ export default function ForceGraphView({
     for (const id of visibleIds) {
       const node = nodeMap.get(id);
       if (!node) continue;
-      const isMatched = hasActiveFilter && seeds.has(id);
+      const isMatched =
+        (hasActiveFilter && seeds.has(id)) || node.properties?.matched === true;
       if (node.type === 'entity') {
         const entityType =
           (node.properties?.entity_type as string) ?? 'CONCEPT';
@@ -471,7 +513,7 @@ export default function ForceGraphView({
           nodeType: 'segment',
           matched: isMatched,
           color: SEGMENT_COLOR,
-          radius: isMatched ? 12 : 9,
+          radius: isMatched ? 16 : 13,
         });
       } else if (node.type === 'analysis') {
         const qaIdx = node.properties?.qa_index as number | undefined;
@@ -531,6 +573,7 @@ export default function ForceGraphView({
         edgeLabel: edge.label,
         description: (edge.properties?.context as string) || undefined,
         color: LINK_TYPE_COLORS[edge.label] ?? DEFAULT_LINK_COLOR,
+        properties: edge.properties,
       });
     }
 
@@ -567,12 +610,42 @@ export default function ForceGraphView({
           : 500;
     const timer = setTimeout(() => {
       const nodeCount = graphData.nodes.length;
-      let padding = 20;
-      if (nodeCount > 1000) padding = 30;
-      else if (nodeCount > 200) padding = 60;
-      else if (nodeCount > 50) padding = 100;
-      else if (nodeCount > 10) padding = 40;
+      let padding = 0;
+      if (nodeCount > 1000) padding = 50;
+      else if (nodeCount > 500) padding = 20;
+      else if (nodeCount > 200) padding = 0;
+      else if (nodeCount > 50) padding = -10;
       fg.zoomToFit(400, padding);
+
+      // Cinematic orbit after zoom settles
+      const orbitTimer = setTimeout(() => {
+        const cam = fg.camera?.();
+        if (!cam) return;
+        const dist = cam.position.length() || 300;
+        const startAngle = Math.atan2(cam.position.x, cam.position.z);
+        const y = cam.position.y;
+        const duration = 2000;
+        const totalAngle = Math.PI * 0.6;
+        const t0 = performance.now();
+        const animate = () => {
+          const elapsed = performance.now() - t0;
+          const progress = Math.min(elapsed / duration, 1);
+          const ease = 1 - Math.pow(1 - progress, 3);
+          const angle = startAngle + totalAngle * ease;
+          fg.cameraPosition(
+            {
+              x: dist * Math.sin(angle),
+              y: y * (1 - ease * 0.3),
+              z: dist * Math.cos(angle),
+            },
+            { x: 0, y: 0, z: 0 },
+          );
+          if (progress < 1) requestAnimationFrame(animate);
+        };
+        requestAnimationFrame(animate);
+      }, 500);
+
+      return () => clearTimeout(orbitTimer);
     }, delay);
     return () => clearTimeout(timer);
   }, [graphData]);
@@ -590,8 +663,29 @@ export default function ForceGraphView({
     [onNodeClick, onClusterClick],
   );
 
+  const handleLinkClick = useCallback(
+    (link: ForceLink) => {
+      if (!onLinkClick) return;
+      const srcId =
+        typeof link.source === 'object'
+          ? (link.source as ForceNode).id
+          : link.source;
+      const tgtId =
+        typeof link.target === 'object'
+          ? (link.target as ForceNode).id
+          : link.target;
+      onLinkClick({
+        source: srcId,
+        target: tgtId,
+        label: link.edgeLabel,
+        properties: link.properties,
+      });
+    },
+    [onLinkClick],
+  );
+
   const handleNodeHover = useCallback((node: ForceNode | null) => {
-    if (!node || !node.description) {
+    if (!node || (!node.description && !node.entityType)) {
       setHoveredNode(null);
       return;
     }
@@ -623,8 +717,20 @@ export default function ForceGraphView({
     });
   }, []);
 
-  // Clear node cache when graphData or isDark changes
+  // Dispose and clear node cache when graphData or isDark changes
   useEffect(() => {
+    for (const group of nodeObjectCache.current.values()) {
+      group.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          if (child.material instanceof THREE.Material) {
+            child.material.dispose();
+          }
+        } else if (child instanceof THREE.Sprite) {
+          child.material?.map?.dispose();
+          child.material?.dispose();
+        }
+      });
+    }
     nodeObjectCache.current.clear();
   }, [graphData, isDark]);
 
@@ -653,7 +759,7 @@ export default function ForceGraphView({
           side: THREE.DoubleSide,
         });
         mesh = new THREE.Mesh(geo, mat);
-        mesh.scale.set(r * 2, r * 2.5, 1);
+        mesh.scale.set(r * 3.5, r * 4.5, 1);
       } else if (node.nodeType === 'analysis') {
         mesh = new THREE.Mesh(
           geometryCache.octahedron,
@@ -697,19 +803,35 @@ export default function ForceGraphView({
 
       group.add(mesh);
 
-      // Glow effect for matched (searched) nodes
+      // Glow effect for matched (searched) nodes — pulsing
       if (node.matched) {
-        const glowGeo = geometryCache.sphere;
+        // Inner glow
         const glowMat = new THREE.MeshBasicMaterial({
           color: new THREE.Color(node.color),
           transparent: true,
-          opacity: 0.25,
+          opacity: 0.4,
           depthWrite: false,
         });
-        const glow = new THREE.Mesh(glowGeo, glowMat);
-        const glowScale = r * 2.5;
+        const glow = new THREE.Mesh(geometryCache.sphere, glowMat);
+        const glowScale = r * 3;
         glow.scale.set(glowScale, glowScale, glowScale);
+        glow.name = 'matchGlow';
+        glow.userData.baseScale = glowScale;
         group.add(glow);
+
+        // Outer glow (softer, larger)
+        const outerMat = new THREE.MeshBasicMaterial({
+          color: new THREE.Color(node.color),
+          transparent: true,
+          opacity: 0.15,
+          depthWrite: false,
+        });
+        const outer = new THREE.Mesh(geometryCache.sphere, outerMat);
+        const outerScale = r * 5;
+        outer.scale.set(outerScale, outerScale, outerScale);
+        outer.name = 'matchGlow';
+        outer.userData.baseScale = outerScale;
+        group.add(outer);
       }
 
       const labelColor = isDark
@@ -725,6 +847,26 @@ export default function ForceGraphView({
     },
     [isDark],
   );
+
+  const handleEngineTick = useCallback(() => {
+    const fg = fgRef.current;
+    if (!fg) return;
+    const scene = fg.scene?.();
+    if (!scene) return;
+    const t = Date.now() * 0.004;
+    const pulse = 0.8 + 0.4 * Math.sin(t);
+    const opPulse = 0.1 + 0.35 * Math.abs(Math.sin(t));
+    scene.traverse((obj: THREE.Object3D) => {
+      if (obj.name === 'matchGlow' && obj instanceof THREE.Mesh) {
+        const base = obj.userData.baseScale ?? 1;
+        const s = base * pulse;
+        obj.scale.set(s, s, s);
+        if (obj.material && 'opacity' in obj.material) {
+          (obj.material as THREE.MeshBasicMaterial).opacity = opPulse;
+        }
+      }
+    });
+  }, []);
 
   const arrowLength = linkDirection !== 'incoming' ? 3 : 0;
   const particles = linkDirection !== 'incoming' ? 1 : 0;
@@ -771,7 +913,9 @@ export default function ForceGraphView({
         linkDirectionalParticleSpeed={0.005}
         onNodeClick={handleNodeClick}
         onNodeHover={handleNodeHover}
+        onLinkClick={handleLinkClick}
         onLinkHover={handleLinkHover}
+        onEngineTick={handleEngineTick}
         forceEngine={isLargeGraph ? 'ngraph' : 'd3'}
         cooldownTicks={graphData.nodes.length < 50 ? 30 : 100}
         enableNodeDrag
@@ -779,20 +923,31 @@ export default function ForceGraphView({
           !isLargeGraph || graphData.nodes.length < 5000
         }
       />
-      {hoveredNode && hoveredNode.node.description && (
-        <div
-          className="absolute z-20 pointer-events-none max-w-[240px] px-2.5 py-1.5 rounded-md shadow-lg text-[11px] leading-relaxed bg-white/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600"
-          style={{
-            left: hoveredNode.x + 12,
-            top: hoveredNode.y - 8,
-          }}
-        >
-          <div className="font-semibold text-[12px] mb-0.5">
-            {hoveredNode.node.label}
+      {hoveredNode &&
+        (hoveredNode.node.description || hoveredNode.node.entityType) && (
+          <div
+            className="absolute z-20 pointer-events-none max-w-[240px] px-2.5 py-1.5 rounded-md shadow-lg text-[11px] leading-relaxed bg-white/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600"
+            style={{
+              left: hoveredNode.x + 12,
+              top: hoveredNode.y - 8,
+            }}
+          >
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <span className="font-semibold text-[12px]">
+                {hoveredNode.node.label}
+              </span>
+              {hoveredNode.node.entityType && (
+                <span
+                  className="text-[9px] font-medium px-1.5 py-0.5 rounded-full text-white"
+                  style={{ backgroundColor: hoveredNode.node.color }}
+                >
+                  {hoveredNode.node.entityType}
+                </span>
+              )}
+            </div>
+            {hoveredNode.node.description && hoveredNode.node.description}
           </div>
-          {hoveredNode.node.description}
-        </div>
-      )}
+        )}
       {hoveredLink && (
         <div
           className="absolute z-20 pointer-events-none max-w-[240px] px-2.5 py-1.5 rounded-md shadow-lg text-[11px] leading-relaxed bg-white/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600"

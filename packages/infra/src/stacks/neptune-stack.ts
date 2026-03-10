@@ -48,7 +48,7 @@ export class NeptuneStack extends Stack {
       deletionProtection: false,
       serverlessScalingConfiguration: {
         minCapacity: 1,
-        maxCapacity: 2.5,
+        maxCapacity: 8,
       },
     });
     cluster.addDependency(subnetGroup);

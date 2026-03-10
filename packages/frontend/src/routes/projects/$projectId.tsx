@@ -405,7 +405,7 @@ function ProjectDetailPage() {
                     onRefreshDocuments={documentsHook.loadDocuments}
                     onViewWorkflow={documentsHook.loadWorkflowDetail}
                     onDeleteDocument={documentsHook.handleDeleteDocument}
-                    onViewProjectGraph={() => setShowProjectGraph(true)}
+                    // onViewProjectGraph={() => setShowProjectGraph(true)}
                   />
                   {/* Artifact Viewer - overlays SidePanel */}
                   {artifactsHook.selectedArtifact && (

@@ -1,6 +1,6 @@
 import { useRef, useMemo, useEffect, useState, useCallback } from 'react';
 import cloud from 'd3-cloud';
-import type { GraphData } from './useGraphData';
+import type { GraphData, TagCloudItem } from './useGraphData';
 import { getEntityColor, GRAPH_BG } from './constants';
 
 interface TagItem {
@@ -21,16 +21,9 @@ interface PlacedWord {
   weight: number;
 }
 
-export interface TagCloudData {
-  id: string;
-  name: string;
-  type: string;
-  connections: number;
-}
-
 interface TagCloudViewProps {
   data?: GraphData;
-  tagCloudData?: TagCloudData[];
+  tagCloudData?: TagCloudItem[];
   hiddenTypes: Set<string>;
   onTagClick?: (label: string) => void;
   minConnections?: number;

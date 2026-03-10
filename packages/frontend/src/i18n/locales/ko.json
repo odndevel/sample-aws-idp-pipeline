@@ -16,6 +16,7 @@
     "error": "오류",
     "success": "성공",
     "confirm": "확인",
+    "ok": "확인",
     "search": "검색",
     "noResults": "검색 결과가 없습니다",
     "language": "언어",
@@ -223,7 +224,20 @@
       "outgoingLinks": "나가는 링크",
       "edgeLabels": "엣지 라벨",
       "noEntityTypes": "엔티티 유형 없음",
-      "noLinkTypes": "링크 유형 없음"
+      "noLinkTypes": "링크 유형 없음",
+      "modeRange": "범위",
+      "modePage": "페이지",
+      "modeSearch": "검색",
+      "searchButton": "검색",
+      "rangeLimitTitle": "범위 초과",
+      "rangeLimitMessage": "한 번에 최대 {{max}}페이지까지 조회할 수 있습니다.",
+      "apply": "적용",
+      "title": "지식 그래프",
+      "sharedOnly": "공유 엔티티만",
+      "documents": "문서",
+      "entities": "엔티티",
+      "sharedEntities": "공유",
+      "noSharedDetails": "엔티티 상세 정보가 없습니다"
     }
   },
   "ocr": {

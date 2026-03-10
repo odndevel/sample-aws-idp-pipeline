@@ -14,9 +14,18 @@ interface GraphEdge {
   properties: Record<string, unknown> | null;
 }
 
+interface TagCloudItem {
+  id: string;
+  name: string;
+  type: string;
+  connections: number;
+}
+
 interface GraphData {
   nodes: GraphNode[];
   edges: GraphEdge[];
+  tagcloud?: TagCloudItem[];
+  total_entities?: number;
 }
 
 interface UseGraphDataOptions {
@@ -156,4 +165,4 @@ export function useGraphData({
   };
 }
 
-export type { GraphNode, GraphEdge, GraphData };
+export type { GraphNode, GraphEdge, GraphData, TagCloudItem };

@@ -248,22 +248,43 @@ def add_segment_ai_analysis(
     return data
 
 
-def get_all_segment_analyses(file_uri: str, segment_count: int) -> list:
+def get_all_segment_analyses(file_uri: str, segment_count: int,
+                             fields: list = None, max_workers: int = 20) -> list:
     """
     Get all segment analysis data from S3.
 
     Args:
         file_uri: Original file URI
         segment_count: Total number of segments
+        fields: If provided, only extract these fields (plus segment_index) to save memory
+        max_workers: Max parallel S3 reads (default 20)
 
     Returns:
         List of segment data dicts
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _fetch(idx):
+        data = get_segment_analysis(file_uri, idx)
+        if data is None:
+            return None
+        if fields:
+            filtered = {'segment_index': data.get('segment_index', idx)}
+            for f in fields:
+                if f in data:
+                    filtered[f] = data[f]
+            return filtered
+        return data
+
     segments = []
-    for i in range(segment_count):
-        data = get_segment_analysis(file_uri, i)
-        if data:
-            segments.append(data)
+    workers = min(max_workers, segment_count)
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(_fetch, i): i for i in range(segment_count)}
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                segments.append(result)
+
     return segments
 
 

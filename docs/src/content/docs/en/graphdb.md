@@ -76,6 +76,20 @@ Node and relationship structure stored in Neptune. Uses openCypher as the query 
 | `RELATES_TO` | Entity → Entity | Relationship between entities (`relationship`, `source`) |
 | `RELATED_TO` | Document → Document | Manual document-to-document link (`reason`, `label`) |
 
+### Node ID Design
+
+Neptune does not support secondary indexes — the node's `~id` property is the only O(1) direct lookup mechanism. Each node type's ID is designed as a meaningful composite key, enabling fast lookups without indexes.
+
+| Node | ID Format | Example |
+|------|-----------|---------|
+| **Document** | `{document_id}` | `doc_abc123` |
+| **Segment** | `{workflow_id}_{segment_index:04d}` | `wf_abc123_0042` |
+| **Analysis** | `{workflow_id}_{segment_index:04d}_{qa_index:02d}` | `wf_abc123_0042_00` |
+| **Entity** | First 16 chars of SHA256(`{project_id}:{name}:{type}`) | `a1b2c3d4e5f6g7h8` |
+
+- **Segment/Analysis**: Composed of workflow ID + segment index (+ QA index), so the parent relationship can be inferred from the ID alone
+- **Entity**: Uses a hash of project ID + normalized name + type, so the same entity extracted from multiple segments is naturally merged (MERGE) into a single node
+
 ### Graph Structure Example
 
 ```

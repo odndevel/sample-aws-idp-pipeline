@@ -1,6 +1,7 @@
 import json
 import os
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import yaml
 from strands import Agent
@@ -109,9 +110,7 @@ def generate_document_summary(model_id, region, language, page_descriptions, tot
             print(f'Document summary failed: {e}')
             return ''
 
-    partial_summaries = []
-
-    for batch_idx, batch in enumerate(batches):
+    def _summarize_batch(batch_idx, batch):
         batch_text = format_descriptions_for_input(batch)
         batch_page_nums = [pd.get('page', 0) for pd in batch]
         user_text = prompts['document_summary_user'].format(
@@ -124,14 +123,28 @@ def generate_document_summary(model_id, region, language, page_descriptions, tot
               f'(pages {batch_page_nums[0]}-{batch_page_nums[-1]})')
 
         try:
-            agent = Agent(model=bedrock_model, system_prompt=system_prompt)
+            batch_model = BedrockModel(model_id=model_id, region_name=region)
+            agent = Agent(model=batch_model, system_prompt=system_prompt)
             partial = str(agent(user_text)).strip()
             if partial:
-                partial_summaries.append(
-                    f'[Pages {batch_page_nums[0]}-{batch_page_nums[-1]}]\n{partial}'
-                )
+                return batch_idx, f'[Pages {batch_page_nums[0]}-{batch_page_nums[-1]}]\n{partial}'
         except Exception as e:
             print(f'Document summary batch {batch_idx + 1} failed: {e}')
+        return batch_idx, None
+
+    max_workers = min(len(batches), 5)
+    partial_results = [None] * len(batches)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(_summarize_batch, i, b): i
+            for i, b in enumerate(batches)
+        }
+        for future in as_completed(futures):
+            idx, result = future.result()
+            partial_results[idx] = result
+            print(f'Document summary: Batch {idx + 1}/{len(batches)} done')
+
+    partial_summaries = [r for r in partial_results if r is not None]
 
     if not partial_summaries:
         return ''
@@ -196,7 +209,9 @@ def handler(event, context):
             language = get_project_language(project_id)
         print(f'Using language: {language}')
 
-        segments = get_all_segment_analyses(file_uri, segment_count)
+        segments = get_all_segment_analyses(
+            file_uri, segment_count, fields=['page_description']
+        )
 
         if not segments:
             print(f'No segments found in S3 for file {file_uri}')

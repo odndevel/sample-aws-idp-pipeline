@@ -16,6 +16,7 @@
     "error": "エラー",
     "success": "成功",
     "confirm": "確認",
+    "ok": "確認",
     "search": "検索",
     "noResults": "結果が見つかりません",
     "language": "言語",
@@ -223,7 +224,20 @@
       "outgoingLinks": "送信リンク",
       "edgeLabels": "エッジラベル",
       "noEntityTypes": "エンティティタイプなし",
-      "noLinkTypes": "リンクタイプなし"
+      "noLinkTypes": "リンクタイプなし",
+      "modeRange": "範囲",
+      "modePage": "ページ",
+      "modeSearch": "検索",
+      "searchButton": "検索",
+      "rangeLimitTitle": "範囲が大きすぎます",
+      "rangeLimitMessage": "一度に最大{{max}}ページまで選択できます。",
+      "apply": "適用",
+      "title": "ナレッジグラフ",
+      "sharedOnly": "共有エンティティのみ",
+      "documents": "文書",
+      "entities": "エンティティ",
+      "sharedEntities": "共有",
+      "noSharedDetails": "エンティティの詳細情報がありません"
     }
   },
   "ocr": {

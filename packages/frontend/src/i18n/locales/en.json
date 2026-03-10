@@ -16,6 +16,7 @@
     "error": "Error",
     "success": "Success",
     "confirm": "Confirm",
+    "ok": "OK",
     "search": "Search",
     "noResults": "No results found",
     "language": "Language",
@@ -223,7 +224,20 @@
       "outgoingLinks": "Outgoing links",
       "edgeLabels": "Edge labels",
       "noEntityTypes": "No entity types",
-      "noLinkTypes": "No link types"
+      "noLinkTypes": "No link types",
+      "modeRange": "Range",
+      "modePage": "Page",
+      "modeSearch": "Search",
+      "searchButton": "Search",
+      "rangeLimitTitle": "Range Too Large",
+      "rangeLimitMessage": "Please select up to {{max}} pages at a time.",
+      "apply": "Apply",
+      "title": "Knowledge Graph",
+      "sharedOnly": "Shared entities only",
+      "documents": "docs",
+      "entities": "entities",
+      "sharedEntities": "shared",
+      "noSharedDetails": "No entity details available"
     }
   },
   "ocr": {

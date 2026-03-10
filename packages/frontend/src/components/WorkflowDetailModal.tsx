@@ -18,6 +18,7 @@ import {
   Cloud,
   ChevronDown,
   Search,
+  Download,
 } from 'lucide-react';
 import { WorkflowDetail, SegmentData, AnalysisPopup } from '../types/project';
 import ConfirmModal from './ConfirmModal';
@@ -30,7 +31,9 @@ import { useModal } from '../hooks/useModal';
 import { useDragPan } from '../hooks/useDragPan';
 import GraphView from './GraphView/GraphView';
 import TagCloudView from './GraphView/TagCloudView';
-import type { GraphData } from './GraphView/useGraphData';
+import GraphControls from './GraphView/GraphControls';
+import GraphLoading from './GraphView/GraphLoading';
+import type { GraphData, TagCloudItem } from './GraphView/useGraphData';
 import { getEntityColor, LINK_TYPE_COLORS } from './GraphView/constants';
 import {
   isTextFileType,
@@ -210,12 +213,29 @@ export default function WorkflowDetailModal({
 }: WorkflowDetailModalProps) {
   const { t } = useTranslation();
   const { getPresignedDownloadUrl, fetchApi } = useAwsClient();
+  const fetchApiRef = useRef(fetchApi);
+  fetchApiRef.current = fetchApi;
   const [viewMode, setViewMode] = useState<'document' | 'graph'>('document');
   const [graphData, setGraphData] = useState<GraphData | null>(null);
-  const [tagCloudData, setTagCloudData] = useState<
-    { id: string; name: string; type: string; connections: number }[] | null
-  >(null);
+  const [tagCloudData, setTagCloudData] = useState<TagCloudItem[] | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
+  const [graphTotalSegments, setGraphTotalSegments] = useState(0);
+  const [graphMode, setGraphMode] = useState<'range' | 'page' | 'search'>(
+    'range',
+  );
+  const totalSegs = graphTotalSegments || workflow.total_segments || 0;
+  const [graphPageRange, setGraphPageRange] = useState<[number, number]>([
+    1,
+    Math.min(10, Math.max(1, totalSegs)),
+  ]);
+  const [graphSpecificPage, setGraphSpecificPage] = useState(1);
+  // Clamp range when totalSegments becomes known
+  useEffect(() => {
+    if (totalSegs > 0) {
+      setGraphPageRange((prev) => [prev[0], Math.min(prev[1], totalSegs)]);
+    }
+  }, [totalSegs]);
+  const [graphSearchTerm, setGraphSearchTerm] = useState('');
   const [graphHiddenTypes, setGraphHiddenTypes] = useState<Set<string>>(
     new Set(),
   );
@@ -228,6 +248,7 @@ export default function WorkflowDetailModal({
   const [graphDepth, setGraphDepth] = useState(3);
   const [graphFocusPage, setGraphFocusPage] = useState<number | null>(null);
   const [graphShowEdgeLabels, setGraphShowEdgeLabels] = useState(true);
+  const [expandingAll, setExpandingAll] = useState(false);
   const [graphSubMode, setGraphSubMode] = useState<'force' | 'tagcloud'>(
     'force',
   );
@@ -248,6 +269,30 @@ export default function WorkflowDetailModal({
     title: '',
     qaItems: [],
   });
+  const handleDownloadFile = useCallback(async () => {
+    const s3Info = parseS3Uri(workflow.file_uri);
+    if (!s3Info) return;
+    try {
+      const presignedUrl = await getPresignedDownloadUrl(
+        s3Info.bucket,
+        s3Info.key,
+      );
+      const response = await fetch(presignedUrl);
+      if (!response.ok) throw new Error(`Download failed: ${response.status}`);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = workflow.file_name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download file:', error);
+    }
+  }, [workflow.file_uri, workflow.file_name, getPresignedDownloadUrl]);
+
   const [showReanalyzeModal, setShowReanalyzeModal] = useState(false);
   const [reanalyzeInstructions, setReanalyzeInstructions] = useState('');
   const [regenerateTarget, setRegenerateTarget] = useState<{
@@ -273,35 +318,49 @@ export default function WorkflowDetailModal({
   const imageScrollRef = useDragPan<HTMLDivElement>();
   const [imageNaturalWidth, setImageNaturalWidth] = useState(0);
 
-  // Fetch graph data when switching to graph view
+  // Fetch graph data only when user clicks Go / Search or switches to graph view
+  const [graphQueryTrigger, setGraphQueryTrigger] = useState(0);
+  const fetchGraph = useCallback(() => {
+    setGraphData(null);
+    setGraphQueryTrigger((p) => p + 1);
+  }, []);
+
   useEffect(() => {
-    if (viewMode !== 'graph' || graphData) return;
-    let cancelled = false;
+    if (viewMode !== 'graph') return;
+    if (graphMode === 'search' && !graphSearchTerm) return;
+    const base = `projects/${projectId}/graph/documents/${workflow.document_id}`;
+    let url = base;
+    if (graphMode === 'range') {
+      url = `${base}?from_page=${graphPageRange[0] - 1}&to_page=${graphPageRange[1]}`;
+    } else if (graphMode === 'page') {
+      url = `${base}?page=${graphSpecificPage - 1}`;
+    } else if (graphMode === 'search' && graphSearchTerm) {
+      url = `${base}?search=${encodeURIComponent(graphSearchTerm)}`;
+    }
+    const abortController = new AbortController();
     setGraphLoading(true);
-    const graphPromise = fetchApi<GraphData>(
-      `projects/${projectId}/graph/documents/${workflow.document_id}`,
-    );
-    const tagCloudPromise = fetchApi<{
-      tags: { id: string; name: string; type: string; connections: number }[];
-    }>(
-      `projects/${projectId}/graph/documents/${workflow.document_id}/tagcloud`,
-    ).catch(() => null);
-    Promise.all([graphPromise, tagCloudPromise])
-      .then(([gData, tcData]) => {
-        if (cancelled) return;
-        setGraphData(gData);
-        if (tcData?.tags) setTagCloudData(tcData.tags);
+    fetchApiRef
+      .current<GraphData & { total_segments?: number }>(url, {
+        signal: abortController.signal,
       })
-      .catch(() => {
-        if (!cancelled) setGraphData({ nodes: [], edges: [] });
+      .then((gData) => {
+        setGraphData(gData);
+        if (gData.tagcloud) setTagCloudData(gData.tagcloud);
+        if (gData.total_segments) setGraphTotalSegments(gData.total_segments);
+      })
+      .catch((err) => {
+        if (abortController.signal.aborted) return;
+        console.warn('Graph fetch failed:', err);
+        setGraphData({ nodes: [], edges: [] });
       })
       .finally(() => {
-        if (!cancelled) setGraphLoading(false);
+        if (!abortController.signal.aborted) setGraphLoading(false);
       });
     return () => {
-      cancelled = true;
+      abortController.abort();
     };
-  }, [viewMode, graphData, fetchApi, projectId, workflow.document_id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, graphQueryTrigger]);
 
   // Derive entity types and link types from graph data
   const graphEntityTypes = useMemo(() => {
@@ -358,6 +417,36 @@ export default function WorkflowDetailModal({
       return next;
     });
   }, []);
+
+  const handleExpandAll = useCallback(async () => {
+    if (!graphData || !workflow.document_id) return;
+    const clusterNodes = graphData.nodes.filter((n) => n.type === 'cluster');
+    if (clusterNodes.length === 0) return;
+    setExpandingAll(true);
+    try {
+      const result = await fetchApi<GraphData>(
+        `projects/${projectId}/graph/documents/${workflow.document_id}/expand-all`,
+      );
+      // Remove all cluster nodes, add expanded entity nodes
+      const clusterIds = new Set(clusterNodes.map((n) => n.id));
+      const existingIds = new Set(graphData.nodes.map((n) => n.id));
+      const newNodes = graphData.nodes.filter((n) => !clusterIds.has(n.id));
+      for (const node of result.nodes) {
+        if (!existingIds.has(node.id)) {
+          newNodes.push(node);
+        }
+      }
+      const newEdges = graphData.edges.filter(
+        (e) => !clusterIds.has(e.source) && !clusterIds.has(e.target),
+      );
+      newEdges.push(...result.edges);
+      setGraphData({ nodes: newNodes, edges: newEdges });
+    } catch {
+      // ignore expand errors
+    } finally {
+      setExpandingAll(false);
+    }
+  }, [graphData, workflow.document_id, projectId, fetchApi]);
 
   // Load Excel presigned URL for Excel files
   const isExcel = isExcelFileType(workflow.file_type);
@@ -1508,12 +1597,23 @@ export default function WorkflowDetailModal({
                           </button>
                         )}
                       </div>
-                      <p
-                        className="text-sm text-slate-800 dark:text-slate-200 truncate"
-                        title={workflow.file_name}
-                      >
-                        {workflow.file_name}
-                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <p
+                          className="text-sm text-slate-800 dark:text-slate-200 truncate"
+                          title={workflow.file_name}
+                        >
+                          {workflow.file_name}
+                        </p>
+                        {workflow.file_uri && (
+                          <button
+                            onClick={handleDownloadFile}
+                            className="flex-shrink-0 p-0.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                            title={t('common.download', 'Download')}
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -1954,119 +2054,140 @@ export default function WorkflowDetailModal({
 
           {/* Media Display / Graph View */}
           {viewMode === 'graph' ? (
-            <div className="flex-1 min-w-0">
-              {graphLoading ? (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
-                </div>
-              ) : graphData && graphData.nodes.length > 0 ? (
-                graphSubMode === 'tagcloud' ? (
-                  <TagCloudView
-                    data={graphData}
-                    tagCloudData={tagCloudData ?? undefined}
-                    hiddenTypes={graphHiddenTypes}
-                    minConnections={tagCloudMinConn}
-                    maxTags={tagCloudMaxTags}
-                    rotation={tagCloudRotation}
-                    onTagClick={(label) => {
-                      setGraphSearchFilter(label);
-                      setGraphSubMode('force');
-                    }}
-                  />
-                ) : (
-                  <GraphView
-                    data={graphData}
-                    hiddenTypes={graphHiddenTypes}
-                    hiddenLinkTypes={graphHiddenLinkTypes}
-                    searchFilter={graphSearchFilter}
-                    depth={graphDepth}
-                    focusPage={graphFocusPage}
-                    showEdgeLabels={graphShowEdgeLabels}
-                    linkDirection={
-                      graphShowOutgoing && graphShowIncoming
-                        ? 'both'
-                        : graphShowOutgoing
-                          ? 'outgoing'
-                          : graphShowIncoming
-                            ? 'incoming'
-                            : 'both'
-                    }
-                    onClusterClick={async (entityType) => {
-                      if (!graphData || !workflow.document_id) return;
-                      try {
-                        const result = await fetchApi<GraphData>(
-                          `projects/${projectId}/graph/documents/${workflow.document_id}/expand/${encodeURIComponent(entityType)}`,
-                        );
-                        const clusterId = `cluster_${entityType}`;
-                        const existingIds = new Set(
-                          graphData.nodes.map((n) => n.id),
-                        );
-                        const newNodes = graphData.nodes.filter(
-                          (n) => n.id !== clusterId,
-                        );
-                        for (const node of result.nodes) {
-                          if (!existingIds.has(node.id)) {
-                            newNodes.push(node);
-                          }
-                        }
-                        const newEdges = graphData.edges.filter(
-                          (e) =>
-                            e.source !== clusterId && e.target !== clusterId,
-                        );
-                        newEdges.push(...result.edges);
-                        setGraphData({ nodes: newNodes, edges: newEdges });
-                      } catch {
-                        // ignore expand errors
+            <div className="flex-1 min-w-0 flex flex-col">
+              {graphSubMode !== 'tagcloud' && (
+                <GraphControls
+                  mode={graphMode}
+                  onModeChange={setGraphMode}
+                  totalSegments={
+                    graphTotalSegments || workflow.total_segments || 0
+                  }
+                  pageRange={graphPageRange}
+                  onPageRangeChange={setGraphPageRange}
+                  specificPage={graphSpecificPage}
+                  onSpecificPageChange={setGraphSpecificPage}
+                  searchTerm={graphSearchTerm}
+                  onSearchSubmit={setGraphSearchTerm}
+                  onApply={fetchGraph}
+                  loading={graphLoading}
+                />
+              )}
+              <div className="flex-1 min-w-0">
+                {graphLoading ? (
+                  <GraphLoading />
+                ) : graphData && graphData.nodes.length > 0 ? (
+                  graphSubMode === 'tagcloud' ? (
+                    <TagCloudView
+                      data={graphData}
+                      tagCloudData={tagCloudData ?? undefined}
+                      hiddenTypes={graphHiddenTypes}
+                      minConnections={tagCloudMinConn}
+                      maxTags={tagCloudMaxTags}
+                      rotation={tagCloudRotation}
+                      onTagClick={(label) => {
+                        setGraphMode('search');
+                        setGraphSearchTerm(label);
+                        setGraphSubMode('force');
+                        fetchGraph();
+                      }}
+                    />
+                  ) : (
+                    <GraphView
+                      data={graphData}
+                      hiddenTypes={graphHiddenTypes}
+                      hiddenLinkTypes={graphHiddenLinkTypes}
+                      searchFilter={graphSearchFilter}
+                      depth={graphDepth}
+                      focusPage={graphFocusPage}
+                      showEdgeLabels={graphShowEdgeLabels}
+                      onExpandAll={handleExpandAll}
+                      expandingAll={expandingAll}
+                      linkDirection={
+                        graphShowOutgoing && graphShowIncoming
+                          ? 'both'
+                          : graphShowOutgoing
+                            ? 'outgoing'
+                            : graphShowIncoming
+                              ? 'incoming'
+                              : 'both'
                       }
-                    }}
-                    onNodeClick={(nodeId, nodeType) => {
-                      if (nodeType === 'segment' || nodeType === 'analysis') {
-                        const node = graphData.nodes.find(
-                          (n) => n.id === nodeId,
-                        );
-                        if (node?.properties?.segment_index != null) {
-                          const segIdx = node.properties
-                            .segment_index as number;
-                          setCurrentSegmentIndex(segIdx);
-                          if (nodeType === 'analysis') {
-                            const qaIdx =
-                              (node.properties?.qa_index as number) ?? 0;
-                            const cached = segmentCache.get(segIdx);
-                            const qaItems =
-                              cached?.ai_analysis?.map((a) => ({
-                                question: a.analysis_query,
-                                answer: a.content,
-                              })) || [];
-                            setAnalysisPopup({
-                              type: 'ai',
-                              content: '',
-                              title: `AI Analysis - Segment ${segIdx + 1}`,
-                              qaItems,
-                            });
-                            if (qaItems.length > 0) {
-                              setTimeout(() => {
-                                document
-                                  .getElementById(`qa-item-${qaIdx}`)
-                                  ?.scrollIntoView({
-                                    behavior: 'smooth',
-                                    block: 'start',
-                                  });
-                              }, 300);
-                            } else {
-                              pendingQaScrollRef.current = qaIdx;
+                      onClusterClick={async (entityType) => {
+                        if (!graphData || !workflow.document_id) return;
+                        try {
+                          const result = await fetchApi<GraphData>(
+                            `projects/${projectId}/graph/documents/${workflow.document_id}/expand/${encodeURIComponent(entityType)}`,
+                          );
+                          const clusterId = `cluster_${entityType}`;
+                          const existingIds = new Set(
+                            graphData.nodes.map((n) => n.id),
+                          );
+                          const newNodes = graphData.nodes.filter(
+                            (n) => n.id !== clusterId,
+                          );
+                          for (const node of result.nodes) {
+                            if (!existingIds.has(node.id)) {
+                              newNodes.push(node);
                             }
                           }
-                          setViewMode('document');
+                          const newEdges = graphData.edges.filter(
+                            (e) =>
+                              e.source !== clusterId && e.target !== clusterId,
+                          );
+                          newEdges.push(...result.edges);
+                          setGraphData({ nodes: newNodes, edges: newEdges });
+                        } catch {
+                          // ignore expand errors
                         }
-                      }
-                    }}
-                  />
-                )
-              ) : (
-                <div className="flex items-center justify-center h-full text-slate-500">
-                  {t('workflow.graph.noData')}
-                </div>
-              )}
+                      }}
+                      onNodeClick={(nodeId, nodeType) => {
+                        if (nodeType === 'segment' || nodeType === 'analysis') {
+                          const node = graphData.nodes.find(
+                            (n) => n.id === nodeId,
+                          );
+                          if (node?.properties?.segment_index != null) {
+                            const segIdx = node.properties
+                              .segment_index as number;
+                            setCurrentSegmentIndex(segIdx);
+                            if (nodeType === 'analysis') {
+                              const qaIdx =
+                                (node.properties?.qa_index as number) ?? 0;
+                              const cached = segmentCache.get(segIdx);
+                              const qaItems =
+                                cached?.ai_analysis?.map((a) => ({
+                                  question: a.analysis_query,
+                                  answer: a.content,
+                                })) || [];
+                              setAnalysisPopup({
+                                type: 'ai',
+                                content: '',
+                                title: `AI Analysis - Segment ${segIdx + 1}`,
+                                qaItems,
+                              });
+                              if (qaItems.length > 0) {
+                                setTimeout(() => {
+                                  document
+                                    .getElementById(`qa-item-${qaIdx}`)
+                                    ?.scrollIntoView({
+                                      behavior: 'smooth',
+                                      block: 'start',
+                                    });
+                                }, 300);
+                              } else {
+                                pendingQaScrollRef.current = qaIdx;
+                              }
+                            }
+                            setViewMode('document');
+                          }
+                        }
+                      }}
+                    />
+                  )
+                ) : (
+                  <div className="flex items-center justify-center h-full text-slate-500">
+                    {t('workflow.graph.noData')}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <div className="flex-1 flex items-center justify-center p-6 overflow-auto relative min-w-0">

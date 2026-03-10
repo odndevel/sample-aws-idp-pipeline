@@ -31,6 +31,7 @@ interface ForceLink {
   edgeLabel: string;
   description?: string;
   color: string;
+  properties?: Record<string, unknown> | null;
 }
 
 export type LinkDirection = 'both' | 'outgoing' | 'incoming';
@@ -46,6 +47,12 @@ export interface ForceGraphViewProps {
   showEdgeLabels?: boolean;
   onNodeClick?: (nodeId: string, nodeType: string) => void;
   onClusterClick?: (entityType: string) => void;
+  onLinkClick?: (link: {
+    source: string;
+    target: string;
+    label: string;
+    properties?: Record<string, unknown> | null;
+  }) => void;
 }
 
 const DEFAULT_LINK_COLOR = '#4b5563';
@@ -104,6 +111,7 @@ export default function ForceGraphView({
   showEdgeLabels = true,
   onNodeClick,
   onClusterClick,
+  onLinkClick,
 }: ForceGraphViewProps) {
   const { t } = useTranslation();
   const fgRef = useRef<ForceGraphMethods<ForceNode, ForceLink>>(undefined);
@@ -257,7 +265,8 @@ export default function ForceGraphView({
     for (const id of visibleIds) {
       const node = nodeMap.get(id);
       if (!node) continue;
-      const isMatched = hasActiveFilter && seeds.has(id);
+      const isMatched =
+        (hasActiveFilter && seeds.has(id)) || node.properties?.matched === true;
       if (node.type === 'entity') {
         const entityType =
           (node.properties?.entity_type as string) ?? 'CONCEPT';
@@ -348,6 +357,7 @@ export default function ForceGraphView({
         edgeLabel: edge.label,
         description: (edge.properties?.context as string) || undefined,
         color: LINK_TYPE_COLORS[edge.label] ?? DEFAULT_LINK_COLOR,
+        properties: edge.properties,
       });
     }
 
@@ -378,8 +388,9 @@ export default function ForceGraphView({
     if (!fg) return;
 
     const nodeCount = graphData.nodes.length;
-    const chargeStrength = nodeCount > 200 ? -80 : nodeCount > 50 ? -150 : -250;
-    const linkDist = nodeCount > 200 ? 40 : nodeCount > 50 ? 60 : 80;
+    const chargeStrength =
+      nodeCount > 200 ? -200 : nodeCount > 50 ? -350 : -500;
+    const linkDist = nodeCount > 200 ? 80 : nodeCount > 50 ? 120 : 160;
 
     const charge = fg.d3Force('charge');
     if (charge && typeof charge.strength === 'function') {
@@ -411,7 +422,13 @@ export default function ForceGraphView({
     if (!fg || graphData.nodes.length === 0) return;
     const delay = graphData.nodes.length > 100 ? 1500 : 500;
     const timer = setTimeout(() => {
-      fg.zoomToFit(400, 40);
+      const nodeCount = graphData.nodes.length;
+      let padding = 40;
+      if (nodeCount > 1000) padding = 300;
+      else if (nodeCount > 500) padding = 250;
+      else if (nodeCount > 200) padding = 180;
+      else if (nodeCount > 50) padding = 100;
+      fg.zoomToFit(400, padding);
     }, delay);
     return () => clearTimeout(timer);
   }, [graphData]);
@@ -427,6 +444,27 @@ export default function ForceGraphView({
       }
     },
     [onNodeClick, onClusterClick],
+  );
+
+  const handleLinkClick = useCallback(
+    (link: ForceLink) => {
+      if (!onLinkClick) return;
+      const srcId =
+        typeof link.source === 'object'
+          ? (link.source as unknown as ForceNode).id
+          : link.source;
+      const tgtId =
+        typeof link.target === 'object'
+          ? (link.target as unknown as ForceNode).id
+          : link.target;
+      onLinkClick({
+        source: srcId,
+        target: tgtId,
+        label: link.edgeLabel,
+        properties: link.properties,
+      });
+    },
+    [onLinkClick],
   );
 
   const handleNodeHover = useCallback(
@@ -846,10 +884,10 @@ export default function ForceGraphView({
         linkDirectionalParticleSpeed={0.005}
         onNodeClick={handleNodeClick}
         onNodeHover={handleNodeHover}
+        onLinkClick={handleLinkClick}
         onLinkHover={handleLinkHover}
         minZoom={0.3}
         maxZoom={8}
-        cooldownTicks={100}
         enableNodeDrag
       />
       {hoveredNode && hoveredNode.node.description && (

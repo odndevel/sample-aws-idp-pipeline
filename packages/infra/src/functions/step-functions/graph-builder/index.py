@@ -183,15 +183,17 @@ def extract_entities_for_segment(segment_data, segment_index, language):
     if not segments_text.strip():
         return {'entities': [], 'relationships': []}
 
+    system_prompt = prompts['system'].replace('{segment_index}', str(segment_index))
     user_text = prompts['user'].format(
         language=language,
         existing_entities='None',
         segments=segments_text,
+        segment_index=segment_index,
     )
 
     region = os.environ.get('AWS_REGION', 'us-east-1')
     bedrock_model = BedrockModel(model_id=GRAPH_BUILDER_MODEL_ID, region_name=region)
-    agent = Agent(model=bedrock_model, system_prompt=prompts['system'])
+    agent = Agent(model=bedrock_model, system_prompt=system_prompt)
 
     try:
         result = str(agent(user_text)).strip()
@@ -199,7 +201,14 @@ def extract_entities_for_segment(segment_data, segment_index, language):
             result = result.split('```')[1]
             if result.startswith('json'):
                 result = result[4:]
-        return json.loads(result)
+        parsed = json.loads(result)
+
+        # Force all mentioned_in to use the correct segment_index
+        for ent in parsed.get('entities', []):
+            for mention in ent.get('mentioned_in', []):
+                mention['segment_index'] = segment_index
+
+        return parsed
     except (json.JSONDecodeError, Exception) as e:
         print(f'Entity extraction parse error: {e}')
         return {'entities': [], 'relationships': []}
@@ -247,16 +256,10 @@ def handle_extract_entities(event):
             {'project_id': project_id},
         )
 
-    if relationships:
-        send_batches_parallel(
-            'add_relationships', 'relationships', relationships,
-            {'project_id': project_id},
-        )
-
     return {
         'success': True,
         'entity_count': len(unique_entities),
-        'relationship_count': len(relationships),
+        'relationship_count': 0,
     }
 
 
@@ -347,8 +350,9 @@ def handler(event, _context):
         )
 
         # 5. Save work items to S3 for Map processing
-        bucket, _ = parse_s3_uri(file_uri)
-        base_key = f'_graph_work/{workflow_id}'
+        bucket, s3_key = parse_s3_uri(file_uri)
+        doc_prefix = '/'.join(s3_key.split('/')[:-1])  # e.g. projects/proj_X/documents/doc_X
+        base_key = f'{doc_prefix}/graph_work'
         s3 = get_s3_client()
 
         graph_batches = []
@@ -375,16 +379,7 @@ def handler(event, _context):
                 'extra_params': {'project_id': project_id},
             })
 
-        if all_relationships:
-            key = f'{base_key}/relationships.json'
-            s3.put_object(Bucket=bucket, Key=key, Body=json.dumps(all_relationships), ContentType='application/json')
-            graph_batches.append({
-                'action': 'add_relationships',
-                'item_key': 'relationships',
-                's3_key': key,
-                'batch_size': 200,
-                'extra_params': {'project_id': project_id},
-            })
+        # RELATES_TO relationships are no longer stored in the graph
 
         print(f'Saved {len(graph_batches)} work files to S3')
 

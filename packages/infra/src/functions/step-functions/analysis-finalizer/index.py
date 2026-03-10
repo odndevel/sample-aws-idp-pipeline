@@ -158,15 +158,17 @@ def extract_entities_from_segment(segment_data, segment_index, language):
     if not segments_text.strip():
         return {'entities': [], 'relationships': []}
 
+    system_prompt = prompts['system'].replace('{segment_index}', str(segment_index))
     user_text = prompts['user'].format(
         language=language,
         existing_entities='None',
         segments=segments_text,
+        segment_index=segment_index,
     )
 
     region = os.environ.get('AWS_REGION', 'us-east-1')
     bedrock_model = BedrockModel(model_id=ENTITY_EXTRACTION_MODEL_ID, region_name=region)
-    agent = Agent(model=bedrock_model, system_prompt=prompts['system'])
+    agent = Agent(model=bedrock_model, system_prompt=system_prompt)
 
     try:
         result = str(agent(user_text)).strip()
@@ -174,7 +176,14 @@ def extract_entities_from_segment(segment_data, segment_index, language):
             result = result.split('```')[1]
             if result.startswith('json'):
                 result = result[4:]
-        return json.loads(result)
+        parsed = json.loads(result)
+
+        # Force all mentioned_in to use the correct segment_index
+        for ent in parsed.get('entities', []):
+            for mention in ent.get('mentioned_in', []):
+                mention['segment_index'] = segment_index
+
+        return parsed
     except (json.JSONDecodeError, Exception) as e:
         print(f'Entity extraction parse error: {e}')
         return {'entities': [], 'relationships': []}

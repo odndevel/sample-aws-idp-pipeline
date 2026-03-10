@@ -469,7 +469,7 @@ export class WorkflowStack extends Stack {
       functionName: 'idp-v2-document-summarizer',
       handler: 'index.handler',
       timeout: Duration.minutes(15),
-      memorySize: 256,
+      memorySize: 1024,
       code: lambda.Code.fromAsset(
         path.join(__dirname, '../functions/step-functions/document-summarizer'),
       ),
@@ -527,6 +527,7 @@ export class WorkflowStack extends Stack {
         ...commonLambdaProps,
         functionName: 'idp-v2-graph-builder-finalizer',
         handler: 'index.handler',
+        timeout: Duration.minutes(5),
         code: lambda.Code.fromAsset(
           path.join(
             __dirname,
@@ -534,8 +535,13 @@ export class WorkflowStack extends Stack {
           ),
         ),
         layers: [sharedLayer],
+        environment: {
+          ...commonLambdaProps.environment,
+          GRAPH_SERVICE_FUNCTION_NAME: graphService.functionName,
+        },
       },
     );
+    graphService.grantInvoke(graphBuilderFinalizer);
 
     // LanceDB Writer Lambda (consumes from SQS, concurrency=1)
     const lancedbWriter = new lambda.Function(this, 'LanceDBWriter', {
