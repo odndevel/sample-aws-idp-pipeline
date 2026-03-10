@@ -106,7 +106,8 @@
       "generatorOptions": {
         "currentVersionResolver": "git-tag",
         "specifierSource": "prompt",
-        "updateRootVersion": true
+        "updateRootVersion": true,
+        "preserveLocalDependencyProtocols": true
       }
     },
     "changelog": {
@@ -115,8 +116,8 @@
       }
     },
     "git": {
-      "commit": true,
-      "tag": true
+      "commit": false,
+      "tag": false
     }
   },
   "generators": {
