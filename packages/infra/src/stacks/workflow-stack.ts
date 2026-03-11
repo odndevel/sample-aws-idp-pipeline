@@ -123,6 +123,9 @@ export class WorkflowStack extends Stack {
     // Lambda Layers
     // ========================================
 
+    const LAYER_PLATFORM = 'manylinux2014_aarch64';
+    const LAYER_PYTHON_VERSION = '3.14';
+
     const createLayerCode = (packages: string, layerName: string) => {
       const layerDir = path.join(__dirname, `../lambda-layers/${layerName}`);
       if (!fs.existsSync(layerDir)) {
@@ -131,6 +134,11 @@ export class WorkflowStack extends Stack {
       fs.writeFileSync(
         path.join(layerDir, 'requirements.txt'),
         packages.split(' ').join('\n'),
+      );
+      // Include platform info so asset hash changes when platform/version changes
+      fs.writeFileSync(
+        path.join(layerDir, '.platform'),
+        `${LAYER_PLATFORM}\n${LAYER_PYTHON_VERSION}\n`,
       );
 
       return lambda.Code.fromAsset(layerDir, {
@@ -144,8 +152,8 @@ export class WorkflowStack extends Stack {
                 fs.mkdirSync(pythonDir, { recursive: true });
                 execSync(
                   `pip install -t "${pythonDir}" ` +
-                    `--platform manylinux2014_aarch64 ` +
-                    `--python-version 3.14 ` +
+                    `--platform ${LAYER_PLATFORM} ` +
+                    `--python-version ${LAYER_PYTHON_VERSION} ` +
                     `--implementation cp ` +
                     `--only-binary=:all: ${packages}`,
                   { stdio: 'inherit' },
