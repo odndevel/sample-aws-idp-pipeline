@@ -144,7 +144,15 @@ export class WorkflowStack extends Stack {
       return lambda.Code.fromAsset(layerDir, {
         bundling: {
           image: lambda.Runtime.PYTHON_3_14.bundlingImage,
-          command: [],
+          command: [
+            'bash',
+            '-c',
+            `pip install -t /asset-output/python ` +
+              `--platform ${LAYER_PLATFORM} ` +
+              `--python-version ${LAYER_PYTHON_VERSION} ` +
+              `--implementation cp ` +
+              `--only-binary=:all: ${packages}`,
+          ],
           local: {
             tryBundle(outputDir: string): boolean {
               try {
