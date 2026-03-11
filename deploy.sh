@@ -18,6 +18,7 @@ STACK_NAME="sample-aws-idp-pipeline-codebuild"
 TEMPLATE_URL_BASE="https://raw.githubusercontent.com/aws-samples/sample-aws-idp-pipeline"
 TEMPLATE_FILE="/tmp/deploy-codebuild.yml"
 ADMIN_USER_EMAIL=""
+DEPLOY_STACKS=""
 
 # Parse command-line arguments
 while [[ "$#" -gt 0 ]]; do
@@ -26,6 +27,7 @@ while [[ "$#" -gt 0 ]]; do
         --repo-url) REPO_URL="$2"; shift ;;
         --version) VERSION="$2"; shift ;;
         --stack-name) STACK_NAME="$2"; shift ;;
+        --stacks) DEPLOY_STACKS="$2"; shift ;;
         --info)
             FRONTEND_DOMAIN=$(aws cloudformation describe-stacks --stack-name IDP-V2-Application \
                 --query 'Stacks[0].Outputs[?contains(OutputKey,`DistributionDomainName`)].OutputValue' --output text 2>/dev/null)
@@ -50,6 +52,7 @@ while [[ "$#" -gt 0 ]]; do
             echo "  --repo-url URL        Repository URL (default: github.com/aws-samples/sample-aws-idp-pipeline)"
             echo "  --version VERSION     Branch or tag to deploy (default: main)"
             echo "  --stack-name NAME     CloudFormation stack name (default: sample-aws-idp-pipeline-codebuild)"
+            echo "  --stacks STACKS       Deploy specific CDK stacks only (e.g. 'IDP-V2-Workflow IDP-V2-Storage')"
             echo "  --info                Show deployed application URL"
             echo "  --help                Show this help message"
             exit 0
@@ -59,8 +62,8 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
-# Prompt for email if not provided
-if [[ -z "$ADMIN_USER_EMAIL" ]]; then
+# Prompt for email if not provided (skip for targeted stack deploys)
+if [[ -z "$ADMIN_USER_EMAIL" && -z "$DEPLOY_STACKS" ]]; then
     while true; do
         read -p "Enter admin user email address: " ADMIN_USER_EMAIL
         if [[ "$ADMIN_USER_EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
@@ -79,6 +82,9 @@ echo "Admin Email: $ADMIN_USER_EMAIL"
 echo "Repository:  $REPO_URL"
 echo "Version:     $VERSION"
 echo "Stack Name:  $STACK_NAME"
+if [[ -n "$DEPLOY_STACKS" ]]; then
+echo "Stacks:      $DEPLOY_STACKS"
+fi
 echo ""
 
 # Confirm deployment
@@ -157,7 +163,11 @@ fi
 # Start CodeBuild
 echo ""
 echo "Starting CodeBuild: $PROJECT_NAME ..."
-BUILD_ID=$(aws codebuild start-build --project-name "$PROJECT_NAME" --query 'build.id' --output text)
+CODEBUILD_ENV_OVERRIDES="[]"
+if [[ -n "$DEPLOY_STACKS" ]]; then
+    CODEBUILD_ENV_OVERRIDES="[{\"name\":\"DEPLOY_STACKS\",\"value\":\"$DEPLOY_STACKS\",\"type\":\"PLAINTEXT\"}]"
+fi
+BUILD_ID=$(aws codebuild start-build --project-name "$PROJECT_NAME" --environment-variables-override "$CODEBUILD_ENV_OVERRIDES" --query 'build.id' --output text)
 
 if [[ -z "$BUILD_ID" ]]; then
     echo "Failed to start CodeBuild."

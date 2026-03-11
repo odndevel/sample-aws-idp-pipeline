@@ -4,9 +4,8 @@ Description: CodeBuild project for deploying Sample AWS IDP Pipeline
 Parameters:
   AdminUserEmail:
     Type: String
-    Description: Admin user email for Cognito authentication
-    AllowedPattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    ConstraintDescription: Must be a valid email address
+    Default: ''
+    Description: Admin user email for Cognito authentication (optional for targeted stack deploys)
 
   RepoUrl:
     Type: String
@@ -94,6 +93,8 @@ Resources:
             Value: !Ref 'AWS::Region'
           - Name: AWS_ACCOUNT_ID
             Value: !Ref 'AWS::AccountId'
+          - Name: DEPLOY_STACKS
+            Value: ''
       Source:
         Type: NO_SOURCE
         BuildSpec: |
@@ -126,8 +127,14 @@ Resources:
                     npx cdk bootstrap aws://$AWS_ACCOUNT_ID/$AWS_DEFAULT_REGION --require-approval never
                   fi
                 - cd /tmp/project/packages/infra && npx cdk context --clear 2>/dev/null || true
-                - cd /tmp/project/packages/infra && npx cdk deploy IDP-V2-Vpc --require-approval=never
-                - cd /tmp/project/packages/infra && npx cdk deploy --all --require-approval=never --concurrency=4
+                - |
+                  cd /tmp/project/packages/infra
+                  if [ -n "$DEPLOY_STACKS" ]; then
+                    npx cdk deploy $DEPLOY_STACKS --require-approval=never --concurrency=4
+                  else
+                    npx cdk deploy IDP-V2-Vpc --require-approval=never
+                    npx cdk deploy --all --require-approval=never --concurrency=4
+                  fi
             post_build:
               commands:
                 - |
