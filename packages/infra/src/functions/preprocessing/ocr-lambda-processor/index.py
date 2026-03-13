@@ -392,6 +392,7 @@ def process_file(
         chunk_label = f' chunk={chunk_index}/{total_chunks}' if is_chunk else ''
         print(f'[{workflow_id}]{chunk_label} Downloaded {file_size / (1024*1024):.1f}MB in {time.time() - dl_start:.1f}s')
 
+    chunk_pdf_path = None
     try:
         # Load model
         load_start = time.time()
@@ -405,7 +406,6 @@ def process_file(
         # Run prediction
         predict_start = time.time()
         is_pdf = tmp_path.lower().endswith('.pdf')
-        chunk_pdf_path = None
 
         if is_pdf and is_chunk and start_page is not None and end_page is not None:
             chunk_pdf_path = _extract_page_range_pdf(tmp_path, start_page, end_page)
