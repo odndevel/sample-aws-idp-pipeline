@@ -353,7 +353,20 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0
 
-  packages/common/constructs: {}
+  packages/common/constructs:
+    dependencies:
+      '@aws-cdk/aws-bedrock-agentcore-alpha':
+        specifier: 2.235.1-alpha.0
+        version: 2.235.1-alpha.0(@aws-cdk/aws-bedrock-alpha@2.235.1-alpha.0(aws-cdk-lib@2.235.1(constructs@10.4.3))(constructs@10.4.3))(aws-cdk-lib@2.235.1(constructs@10.4.3))(constructs@10.4.3)
+      '@aws-cdk/aws-elasticache-alpha':
+        specifier: 2.235.1-alpha.0
+        version: 2.235.1-alpha.0(aws-cdk-lib@2.235.1(constructs@10.4.3))(constructs@10.4.3)
+      aws-cdk-lib:
+        specifier: 2.235.1
+        version: 2.235.1(constructs@10.4.3)
+      constructs:
+        specifier: 10.4.3
+        version: 10.4.3
 
   packages/frontend:
     dependencies:
@@ -419,40 +432,6 @@ importers:
       '@aws-sdk/client-ssm':
         specifier: ^3.972.0
         version: 3.989.0
-    devDependencies:
-      '@types/aws-lambda':
-        specifier: ^8.10.145
-        version: 8.10.160
-      '@types/node':
-        specifier: ^22.19.1
-        version: 22.19.1
-      typescript:
-        specifier: ~5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^4.0.16
-        version: 4.0.18(@types/node@22.19.1)(@vitest/ui@4.0.18)(jiti@2.6.1)(jsdom@28.0.0)(lightningcss@1.30.2)(terser@5.46.0)(tsx@4.20.6)(yaml@2.8.2)
-
-  packages/lambda/md-mcp:
-    dependencies:
-      '@aws-sdk/client-dynamodb':
-        specifier: ^3.972.0
-        version: 3.989.0
-      '@aws-sdk/client-s3':
-        specifier: ^3.972.0
-        version: 3.989.0
-      '@aws-sdk/client-sqs':
-        specifier: ^3.972.0
-        version: 3.989.0
-      '@aws-sdk/lib-dynamodb':
-        specifier: ^3.972.0
-        version: 3.989.0(@aws-sdk/client-dynamodb@3.989.0)
-      '@aws-sdk/s3-request-presigner':
-        specifier: ^3.972.0
-        version: 3.989.0
-      nanoid:
-        specifier: ^5.1.6
-        version: 5.1.6
     devDependencies:
       '@types/aws-lambda':
         specifier: ^8.10.145
@@ -15949,14 +15928,6 @@ snapshots:
     optionalDependencies:
       vite: 7.3.1(@types/node@22.19.1)(jiti@2.4.2)(lightningcss@1.30.2)(terser@5.46.0)(tsx@4.20.6)(yaml@2.8.2)
 
-  '@vitest/mocker@4.0.18(vite@7.3.1(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.46.0)(tsx@4.20.6)(yaml@2.8.2))':
-    dependencies:
-      '@vitest/spy': 4.0.18
-      estree-walker: 3.0.3
-      magic-string: 0.30.21
-    optionalDependencies:
-      vite: 7.3.1(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.46.0)(tsx@4.20.6)(yaml@2.8.2)
-
   '@vitest/pretty-format@4.0.18':
     dependencies:
       tinyrainbow: 3.0.3
@@ -15983,7 +15954,7 @@ snapshots:
       sirv: 3.0.2
       tinyglobby: 0.2.15
       tinyrainbow: 3.0.3
-      vitest: 4.0.18(@types/node@22.19.1)(@vitest/ui@4.0.18)(jiti@2.6.1)(jsdom@28.0.0)(lightningcss@1.30.2)(terser@5.46.0)(tsx@4.20.6)(yaml@2.8.2)
+      vitest: 4.0.18(@types/node@22.19.1)(@vitest/ui@4.0.18)(jiti@2.4.2)(jsdom@22.1.0)(lightningcss@1.30.2)(terser@5.46.0)(tsx@4.20.6)(yaml@2.8.2)
 
   '@vitest/utils@4.0.18':
     dependencies:
@@ -23531,7 +23502,7 @@ snapshots:
   vitest@4.0.18(@types/node@22.19.1)(@vitest/ui@4.0.18)(jiti@2.6.1)(jsdom@28.0.0)(lightningcss@1.30.2)(terser@5.46.0)(tsx@4.20.6)(yaml@2.8.2):
     dependencies:
       '@vitest/expect': 4.0.18
-      '@vitest/mocker': 4.0.18(vite@7.3.1(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.46.0)(tsx@4.20.6)(yaml@2.8.2))
+      '@vitest/mocker': 4.0.18(vite@7.3.1(@types/node@22.19.1)(jiti@2.4.2)(lightningcss@1.30.2)(terser@5.46.0)(tsx@4.20.6)(yaml@2.8.2))
       '@vitest/pretty-format': 4.0.18
       '@vitest/runner': 4.0.18
       '@vitest/snapshot': 4.0.18
