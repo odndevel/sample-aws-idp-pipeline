@@ -2,7 +2,17 @@ use lambda_runtime::{Error, LambdaEvent, service_fn};
 use lancedb_service::LanceDbAction;
 use lancedb_service::action::{count, get_by_segment_ids, get_segments, hybrid_search, list_tables};
 use lancedb_service::db;
+use serde::Serialize;
 use tracing::info;
+
+/// Python Lambda 호환 응답 형식
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Response {
+    status_code: u16,
+    #[serde(flatten)]
+    body: serde_json::Value,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -30,21 +40,37 @@ async fn handler(
     event: LambdaEvent<LanceDbAction>,
     lambda_client: &aws_sdk_lambda::Client,
     bedrock_client: &aws_sdk_bedrockruntime::Client,
-) -> Result<serde_json::Value, Error> {
+) -> Result<Response, Error> {
     let (action, _context) = event.into_parts();
 
     info!("[handler] Connecting to LanceDB...");
     let conn = db::connect().await?;
     info!("[handler] Connected");
 
-    let response = match action {
-        LanceDbAction::ListTables => serde_json::to_value(list_tables::execute(&conn).await?)?,
-        LanceDbAction::Count(params) => serde_json::to_value(count::execute(&conn, params).await?)?,
-        LanceDbAction::GetSegments(params) => serde_json::to_value(get_segments::execute(&conn, params).await?)?,
-        LanceDbAction::GetBySegmentIds(params) => serde_json::to_value(get_by_segment_ids::execute(&conn, params).await?)?,
-        LanceDbAction::HybridSearch(params) => serde_json::to_value(hybrid_search::execute(&conn, lambda_client, bedrock_client, params).await?)?,
-        _ => serde_json::json!({ "success": false, "error": "not implemented" }),
+    let result: Result<serde_json::Value, (u16, String)> = match action {
+        LanceDbAction::ListTables => list_tables::execute(&conn).await
+            .map_err(|e| (500, e.to_string()))
+            .and_then(|v| serde_json::to_value(v).map_err(|e| (500, e.to_string()))),
+        LanceDbAction::Count(params) => count::execute(&conn, params).await
+            .map_err(|e| (500, e.to_string()))
+            .and_then(|v| serde_json::to_value(v).map_err(|e| (500, e.to_string()))),
+        LanceDbAction::GetSegments(params) => get_segments::execute(&conn, params).await
+            .map_err(|e| (500, e.to_string()))
+            .and_then(|v| serde_json::to_value(v).map_err(|e| (500, e.to_string()))),
+        LanceDbAction::GetBySegmentIds(params) => get_by_segment_ids::execute(&conn, params).await
+            .map_err(|e| (500, e.to_string()))
+            .and_then(|v| serde_json::to_value(v).map_err(|e| (500, e.to_string()))),
+        LanceDbAction::HybridSearch(params) => hybrid_search::execute(&conn, lambda_client, bedrock_client, params).await
+            .map_err(|e| (500, e.to_string()))
+            .and_then(|v| serde_json::to_value(v).map_err(|e| (500, e.to_string()))),
+        _ => Err((400, "not implemented".to_string())),
     };
 
-    Ok(response)
+    Ok(match result {
+        Ok(body) => Response { status_code: 200, body },
+        Err((code, error)) => Response {
+            status_code: code,
+            body: serde_json::json!({ "success": false, "error": error }),
+        },
+    })
 }
