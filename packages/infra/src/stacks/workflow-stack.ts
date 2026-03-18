@@ -254,10 +254,13 @@ export class WorkflowStack extends Stack {
       this,
       SSM_KEYS.LANCE_SERVICE_FUNCTION_ARN,
     );
-    const lancedbService = lambda.Function.fromFunctionArn(
+    const lancedbService = lambda.Function.fromFunctionAttributes(
       this,
       'LanceDBService',
-      lancedbServiceFunctionArn,
+      {
+        functionArn: lancedbServiceFunctionArn,
+        sameEnvironment: true,
+      },
     );
 
     // ========================================
